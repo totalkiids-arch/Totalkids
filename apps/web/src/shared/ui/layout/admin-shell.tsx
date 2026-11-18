@@ -2,18 +2,27 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { adminNav } from "@/shared/config/routes";
+import { Logo } from "@/shared/ui/brand/logo";
 
 /** Estructura del panel administrativo: menú lateral y contenido. */
 export function AdminShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-dvh">
-      <aside className="w-60 shrink-0 border-r border-gray-200 bg-gray-50">
-        <p className="px-5 py-4 font-semibold">Total Kids · Admin</p>
-        <nav>
-          <ul className="flex flex-col text-sm">
+    <div className="flex min-h-dvh flex-col md:flex-row">
+      <aside className="shrink-0 border-b border-border bg-surface md:w-64 md:border-r md:border-b-0">
+        <div className="flex items-center gap-2 px-5 py-4">
+          <Logo size="sm" withTagline={false} />
+          <span className="rounded-full bg-soft-blue px-2 py-0.5 text-xs font-extrabold text-brand-blue">
+            Admin
+          </span>
+        </div>
+        <nav aria-label="Panel administrativo">
+          <ul className="flex gap-1 overflow-x-auto px-3 pb-3 text-sm md:flex-col md:overflow-visible">
             {adminNav.map((item) => (
-              <li key={item.href}>
-                <Link href={item.href} className="block px-5 py-2 hover:bg-gray-100">
+              <li key={item.href} className="shrink-0">
+                <Link
+                  href={item.href}
+                  className="block rounded-xl px-3 py-2 font-bold hover:bg-soft-yellow"
+                >
                   {item.label}
                 </Link>
               </li>
@@ -21,7 +30,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </ul>
         </nav>
       </aside>
-      <main className="flex-1 px-8 py-10">{children}</main>
+      <main id="contenido" className="flex-1 px-4 py-8 sm:px-8">
+        {children}
+      </main>
     </div>
   );
 }

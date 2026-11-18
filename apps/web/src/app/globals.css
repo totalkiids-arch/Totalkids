@@ -1,1 +1,76 @@
 @import "tailwindcss";
+
+/*
+ * Identidad visual Total Kids (PR-03). Ver apps/web/DESIGN.md para reglas de uso
+ * y contraste. Cada token genera utilidades: bg-brand-blue, text-text-secondary,
+ * border-border, font-heading, etc.
+ */
+@theme {
+  /* Colores de marca */
+  --color-brand-navy: #1f2a44;
+  --color-brand-blue: #1a5299;
+  --color-brand-yellow: #ffc21f;
+  --color-brand-red: #d0352a;
+  --color-brand-green: #2f7a1f;
+  --color-brand-purple: #8447b0;
+
+  /* Fondos */
+  --color-background: #fff9ee;
+  --color-surface: #ffffff;
+  --color-soft-yellow: #ffe9a8;
+  --color-soft-blue: #e6f0ff;
+  --color-soft-green: #eaf5df;
+  --color-soft-red: #ffe5dc;
+  --color-soft-purple: #f4eafa;
+
+  /* Textos y bordes */
+  --color-text-primary: #1f2a44;
+  --color-text-secondary: #5b6478;
+  --color-border: #f0e6d2;
+
+  /* Colores exclusivos del logotipo (letras del logo ilustrado). Solo para <Logo />:
+     no usar en texto ni UI, varios no cumplen contraste. */
+  --color-logo-orange: #f28a1a;
+  --color-logo-sky: #2e9bd6;
+  --color-logo-green: #5fae3a;
+  --color-logo-yellow: #f5b100;
+
+  /* Animación de Tito (respeta prefers-reduced-motion con motion-safe:) */
+  --animate-float: float 3.2s ease-in-out infinite;
+
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+}
+
+/* Tipografías: next/font expone --font-baloo y --font-nunito en <html> (ver app/layout.tsx).
+   "inline" hace que la utilidad use la variable en el punto de uso. */
+@theme inline {
+  --font-heading: var(--font-baloo), "Baloo 2", ui-rounded, system-ui, sans-serif;
+  --font-body: var(--font-nunito), "Nunito", ui-rounded, system-ui, sans-serif;
+  --font-sans: var(--font-nunito), "Nunito", ui-rounded, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-background font-body text-text-primary;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading font-bold text-text-primary;
+  }
+
+  /* Foco visible y consistente para navegación con teclado (accesibilidad). */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-blue;
+  }
+}

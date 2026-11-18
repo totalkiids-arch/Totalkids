@@ -12,9 +12,9 @@ const LABEL: Record<HealthState["state"], string> = {
 };
 
 const COLOR: Record<HealthState["state"], string> = {
-  loading: "bg-gray-400",
-  ok: "bg-green-500",
-  error: "bg-red-500",
+  loading: "bg-text-secondary",
+  ok: "bg-brand-green",
+  error: "bg-brand-red",
 };
 
 export function HealthStatus() {
@@ -35,7 +35,7 @@ export function HealthStatus() {
 
   return (
     <p
-      className="flex items-center gap-2 text-sm text-gray-700"
+      className="flex items-center gap-2 text-sm font-bold text-text-primary"
       role="status"
       data-state={health.state}
     >

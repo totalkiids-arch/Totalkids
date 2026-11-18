@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
+import { baloo, nunito } from "./fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,10 +9,14 @@ export const metadata: Metadata = {
   description: "Tienda online de mobiliario infantil",
 };
 
+export const viewport: Viewport = {
+  themeColor: "#fff9ee",
+};
+
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="es-CL">
-      <body className="bg-white text-gray-900 antialiased">{children}</body>
+    <html lang="es-CL" className={`${baloo.variable} ${nunito.variable}`}>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
