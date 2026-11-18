@@ -1,0 +1,11 @@
+{
+  "name": "total-kids-maqueta",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "extract": "node scripts/extract-bundle.mjs",
+    "check": "node scripts/validate.mjs",
+    "preview": "node scripts/serve.mjs"
+  }
+}

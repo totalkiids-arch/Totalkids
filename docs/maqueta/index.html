@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Total Kids – Mobiliario infantil</title>
+<script defer src="assets/js/react.production.min.js"></script>
+<script defer src="assets/js/react-dom.production.min.js"></script>
+<script defer src="assets/js/dc-runtime.js"></script>
+</head>
+<body>
+<nav aria-label="Navegación de la maqueta" style="font:700 13px Nunito,sans-serif;background:#1f2a44;color:white;padding:10px 20px;display:flex;justify-content:center;gap:20px;flex-wrap:wrap"><a style="color:white" href="pages/mapa.html">Todas las pantallas</a><a style="color:white" href="pages/acceso.html">Mi cuenta</a><a style="color:#ffc21f" href="admin/acceso.html">Panel de administración</a></nav>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="assets/css/fonts.css">
+<link rel="stylesheet" href="assets/css/responsive.css">
+<style>
+body{margin:0;background:#FFF9EE}
+a{color:#1A5299;text-decoration:none}a:hover{color:#103B70}
+.tk-card{transition:transform .2s ease, box-shadow .2s ease}
+.tk-card:hover{transform:translateY(-4px);box-shadow:0 14px 30px -12px rgba(31,42,68,.25)}
+.tk-pill{transition:transform .15s ease}
+.tk-pill:hover{transform:translateY(-2px)}
+.tk-dots{background-image:radial-gradient(#F3DDAE 2.5px, transparent 2.5px);background-size:30px 30px}
+@keyframes tk-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.tk-float{animation:tk-float 3.2s ease-in-out infinite}
+@keyframes tk-wiggle{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+.tk-wiggle{animation:tk-wiggle 2.4s ease-in-out infinite}
+</style>
+</helmet>
+<div class="tk-dots" style="width: 100%; min-height: 100vh; background-color: #FFF9EE; color: #1F2A44; font-family: 'Nunito', system-ui, sans-serif; font-size: 16px; line-height: 1.5">
+
+<!-- FRANJA ARCOÍRIS -->
+<div aria-hidden="true" style="display: flex; height: 8px"><span style="flex: 1; background: #D0352A"></span><span style="flex: 1; background: #F28A1A"></span><span style="flex: 1; background: #FFC21F"></span><span style="flex: 1; background: #5FAE3A"></span><span style="flex: 1; background: #2E9BD6"></span><span style="flex: 1; background: #8447B0"></span></div>
+
+<!-- BARRA SUPERIOR -->
+<div class="tk-topbar" style="background: #1F2A44; color: #FFFFFF; font-size: 13px; font-weight: 700">
+<div style="max-width: 1280px; margin: 0 auto; padding: 8px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px">
+<div style="display: flex; flex-wrap: wrap; gap: 20px">
+<span style="display: flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFC21F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3z"></path><path d="M14 10h4l3 3v3h-7"></path><circle cx="7" cy="18" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg>Despachos a todo Chile</span>
+<span style="display: flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFC21F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"></rect><path d="M3 10h18"></path></svg>Paga en cuotas [CONDICIONES]</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="pages/politicas.html#despacho" style="color: #FFFFFF; display: flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"></path></svg>+56 9 [TU NÚMERO]</a>
+<a href="pages/politicas.html#compra" style="color: #FFFFFF; display: flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path></svg>[TU CORREO]</a>
+<a href="pages/politicas.html" style="color: #FFFFFF">Ayuda</a>
+</div>
+</div>
+</div>
+
+<!-- HEADER -->
+<header class="tk-site-header" style="background: #FFFFFF; border-bottom: 1px solid #F0E6D2">
+<div class="tk-header-inner tk-home-header" style="max-width: 1280px; margin: 0 auto; padding: 16px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px">
+<a class="tk-brand" href="index.html" aria-label="Total Kids, inicio" style="display: flex; align-items: center; gap: 12px; flex-shrink: 0">
+<svg aria-hidden="true" width="56" height="56" sc-camel-view-box="0 0 56 56"><rect x="2" y="26" width="26" height="26" rx="6" fill="#1A5299"></rect><rect x="28" y="26" width="26" height="26" rx="6" fill="#D0352A"></rect><rect x="15" y="2" width="26" height="26" rx="6" fill="#FFC21F"></rect><text x="15" y="46" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="18" fill="#FFFFFF">T</text><text x="41" y="46" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="18" fill="#FFFFFF">K</text><path d="M22 15l4 4 8-8" stroke="#1F2A44" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="display: flex; flex-direction: column; line-height: 1">
+<span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: 0.5px; color: #1F2A44"><span style="color: #F28A1A">T</span><span style="color: #2E9BD6">O</span><span style="color: #5FAE3A">T</span><span style="color: #F5B100">A</span><span style="color: #8447B0">L</span> <span style="color: #D0352A">K</span><span style="color: #2E9BD6">I</span><span style="color: #F5B100">D</span><span style="color: #5FAE3A">S</span></span>
+<span style="font-size: 12px; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase; color: #5B6478; margin-top: 4px">Aprender jugando</span>
+</span>
+</a>
+<form class="tk-search" role="search" style="flex: 1 1 320px; display: flex; align-items: center; background: #FFF4DE; border: 2px solid #F3DFB5; border-radius: 999px; padding: 4px 4px 4px 20px; min-width: 0">
+<label for="tk-search" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Buscar productos</label>
+<input id="tk-search" type="search" placeholder="Busca mesas, camas, libreros…" style="flex: 1; min-width: 0; border: 0; background: transparent; font-family: 'Nunito', sans-serif; font-size: 16px; color: #1F2A44; outline: none; height: 40px">
+<button type="submit" aria-label="Buscar" style="width: 44px; height: 44px; border-radius: 999px; border: 0; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></button>
+</form>
+<div class="tk-header-actions" style="display: flex; align-items: center; gap: 12px; flex-shrink: 0">
+<a href="pages/acceso.html" style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #1F2A44; padding: 8px 12px; border-radius: 999px; min-height: 44px; box-sizing: border-box"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="#1A5299" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>Mi cuenta</a>
+<a class="tk-cart-link" href="pages/carrito.html" style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #FFFFFF; background: #D0352A; padding: 10px 18px; border-radius: 999px; min-height: 44px; box-sizing: border-box"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path></svg>Carrito (0)</a>
+</div>
+</div>
+<!-- Categorías en píldoras -->
+<nav class="tk-categories" aria-label="Categorías" style="max-width: 1280px; margin: 0 auto; padding: 0 24px 16px; display: flex; flex-wrap: wrap; gap: 10px">
+<a class="tk-pill" href="pages/catalogo.html" style="padding: 9px 18px; border-radius: 999px; background: #1A5299; color: #FFFFFF; font-weight: 800; font-size: 14px">Mesas y Sillas</a>
+<a class="tk-pill" href="pages/catalogo.html" style="padding: 9px 18px; border-radius: 999px; background: #8447B0; color: #FFFFFF; font-weight: 800; font-size: 14px">Camas y Cunas</a>
+<a class="tk-pill" href="pages/catalogo.html" style="padding: 9px 18px; border-radius: 999px; background: #2F7A1F; color: #FFFFFF; font-weight: 800; font-size: 14px">Libreros y Estantes</a>
+<a class="tk-pill" href="pages/catalogo.html" style="padding: 9px 18px; border-radius: 999px; background: #FFC21F; color: #1F2A44; font-weight: 800; font-size: 14px">Organizadores y Baúles</a>
+<a class="tk-pill" href="pages/catalogo.html" style="padding: 9px 18px; border-radius: 999px; background: #D0352A; color: #FFFFFF; font-weight: 800; font-size: 14px">Escritorios</a>
+<a class="tk-pill" href="pages/catalogo.html" style="padding: 9px 18px; border-radius: 999px; background: #1F2A44; color: #FFFFFF; font-weight: 800; font-size: 14px">Línea Montessori</a>
+<a class="tk-pill" href="pages/catalogo.html" style="padding: 9px 18px; border-radius: 999px; background: #FFFFFF; color: #1F2A44; border: 2px solid #1F2A44; font-weight: 800; font-size: 14px">Jardines y Colegios</a>
+<a class="tk-pill" href="pages/servicios.html" style="padding: 9px 18px; border-radius: 999px; background: #2F7A1F; color: #FFFFFF; font-weight: 800; font-size: 14px; display: flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"></path></svg>Servicios especiales</a>
+<a class="tk-pill" href="pages/catalogo.html" style="padding: 9px 18px; border-radius: 999px; background: #FFE3D6; color: #8A2A12; font-weight: 800; font-size: 14px">Ofertas</a>
+</nav>
+</header>
+
+<!-- HERO -->
+<section class="tk-home-hero-section" style="max-width: 1280px; margin: 0 auto; padding: 40px 24px 24px">
+<div style="background: #FFE9A8; border-radius: 40px; padding: 48px; display: flex; flex-wrap: wrap; align-items: center; gap: 32px; overflow: hidden; position: relative">
+<div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 20px; position: relative">
+<span style="align-self: flex-start; background: #FFFFFF; color: #1F2A44; font-weight: 800; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; padding: 8px 16px; border-radius: 999px; display: flex; align-items: center; gap: 8px"><span style="width: 10px; height: 10px; border-radius: 3px; background: #2F7A1F"></span>Mobiliario infantil · Hogar y educación</span>
+<h1 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 64px; line-height: 1.02; color: #1F2A44">Muebles que invitan a <span style="color: #D0352A; background: #FFFFFF; padding: 0 12px; border-radius: 16px; display: inline-block; transform: rotate(-2deg); box-shadow: 0 5px 0 #E3C877">aprender jugando</span></h1>
+<p style="margin: 0; font-size: 19px; color: #3D4660; max-width: 520px">Mesas, camas casita, libreros frontales y organizadores a la altura de los niños, pensados para que exploren, ordenen y crezcan con autonomía.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; padding-top: 8px">
+<a href="pages/catalogo.html" style="display: flex; align-items: center; gap: 10px; background: #1A5299; color: #FFFFFF; font-weight: 800; font-size: 17px; padding: 15px 28px; border-radius: 999px; box-shadow: 0 6px 0 #103B70">Ver catálogo<svg aria-hidden="true" width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a>
+<a href="pages/servicios.html" style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; color: #1F2A44; font-weight: 800; font-size: 17px; padding: 15px 28px; border-radius: 999px; box-shadow: 0 6px 0 #E3C877">Cotizar para jardines</a>
+</div>
+<div style="display: flex; gap: 8px; padding-top: 12px" aria-hidden="true">
+<span style="width: 32px; height: 10px; border-radius: 999px; background: #1F2A44"></span>
+<span style="width: 10px; height: 10px; border-radius: 999px; background: #E3C877"></span>
+<span style="width: 10px; height: 10px; border-radius: 999px; background: #E3C877"></span>
+</div>
+</div>
+<div style="flex: 1 1 440px; min-width: 0; display: flex; justify-content: center; position: relative">
+<div class="tk-float" style="position: absolute; left: 0; bottom: 0; display: flex; align-items: flex-end; gap: 4px; z-index: 2">
+<svg role="img" aria-label="Tito, la mascota de Total Kids, saludando" sc-camel-view-box="0 0 120 150" width="120" height="150"><rect x="40" y="2" width="40" height="24" rx="8" fill="#D0352A"></rect><text x="60" y="20" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="16" fill="#FFFFFF">A</text><path d="M16 70 Q2 58 8 40" stroke="#1F2A44" stroke-width="6" fill="none" stroke-linecap="round"></path><path d="M104 74 Q118 84 112 100" stroke="#1F2A44" stroke-width="6" fill="none" stroke-linecap="round"></path><rect x="44" y="110" width="10" height="28" rx="4" fill="#1F2A44"></rect><rect x="66" y="110" width="10" height="28" rx="4" fill="#1F2A44"></rect><ellipse cx="48" cy="140" rx="11" ry="6" fill="#1A5299"></ellipse><ellipse cx="72" cy="140" rx="11" ry="6" fill="#1A5299"></ellipse><rect x="14" y="24" width="92" height="92" rx="22" fill="#FFC21F" stroke="#E0A92A" stroke-width="4"></rect><circle cx="44" cy="62" r="8" fill="#1F2A44"></circle><circle cx="76" cy="62" r="8" fill="#1F2A44"></circle><circle cx="47" cy="59" r="3" fill="#FFFFFF"></circle><circle cx="79" cy="59" r="3" fill="#FFFFFF"></circle><circle cx="32" cy="82" r="7" fill="#FF9F80"></circle><circle cx="88" cy="82" r="7" fill="#FF9F80"></circle><path d="M46 82 Q60 98 74 82" stroke="#1F2A44" stroke-width="5" fill="none" stroke-linecap="round"></path></svg>
+<span style="background: #FFFFFF; color: #1F2A44; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 18px; line-height: 1.15; padding: 10px 16px; border-radius: 20px 20px 20px 4px; box-shadow: 0 4px 0 #E3C877; margin-bottom: 96px; max-width: 160px">¡Hola! Soy Tito. ¿Jugamos a decorar?</span>
+</div>
+<svg role="img" aria-label="Ilustración de una sala infantil con librero, mesa con sillas y bloques de letras" sc-camel-view-box="0 0 560 440" style="width: 100%; max-width: 560px; height: auto">
+<circle cx="300" cy="220" r="200" fill="#FFF6D6"></circle>
+<path d="M40 50 Q170 95 300 60" stroke="#1F2A44" stroke-width="2" fill="none"></path>
+<path d="M70 62 l14 34 l16 -28z" fill="#D0352A"></path><path d="M125 78 l12 34 l18 -26z" fill="#1A5299"></path><path d="M180 84 l10 34 l20 -28z" fill="#2F7A1F"></path><path d="M235 76 l8 34 l22 -26z" fill="#8447B0"></path>
+<rect x="340" y="48" width="160" height="128" rx="16" fill="#CFE3FF" stroke="#FFFFFF" stroke-width="10"></rect>
+<path d="M420 48v128M340 112h160" stroke="#FFFFFF" stroke-width="8"></path>
+<circle cx="378" cy="84" r="16" fill="#FFC21F"></circle>
+<ellipse cx="460" cy="146" rx="26" ry="10" fill="#FFFFFF"></ellipse><ellipse cx="444" cy="140" rx="14" ry="10" fill="#FFFFFF"></ellipse>
+<ellipse cx="290" cy="400" rx="250" ry="30" fill="#FFC7B0"></ellipse>
+<ellipse cx="290" cy="400" rx="190" ry="20" fill="#FFB094"></ellipse>
+<rect x="40" y="176" width="14" height="216" rx="5" fill="#C98B4E"></rect><rect x="156" y="176" width="14" height="216" rx="5" fill="#C98B4E"></rect>
+<rect x="54" y="236" width="102" height="9" fill="#E8B77A"></rect><rect x="54" y="306" width="102" height="9" fill="#E8B77A"></rect><rect x="54" y="376" width="102" height="9" fill="#E8B77A"></rect>
+<rect x="60" y="196" width="28" height="40" rx="4" fill="#1A5299"></rect><rect x="92" y="190" width="26" height="46" rx="4" fill="#D0352A"></rect><rect x="122" y="200" width="28" height="36" rx="4" fill="#FFC21F"></rect>
+<rect x="60" y="266" width="26" height="40" rx="4" fill="#2F7A1F"></rect><rect x="90" y="262" width="30" height="44" rx="4" fill="#8447B0"></rect><circle cx="136" cy="292" r="14" fill="#D0352A"></circle>
+<rect x="62" y="338" width="40" height="38" rx="6" fill="#FFC21F"></rect><rect x="108" y="344" width="42" height="32" rx="6" fill="#1A5299"></rect>
+<rect x="210" y="282" width="190" height="20" rx="8" fill="#1A5299"></rect>
+<rect x="226" y="302" width="14" height="92" rx="5" fill="#103B70"></rect><rect x="370" y="302" width="14" height="92" rx="5" fill="#103B70"></rect>
+<rect x="186" y="328" width="50" height="12" rx="5" fill="#D0352A"></rect><rect x="186" y="270" width="12" height="70" rx="5" fill="#D0352A"></rect><rect x="190" y="340" width="8" height="52" rx="3" fill="#98271F"></rect><rect x="226" y="340" width="8" height="52" rx="3" fill="#98271F"></rect>
+<rect x="374" y="328" width="50" height="12" rx="5" fill="#2F7A1F"></rect><rect x="412" y="270" width="12" height="70" rx="5" fill="#2F7A1F"></rect><rect x="376" y="340" width="8" height="52" rx="3" fill="#255F18"></rect><rect x="412" y="340" width="8" height="52" rx="3" fill="#255F18"></rect>
+<rect x="262" y="248" width="34" height="34" rx="6" fill="#FFC21F"></rect><text x="279" y="273" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="24" fill="#1F2A44">A</text>
+<rect x="300" y="256" width="26" height="26" rx="5" fill="#8447B0"></rect><text x="313" y="276" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="18" fill="#FFFFFF">b</text>
+<rect x="440" y="318" width="56" height="56" rx="10" fill="#D0352A"></rect><text x="468" y="360" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="38" fill="#FFFFFF">A</text>
+<rect x="496" y="330" width="44" height="44" rx="9" fill="#1A5299"></rect><text x="518" y="364" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="30" fill="#FFFFFF">B</text>
+<rect x="462" y="270" width="48" height="48" rx="9" fill="#2F7A1F" transform="rotate(-8 486 294)"></rect><text x="486" y="306" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="32" fill="#FFFFFF" transform="rotate(-8 486 294)">C</text>
+<path d="M520 220l6 12 13 2-9 9 2 13-12-6-12 6 2-13-9-9 13-2z" fill="#FFC21F"></path>
+<path d="M210 170l4 8 9 1-6 6 1 9-8-4-8 4 1-9-6-6 9-1z" fill="#D0352A"></path>
+</svg>
+</div>
+</div>
+</section>
+
+<!-- FRANJA DE CONFIANZA -->
+<section style="max-width: 1280px; margin: 0 auto; padding: 8px 24px 24px">
+<div style="background: #FFFFFF; border-radius: 28px; padding: 24px 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; box-shadow: 0 2px 0 #F0E6D2">
+<div style="display: flex; align-items: center; gap: 14px"><span style="width: 52px; height: 52px; border-radius: 16px; background: #E6F0FF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg aria-hidden="true" width="26" height="26" sc-camel-view-box="0 0 24 24" fill="none" stroke="#1A5299" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3z"></path><path d="M14 10h4l3 3v3h-7"></path><circle cx="7" cy="18" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg></span><span><strong style="display: block; font-weight: 800">Despacho a todo Chile</strong><span style="font-size: 14px; color: #5B6478">Plazos: [TUS PLAZOS]</span></span></div>
+<div style="display: flex; align-items: center; gap: 14px"><span style="width: 52px; height: 52px; border-radius: 16px; background: #EAF5DF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg aria-hidden="true" width="26" height="26" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2F7A1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15"></path><path d="M5 19l7-7"></path></svg></span><span><strong style="display: block; font-weight: 800">Terminaciones seguras</strong><span style="font-size: 14px; color: #5B6478">Cantos redondeados, pinturas [CERTIFICACIÓN]</span></span></div>
+<div style="display: flex; align-items: center; gap: 14px"><span style="width: 52px; height: 52px; border-radius: 16px; background: #FFF3CC; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg aria-hidden="true" width="26" height="26" sc-camel-view-box="0 0 24 24" fill="none" stroke="#8A6100" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"></path><path d="M6 20V9l6-5 6 5v11"></path><path d="M10 20v-6h4v6"></path></svg></span><span><strong style="display: block; font-weight: 800">Ventas a instituciones</strong><span style="font-size: 14px; color: #5B6478">Jardines, salas cuna y colegios</span></span></div>
+<div style="display: flex; align-items: center; gap: 14px"><span style="width: 52px; height: 52px; border-radius: 16px; background: #FFE5DC; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg aria-hidden="true" width="26" height="26" sc-camel-view-box="0 0 24 24" fill="none" stroke="#D0352A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"></path></svg></span><span><strong style="display: block; font-weight: 800">Asesoría personalizada</strong><span style="font-size: 14px; color: #5B6478">Te ayudamos a elegir por edad</span></span></div>
+</div>
+</section>
+
+<!-- COMPRA POR EDAD -->
+<section style="max-width: 1280px; margin: 0 auto; padding: 48px 24px 24px">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 24px">
+<div><span style="font-weight: 800; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #D0352A">Cada etapa, su mueble</span><h2 style="margin: 4px 0 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 42px; line-height: 1.1">Compra por edad</h2></div>
+<p style="margin: 0; color: #5B6478; max-width: 420px">La altura correcta de mesa, silla y estante hace la diferencia en postura, seguridad y autonomía.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px">
+<a class="tk-card" href="pages/catalogo.html" style="background: #E6F0FF; border-radius: 28px; padding: 28px; color: #1F2A44; display: flex; flex-direction: column; gap: 8px; min-height: 220px; box-sizing: border-box"><span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 64px; line-height: 1; color: #1A5299">0–2</span><strong style="font-size: 20px; font-weight: 800">Primeros pasos</strong><span style="color: #3D4660; font-size: 15px">Cunas, camas suelo Montessori, espejos y gimnasios de gateo.</span><span style="margin-top: auto; font-weight: 800; color: #1A5299; display: flex; align-items: center; gap: 6px">Ver muebles<svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></span></a>
+<a class="tk-card" href="pages/catalogo.html" style="background: #FFE5DC; border-radius: 28px; padding: 28px; color: #1F2A44; display: flex; flex-direction: column; gap: 8px; min-height: 220px; box-sizing: border-box"><span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 64px; line-height: 1; color: #D0352A">3–5</span><strong style="font-size: 20px; font-weight: 800">Exploradores</strong><span style="color: #3D4660; font-size: 15px">Mesas con sillas, camas casita, libreros frontales y torres de aprendizaje.</span><span style="margin-top: auto; font-weight: 800; color: #A32A22; display: flex; align-items: center; gap: 6px">Ver muebles<svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></span></a>
+<a class="tk-card" href="pages/catalogo.html" style="background: #EAF5DF; border-radius: 28px; padding: 28px; color: #1F2A44; display: flex; flex-direction: column; gap: 8px; min-height: 220px; box-sizing: border-box"><span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 64px; line-height: 1; color: #2F7A1F">6–9</span><strong style="font-size: 20px; font-weight: 800">Pequeños estudiantes</strong><span style="color: #3D4660; font-size: 15px">Escritorios regulables, sillas ergonómicas y organizadores de cubos.</span><span style="margin-top: auto; font-weight: 800; color: #2F7A1F; display: flex; align-items: center; gap: 6px">Ver muebles<svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></span></a>
+<a class="tk-card" href="pages/catalogo.html" style="background: #F4EAFA; border-radius: 28px; padding: 28px; color: #1F2A44; display: flex; flex-direction: column; gap: 8px; min-height: 220px; box-sizing: border-box"><span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 64px; line-height: 1; color: #8447B0">10+</span><strong style="font-size: 20px; font-weight: 800">Grandes ideas</strong><span style="color: #3D4660; font-size: 15px">Camas nido, repisas, escritorios de estudio y almacenamiento.</span><span style="margin-top: auto; font-weight: 800; color: #8447B0; display: flex; align-items: center; gap: 6px">Ver muebles<svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></span></a>
+</div>
+</section>
+
+<!-- PRODUCTOS DESTACADOS -->
+<section id="productos" style="max-width: 1280px; margin: 0 auto; padding: 56px 24px 24px">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px">
+<div><span style="font-weight: 800; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #2F7A1F">Lo más elegido</span><h2 style="margin: 4px 0 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 42px; line-height: 1.1">Productos destacados</h2></div>
+<div role="tablist" aria-label="Filtrar por ambiente" style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" role="tab" aria-selected="true" style="font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 15px; padding: 10px 20px; min-height: 44px; border-radius: 999px; border: 0; background: #1F2A44; color: #FFFFFF; cursor: pointer">Todos</button>
+<button type="button" role="tab" aria-selected="false" style="font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 15px; padding: 10px 20px; min-height: 44px; border-radius: 999px; border: 2px solid #E5D9BF; background: #FFFFFF; color: #1F2A44; cursor: pointer">Dormitorio</button>
+<button type="button" role="tab" aria-selected="false" style="font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 15px; padding: 10px 20px; min-height: 44px; border-radius: 999px; border: 2px solid #E5D9BF; background: #FFFFFF; color: #1F2A44; cursor: pointer">Estudio</button>
+<button type="button" role="tab" aria-selected="false" style="font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 15px; padding: 10px 20px; min-height: 44px; border-radius: 999px; border: 2px solid #E5D9BF; background: #FFFFFF; color: #1F2A44; cursor: pointer">Juego y orden</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 24px">
+
+<!-- 1 Mesa + sillas -->
+<article class="tk-card" style="background: #FFFFFF; border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 0 #F0E6D2">
+<div style="background: #FFF3CC; border-radius: 20px; position: relative; padding: 12px">
+<span style="position: absolute; top: 12px; left: 12px; background: #D0352A; color: #FFFFFF; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px">-[X]%</span>
+<svg role="img" aria-label="Mesa amarilla con dos sillas y bloques de letras" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="156" rx="104" ry="7" fill="#1F2A44" opacity=".08"></ellipse><rect x="60" y="82" width="120" height="14" rx="6" fill="#FFC21F"></rect><rect x="70" y="96" width="10" height="56" rx="3" fill="#D9A21E"></rect><rect x="160" y="96" width="10" height="56" rx="3" fill="#D9A21E"></rect><rect x="16" y="112" width="42" height="10" rx="4" fill="#D0352A"></rect><rect x="16" y="72" width="10" height="50" rx="4" fill="#D0352A"></rect><rect x="19" y="122" width="6" height="30" rx="2" fill="#98271F"></rect><rect x="49" y="122" width="6" height="30" rx="2" fill="#98271F"></rect><rect x="182" y="112" width="42" height="10" rx="4" fill="#1A5299"></rect><rect x="214" y="72" width="10" height="50" rx="4" fill="#1A5299"></rect><rect x="185" y="122" width="6" height="30" rx="2" fill="#103B70"></rect><rect x="215" y="122" width="6" height="30" rx="2" fill="#103B70"></rect><rect x="94" y="62" width="20" height="20" rx="4" fill="#1A5299"></rect><text x="104" y="78" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="15" fill="#FFF">A</text><rect x="118" y="62" width="20" height="20" rx="4" fill="#2F7A1F"></rect><text x="128" y="78" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="15" fill="#FFF">B</text><rect x="106" y="42" width="20" height="20" rx="4" fill="#8447B0"></rect><text x="116" y="58" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="15" fill="#FFF">C</text></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+<span style="font-size: 13px; font-weight: 800; color: #5B6478">Mesas y Sillas · 3 a 6 años</span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 21px; line-height: 1.2"><a href="pages/producto.html" style="color: #1F2A44">Set mesa + 2 sillas Colores</a></h3>
+<p style="margin: 0; font-size: 14px; color: #5B6478">Cubierta lavable y cantos redondeados para pintar, armar y compartir.</p>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0; margin-top: auto">
+<span style="display: flex; flex-direction: column"><strong style="font-size: 22px; font-weight: 800">$[PRECIO]</strong><span style="font-size: 13px; color: #5B6478; text-decoration: line-through">$[PRECIO ANTES]</span></span>
+<button type="button" aria-label="Agregar Set mesa + 2 sillas al carrito" style="width: 48px; height: 48px; border-radius: 16px; border: 0; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M12 12v5M9.5 14.5h5"></path></svg></button>
+</div>
+</article>
+
+<!-- 2 Librero frontal -->
+<article class="tk-card" style="background: #FFFFFF; border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 0 #F0E6D2">
+<div style="background: #EAF5DF; border-radius: 20px; position: relative; padding: 12px">
+<span style="position: absolute; top: 12px; left: 12px; background: #1F2A44; color: #FFFFFF; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px">Montessori</span>
+<svg role="img" aria-label="Librero frontal de madera con libros de colores" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="80" ry="6" fill="#1F2A44" opacity=".08"></ellipse><rect x="60" y="28" width="11" height="126" rx="4" fill="#C98B4E"></rect><rect x="169" y="28" width="11" height="126" rx="4" fill="#C98B4E"></rect><rect x="71" y="70" width="98" height="7" fill="#E8B77A"></rect><rect x="71" y="108" width="98" height="7" fill="#E8B77A"></rect><rect x="71" y="146" width="98" height="7" fill="#E8B77A"></rect><rect x="77" y="40" width="20" height="30" rx="3" fill="#1A5299"></rect><rect x="100" y="36" width="20" height="34" rx="3" fill="#D0352A"></rect><rect x="123" y="42" width="20" height="28" rx="3" fill="#FFC21F"></rect><rect x="146" y="38" width="18" height="32" rx="3" fill="#8447B0"></rect><rect x="77" y="80" width="22" height="28" rx="3" fill="#2F7A1F"></rect><rect x="102" y="76" width="22" height="32" rx="3" fill="#FFC21F"></rect><circle cx="111" cy="90" r="5" fill="#FFF"></circle><rect x="127" y="80" width="18" height="28" rx="3" fill="#1A5299"></rect><rect x="148" y="84" width="16" height="24" rx="3" fill="#D0352A"></rect><rect x="77" y="118" width="24" height="28" rx="3" fill="#8447B0"></rect><rect x="104" y="114" width="20" height="32" rx="3" fill="#D0352A"></rect><rect x="127" y="120" width="18" height="26" rx="3" fill="#2F7A1F"></rect><rect x="148" y="116" width="16" height="30" rx="3" fill="#FFC21F"></rect></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+<span style="font-size: 13px; font-weight: 800; color: #5B6478">Libreros · 2 a 8 años</span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 21px; line-height: 1.2"><a href="pages/producto.html" style="color: #1F2A44">Librero frontal 3 niveles</a></h3>
+<p style="margin: 0; font-size: 14px; color: #5B6478">Portadas a la vista para que elijan solos su próxima lectura.</p>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0; margin-top: auto">
+<strong style="font-size: 22px; font-weight: 800">$[PRECIO]</strong>
+<button type="button" aria-label="Agregar Librero frontal al carrito" style="width: 48px; height: 48px; border-radius: 16px; border: 0; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M12 12v5M9.5 14.5h5"></path></svg></button>
+</div>
+</article>
+
+<!-- 3 Cama casita -->
+<article class="tk-card" style="background: #FFFFFF; border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 0 #F0E6D2">
+<div style="background: #F4EAFA; border-radius: 20px; position: relative; padding: 12px">
+<span style="position: absolute; top: 12px; left: 12px; background: #2F7A1F; color: #FFFFFF; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px">Nuevo</span>
+<svg role="img" aria-label="Cama casita de madera con techo y bandera" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="96" ry="6" fill="#1F2A44" opacity=".08"></ellipse><path d="M50 74 L120 22 L190 74" stroke="#C98B4E" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><path d="M50 74 V152 M190 74 V152" stroke="#C98B4E" stroke-width="10" stroke-linecap="round"></path><path d="M120 22 V6" stroke="#C98B4E" stroke-width="4" stroke-linecap="round"></path><path d="M120 6 l20 6 l-20 6z" fill="#D0352A"></path><rect x="56" y="118" width="128" height="20" rx="8" fill="#FFFFFF"></rect><rect x="62" y="104" width="40" height="18" rx="8" fill="#FFFFFF" stroke="#C9D6EE" stroke-width="2"></rect><rect x="96" y="112" width="88" height="26" rx="8" fill="#AA7FD0"></rect><circle cx="120" cy="124" r="3" fill="#FFC21F"></circle><circle cx="140" cy="128" r="3" fill="#FFC21F"></circle><circle cx="160" cy="122" r="3" fill="#FFC21F"></circle><rect x="45" y="136" width="150" height="14" rx="5" fill="#E8B77A"></rect><path d="M98 64l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" fill="#FFC21F"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+<span style="font-size: 13px; font-weight: 800; color: #5B6478">Camas · 2 a 10 años</span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 21px; line-height: 1.2"><a href="pages/producto.html" style="color: #1F2A44">Cama casita Montessori 1 plaza</a></h3>
+<p style="margin: 0; font-size: 14px; color: #5B6478">Baja al piso para subir y bajar sin ayuda. Un refugio para soñar.</p>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0; margin-top: auto">
+<strong style="font-size: 22px; font-weight: 800">$[PRECIO]</strong>
+<button type="button" aria-label="Agregar Cama casita al carrito" style="width: 48px; height: 48px; border-radius: 16px; border: 0; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M12 12v5M9.5 14.5h5"></path></svg></button>
+</div>
+</article>
+
+<!-- 4 Baúl -->
+<article class="tk-card" style="background: #FFFFFF; border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 0 #F0E6D2">
+<div style="background: #FFE5DC; border-radius: 20px; position: relative; padding: 12px">
+<span style="position: absolute; top: 12px; left: 12px; background: #D0352A; color: #FFFFFF; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px">-[X]%</span>
+<svg role="img" aria-label="Baúl verde de juguetes con letras ABC, pelota y bloque" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="84" ry="6" fill="#1F2A44" opacity=".08"></ellipse><rect x="56" y="84" width="128" height="70" rx="12" fill="#2F7A1F"></rect><rect x="48" y="70" width="144" height="20" rx="9" fill="#255F18"></rect><text x="120" y="134" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="34" fill="#FFFFFF">ABC</text><circle cx="88" cy="54" r="16" fill="#D0352A"></circle><path d="M74 50 Q88 44 102 50" stroke="#FFFFFF" stroke-width="3" fill="none"></path><rect x="128" y="36" width="30" height="30" rx="6" fill="#FFC21F" transform="rotate(12 143 51)"></rect><text x="143" y="59" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="20" fill="#1F2A44" transform="rotate(12 143 51)">7</text></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+<span style="font-size: 13px; font-weight: 800; color: #5B6478">Organizadores · Todas las edades</span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 21px; line-height: 1.2"><a href="pages/producto.html" style="color: #1F2A44">Baúl de juguetes con banca</a></h3>
+<p style="margin: 0; font-size: 14px; color: #5B6478">Tapa con cierre lento antipellizcos. Guarda y sirve de asiento.</p>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0; margin-top: auto">
+<span style="display: flex; flex-direction: column"><strong style="font-size: 22px; font-weight: 800">$[PRECIO]</strong><span style="font-size: 13px; color: #5B6478; text-decoration: line-through">$[PRECIO ANTES]</span></span>
+<button type="button" aria-label="Agregar Baúl de juguetes al carrito" style="width: 48px; height: 48px; border-radius: 16px; border: 0; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M12 12v5M9.5 14.5h5"></path></svg></button>
+</div>
+</article>
+
+<!-- 5 Escritorio -->
+<article class="tk-card" style="background: #FFFFFF; border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 0 #F0E6D2">
+<div style="background: #E6F0FF; border-radius: 20px; position: relative; padding: 12px">
+<svg role="img" aria-label="Escritorio azul con lámpara, libro y silla roja" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="104" ry="6" fill="#1F2A44" opacity=".08"></ellipse><rect x="34" y="80" width="136" height="12" rx="5" fill="#1A5299"></rect><rect x="40" y="92" width="9" height="60" rx="3" fill="#103B70"></rect><rect x="126" y="92" width="44" height="60" rx="5" fill="#103B70"></rect><rect x="132" y="100" width="32" height="20" rx="3" fill="#1A5299"></rect><rect x="132" y="126" width="32" height="20" rx="3" fill="#1A5299"></rect><circle cx="148" cy="110" r="3" fill="#FFC21F"></circle><circle cx="148" cy="136" r="3" fill="#FFC21F"></circle><rect x="52" y="72" width="26" height="8" rx="3" fill="#FFC21F"></rect><path d="M65 72 L80 46" stroke="#FFC21F" stroke-width="5" stroke-linecap="round"></path><path d="M72 40 L100 48 L86 60z" fill="#FFC21F"></path><rect x="96" y="70" width="24" height="10" rx="2" fill="#D0352A"></rect><rect x="98" y="64" width="20" height="6" rx="2" fill="#2F7A1F"></rect><rect x="180" y="112" width="42" height="10" rx="4" fill="#D0352A"></rect><rect x="212" y="74" width="10" height="48" rx="4" fill="#D0352A"></rect><rect x="183" y="122" width="6" height="30" rx="2" fill="#98271F"></rect><rect x="213" y="122" width="6" height="30" rx="2" fill="#98271F"></rect></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+<span style="font-size: 13px; font-weight: 800; color: #5B6478">Escritorios · 6 a 12 años</span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 21px; line-height: 1.2"><a href="pages/producto.html" style="color: #1F2A44">Escritorio Crece Conmigo</a></h3>
+<p style="margin: 0; font-size: 14px; color: #5B6478">Altura regulable y cajonera para tareas, dibujo y manualidades.</p>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0; margin-top: auto">
+<strong style="font-size: 22px; font-weight: 800">$[PRECIO]</strong>
+<button type="button" aria-label="Agregar Escritorio al carrito" style="width: 48px; height: 48px; border-radius: 16px; border: 0; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M12 12v5M9.5 14.5h5"></path></svg></button>
+</div>
+</article>
+
+<!-- 6 Organizador de cubos -->
+<article class="tk-card" style="background: #FFFFFF; border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 0 #F0E6D2">
+<div style="background: #FFF3CC; border-radius: 20px; position: relative; padding: 12px">
+<span style="position: absolute; top: 12px; left: 12px; background: #1A5299; color: #FFFFFF; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px">Top ventas</span>
+<svg role="img" aria-label="Organizador de madera con seis cubos de colores" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="84" ry="6" fill="#1F2A44" opacity=".08"></ellipse><rect x="50" y="34" width="140" height="118" rx="10" fill="#E8B77A"></rect><rect x="58" y="42" width="40" height="48" rx="6" fill="#D0352A"></rect><rect x="100" y="42" width="40" height="48" rx="6" fill="#1A5299"></rect><rect x="142" y="42" width="40" height="48" rx="6" fill="#2F7A1F"></rect><rect x="58" y="96" width="40" height="48" rx="6" fill="#FFC21F"></rect><rect x="100" y="96" width="40" height="48" rx="6" fill="#8447B0"></rect><rect x="142" y="96" width="40" height="48" rx="6" fill="#D0352A"></rect><rect x="70" y="52" width="16" height="6" rx="3" fill="#FFFFFF" opacity=".6"></rect><rect x="112" y="52" width="16" height="6" rx="3" fill="#FFFFFF" opacity=".6"></rect><rect x="154" y="52" width="16" height="6" rx="3" fill="#FFFFFF" opacity=".6"></rect><rect x="70" y="106" width="16" height="6" rx="3" fill="#FFFFFF" opacity=".6"></rect><rect x="112" y="106" width="16" height="6" rx="3" fill="#FFFFFF" opacity=".6"></rect><rect x="154" y="106" width="16" height="6" rx="3" fill="#FFFFFF" opacity=".6"></rect></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+<span style="font-size: 13px; font-weight: 800; color: #5B6478">Organizadores · Todas las edades</span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 21px; line-height: 1.2"><a href="pages/producto.html" style="color: #1F2A44">Organizador 6 cubos Arcoíris</a></h3>
+<p style="margin: 0; font-size: 14px; color: #5B6478">Un color por tipo de juguete: ordenar también es aprender a clasificar.</p>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0; margin-top: auto">
+<strong style="font-size: 22px; font-weight: 800">$[PRECIO]</strong>
+<button type="button" aria-label="Agregar Organizador 6 cubos al carrito" style="width: 48px; height: 48px; border-radius: 16px; border: 0; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M12 12v5M9.5 14.5h5"></path></svg></button>
+</div>
+</article>
+
+<!-- 7 Atril pizarra -->
+<article class="tk-card" style="background: #FFFFFF; border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 0 #F0E6D2">
+<div style="background: #EAF5DF; border-radius: 20px; position: relative; padding: 12px">
+<svg role="img" aria-label="Atril de madera con pizarra y números dibujados" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="70" ry="6" fill="#1F2A44" opacity=".08"></ellipse><path d="M84 154 L112 24 M156 154 L128 24" stroke="#C98B4E" stroke-width="8" stroke-linecap="round"></path><rect x="68" y="34" width="104" height="82" rx="8" fill="#1F4A17" stroke="#E8B77A" stroke-width="6"></rect><text x="98" y="88" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="700" font-size="26" fill="#FFFFFF">1 2 3</text><circle cx="146" cy="56" r="9" fill="none" stroke="#FFC21F" stroke-width="3"></circle><path d="M84 100 q10 -10 20 0 t20 0" stroke="#FFB3C0" stroke-width="3" fill="none" stroke-linecap="round"></path><rect x="66" y="118" width="108" height="8" rx="3" fill="#E8B77A"></rect><rect x="80" y="112" width="12" height="6" rx="2" fill="#FFFFFF"></rect><rect x="96" y="112" width="12" height="6" rx="2" fill="#FFC21F"></rect></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+<span style="font-size: 13px; font-weight: 800; color: #5B6478">Juego · 3 a 8 años</span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 21px; line-height: 1.2"><a href="pages/producto.html" style="color: #1F2A44">Atril doble pizarra y magnética</a></h3>
+<p style="margin: 0; font-size: 14px; color: #5B6478">Para dibujar, escribir las primeras letras y jugar a la escuela.</p>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0; margin-top: auto">
+<strong style="font-size: 22px; font-weight: 800">$[PRECIO]</strong>
+<button type="button" aria-label="Agregar Atril doble al carrito" style="width: 48px; height: 48px; border-radius: 16px; border: 0; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M12 12v5M9.5 14.5h5"></path></svg></button>
+</div>
+</article>
+
+<!-- 8 Torre de aprendizaje -->
+<article class="tk-card" style="background: #FFFFFF; border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 0 #F0E6D2">
+<div style="background: #F4EAFA; border-radius: 20px; position: relative; padding: 12px">
+<span style="position: absolute; top: 12px; left: 12px; background: #1F2A44; color: #FFFFFF; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px">Montessori</span>
+<svg role="img" aria-label="Torre de aprendizaje de madera con plataforma y peldaño" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="70" ry="6" fill="#1F2A44" opacity=".08"></ellipse><rect x="70" y="24" width="12" height="130" rx="4" fill="#C98B4E"></rect><rect x="158" y="24" width="12" height="130" rx="4" fill="#C98B4E"></rect><rect x="70" y="24" width="100" height="9" rx="4" fill="#E8B77A"></rect><rect x="70" y="54" width="100" height="7" rx="3" fill="#E8B77A"></rect><rect x="66" y="92" width="108" height="12" rx="4" fill="#8447B0"></rect><rect x="66" y="126" width="108" height="12" rx="4" fill="#FFC21F"></rect><path d="M82 61 V92 M158 61 V92" stroke="#E8B77A" stroke-width="4"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+<span style="font-size: 13px; font-weight: 800; color: #5B6478">Montessori · 18 meses a 5 años</span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 21px; line-height: 1.2"><a href="pages/producto.html" style="color: #1F2A44">Torre de aprendizaje regulable</a></h3>
+<p style="margin: 0; font-size: 14px; color: #5B6478">Sube a la altura del mesón para cocinar y ayudar en casa con baranda segura.</p>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0; margin-top: auto">
+<strong style="font-size: 22px; font-weight: 800">$[PRECIO]</strong>
+<button type="button" aria-label="Agregar Torre de aprendizaje al carrito" style="width: 48px; height: 48px; border-radius: 16px; border: 0; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M12 12v5M9.5 14.5h5"></path></svg></button>
+</div>
+</article>
+
+</div>
+<div style="display: flex; justify-content: center; padding-top: 32px">
+<a href="pages/catalogo.html" style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; color: #1F2A44; border: 2px solid #1F2A44; font-weight: 800; font-size: 16px; padding: 13px 28px; border-radius: 999px">Ver todo el catálogo<svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a>
+</div>
+</section>
+
+<!-- MÉTODO APRENDER JUGANDO -->
+<section style="max-width: 1280px; margin: 0 auto; padding: 64px 24px 24px">
+<div style="background: #1A5299; color: #FFFFFF; border-radius: 40px; padding: 56px 48px; position: relative; overflow: hidden">
+<svg aria-hidden="true" sc-camel-view-box="0 0 200 200" style="position: absolute; right: -30px; top: -30px; width: 220px; height: 220px; opacity: .14"><rect x="20" y="20" width="70" height="70" rx="14" fill="#FFFFFF"></rect><rect x="100" y="60" width="80" height="80" rx="16" fill="#FFFFFF"></rect><rect x="40" y="110" width="60" height="60" rx="12" fill="#FFFFFF"></rect></svg>
+<div style="position: relative; max-width: 640px; margin-bottom: 36px">
+<span style="font-weight: 800; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #FFC21F">Nuestra filosofía</span>
+<h2 style="margin: 6px 0 12px; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 46px; line-height: 1.05">Aprender jugando, desde el mueble</h2>
+<p style="margin: 0; font-size: 18px; color: #E0E9FF">Un espacio a su medida les da libertad para elegir, ordenar y crear. Así cada mueble se convierte en una herramienta de aprendizaje.</p>
+</div>
+<div style="position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px">
+<div style="background: #FFFFFF; color: #1F2A44; border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 10px">
+<span style="width: 56px; height: 56px; border-radius: 18px; background: #FFF3CC; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="28" height="28" sc-camel-view-box="0 0 24 24" fill="none" stroke="#8A6100" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.5"></circle><path d="M12 8v7M8 11h8M9 21l3-6 3 6"></path></svg></span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 22px">Autonomía</h3>
+<p style="margin: 0; font-size: 15px; color: #5B6478">Camas bajas y torres de aprendizaje para que hagan las cosas por sí mismos.</p>
+</div>
+<div style="background: #FFFFFF; color: #1F2A44; border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 10px">
+<span style="width: 56px; height: 56px; border-radius: 18px; background: #EAF5DF; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="28" height="28" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2F7A1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"></rect><rect x="13" y="3" width="8" height="8" rx="2"></rect><rect x="3" y="13" width="8" height="8" rx="2"></rect><rect x="13" y="13" width="8" height="8" rx="2"></rect></svg></span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 22px">Orden y clasificación</h3>
+<p style="margin: 0; font-size: 15px; color: #5B6478">Organizadores por colores que convierten guardar juguetes en un juego.</p>
+</div>
+<div style="background: #FFFFFF; color: #1F2A44; border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 10px">
+<span style="width: 56px; height: 56px; border-radius: 18px; background: #FFE5DC; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="28" height="28" sc-camel-view-box="0 0 24 24" fill="none" stroke="#D0352A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16z"></path><path d="M14 6l3 3"></path></svg></span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 22px">Creatividad</h3>
+<p style="margin: 0; font-size: 15px; color: #5B6478">Mesas lavables y atriles para dibujar, pintar y escribir sin miedo a ensuciar.</p>
+</div>
+<div style="background: #FFFFFF; color: #1F2A44; border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 10px">
+<span style="width: 56px; height: 56px; border-radius: 18px; background: #F4EAFA; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="28" height="28" sc-camel-view-box="0 0 24 24" fill="none" stroke="#8447B0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h6a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4z"></path><path d="M20 5h-6a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h6z"></path></svg></span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 22px">Amor por la lectura</h3>
+<p style="margin: 0; font-size: 15px; color: #5B6478">Libreros frontales que muestran las portadas y despiertan la curiosidad.</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- INSTITUCIONES -->
+<section id="instituciones" style="max-width: 1280px; margin: 0 auto; padding: 48px 24px 24px">
+<div style="background: #FFFFFF; border-radius: 40px; padding: 40px 48px; display: flex; flex-wrap: wrap; align-items: center; gap: 32px; box-shadow: 0 2px 0 #F0E6D2">
+<svg role="img" aria-label="Sala de clases infantil con mesa hexagonal y sillas" sc-camel-view-box="0 0 320 220" style="flex: 0 1 320px; width: 320px; max-width: 100%; height: auto"><rect x="0" y="0" width="320" height="220" rx="28" fill="#FFF3CC"></rect><rect x="40" y="30" width="120" height="70" rx="8" fill="#1F4A17" stroke="#E8B77A" stroke-width="6"></rect><text x="100" y="74" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="26" fill="#FFFFFF">A B C</text><path d="M200 40l40 0M200 56l60 0M200 72l50 0" stroke="#E5D3A0" stroke-width="8" stroke-linecap="round"></path><path d="M110 150 l30 -20 h60 l30 20 l-30 20 h-60z" fill="#1A5299"></path><rect x="132" y="170" width="8" height="30" rx="3" fill="#103B70"></rect><rect x="200" y="170" width="8" height="30" rx="3" fill="#103B70"></rect><rect x="60" y="150" width="34" height="9" rx="4" fill="#D0352A"></rect><rect x="60" y="120" width="9" height="40" rx="4" fill="#D0352A"></rect><rect x="62" y="159" width="6" height="28" fill="#98271F"></rect><rect x="86" y="159" width="6" height="28" fill="#98271F"></rect><rect x="246" y="150" width="34" height="9" rx="4" fill="#2F7A1F"></rect><rect x="271" y="120" width="9" height="40" rx="4" fill="#2F7A1F"></rect><rect x="248" y="159" width="6" height="28" fill="#255F18"></rect><rect x="272" y="159" width="6" height="28" fill="#255F18"></rect><rect x="155" y="112" width="18" height="18" rx="4" fill="#FFC21F"></rect><rect x="176" y="116" width="14" height="14" rx="3" fill="#8447B0"></rect></svg>
+<div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+<span style="align-self: flex-start; background: #FFF3CC; color: #6B4A00; font-weight: 800; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; padding: 6px 14px; border-radius: 999px">Jardines · Salas cuna · Colegios</span>
+<h2 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 40px; line-height: 1.08">¿Equipas una sala de clases o un jardín infantil?</h2>
+<p style="margin: 0; font-size: 17px; color: #3D4660">Armamos tu proyecto completo: mesas grupales, sillas apilables, casilleros y rincones de lectura. Cotización formal con factura.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; padding-top: 4px">
+<a href="pages/servicios.html" style="background: #D0352A; color: #FFFFFF; font-weight: 800; font-size: 16px; padding: 14px 26px; border-radius: 999px; box-shadow: 0 5px 0 #98271F">Solicitar cotización</a>
+<a href="pages/solicitud-servicio.html" style="display: flex; align-items: center; gap: 8px; color: #1F2A44; font-weight: 800; font-size: 16px; padding: 14px 20px; border-radius: 999px"><svg aria-hidden="true" width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2F7A1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1.5-4A8 8 0 1 1 9 19.5z"></path></svg>Escríbenos por WhatsApp</a>
+</div>
+</div>
+</div>
+</section>
+
+<!-- BLOG -->
+<section style="max-width: 1280px; margin: 0 auto; padding: 56px 24px 24px">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 24px">
+<div><span style="font-weight: 800; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #8447B0">Rincón de papás y educadores</span><h2 style="margin: 4px 0 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 42px; line-height: 1.1">Ideas para crecer jugando</h2></div>
+<a href="pages/catalogo.html" style="font-weight: 800; display: flex; align-items: center; gap: 6px">Ver todos los artículos<svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px">
+<a class="tk-card" href="pages/catalogo.html" style="background: #FFFFFF; border-radius: 28px; overflow: hidden; color: #1F2A44; display: flex; flex-direction: column; box-shadow: 0 2px 0 #F0E6D2">
+<div style="height: 160px; background: #F4EAFA; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" sc-camel-view-box="0 0 200 120" width="200" height="120"><path d="M50 60 L100 22 L150 60" stroke="#C98B4E" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><path d="M50 60V106M150 60V106" stroke="#C98B4E" stroke-width="8" stroke-linecap="round"></path><rect x="56" y="86" width="88" height="16" rx="6" fill="#AA7FD0"></rect><rect x="44" y="100" width="112" height="10" rx="4" fill="#E8B77A"></rect></svg></div>
+<div style="padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; font-weight: 800; color: #8447B0; text-transform: uppercase; letter-spacing: 1px">Montessori</span><h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 22px; line-height: 1.2">Cómo armar un dormitorio Montessori paso a paso</h3><p style="margin: 0; font-size: 15px; color: #5B6478">Qué muebles priorizar y cómo ubicarlos para fomentar la independencia.</p></div>
+</a>
+<a class="tk-card" href="pages/catalogo.html" style="background: #FFFFFF; border-radius: 28px; overflow: hidden; color: #1F2A44; display: flex; flex-direction: column; box-shadow: 0 2px 0 #F0E6D2">
+<div style="height: 160px; background: #E6F0FF; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" sc-camel-view-box="0 0 200 120" width="200" height="120"><rect x="60" y="56" width="90" height="10" rx="4" fill="#1A5299"></rect><rect x="68" y="66" width="8" height="44" rx="3" fill="#103B70"></rect><rect x="134" y="66" width="8" height="44" rx="3" fill="#103B70"></rect><path d="M170 20v90" stroke="#1F2A44" stroke-width="3"></path><path d="M164 20h12M164 50h8M164 80h8M164 110h12" stroke="#1F2A44" stroke-width="3"></path><rect x="24" y="80" width="30" height="8" rx="3" fill="#D0352A"></rect><rect x="24" y="56" width="8" height="32" rx="3" fill="#D0352A"></rect></svg></div>
+<div style="padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; font-weight: 800; color: #1A5299; text-transform: uppercase; letter-spacing: 1px">Guía de compra</span><h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 22px; line-height: 1.2">Altura ideal de mesa y silla según la edad</h3><p style="margin: 0; font-size: 15px; color: #5B6478">Una tabla simple para elegir el tamaño correcto y cuidar su postura.</p></div>
+</a>
+<a class="tk-card" href="pages/catalogo.html" style="background: #FFFFFF; border-radius: 28px; overflow: hidden; color: #1F2A44; display: flex; flex-direction: column; box-shadow: 0 2px 0 #F0E6D2">
+<div style="height: 160px; background: #EAF5DF; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" sc-camel-view-box="0 0 200 120" width="200" height="120"><rect x="50" y="16" width="100" height="96" rx="8" fill="#E8B77A"></rect><rect x="58" y="24" width="40" height="40" rx="5" fill="#D0352A"></rect><rect x="102" y="24" width="40" height="40" rx="5" fill="#FFC21F"></rect><rect x="58" y="66" width="40" height="40" rx="5" fill="#1A5299"></rect><rect x="102" y="66" width="40" height="40" rx="5" fill="#2F7A1F"></rect></svg></div>
+<div style="padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; font-weight: 800; color: #2F7A1F; text-transform: uppercase; letter-spacing: 1px">Orden</span><h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 22px; line-height: 1.2">5 ideas para ordenar juguetes y ganar autonomía</h3><p style="margin: 0; font-size: 15px; color: #5B6478">Rutinas y muebles que hacen que guardar sea parte del juego.</p></div>
+</a>
+</div>
+</section>
+
+<!-- NEWSLETTER -->
+<section style="max-width: 1280px; margin: 0 auto; padding: 56px 24px 64px">
+<div style="background: #FFC21F; border-radius: 40px; padding: 40px 48px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px">
+<div style="flex: 1 1 380px; min-width: 0">
+<h2 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 36px; line-height: 1.1; color: #1F2A44">Súmate al club Total Kids</h2>
+<p style="margin: 6px 0 0; font-size: 17px; color: #3D2E00">Recibe ofertas, lanzamientos e ideas para aprender jugando en casa.</p>
+</div>
+<form style="flex: 1 1 420px; min-width: 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end">
+<label for="tk-mail" style="flex: 1 1 240px; display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px; color: #1F2A44">Tu correo
+<input id="tk-mail" type="email" placeholder="nombre@correo.cl" style="height: 52px; border-radius: 999px; border: 2px solid #1F2A44; padding: 0 20px; font-family: 'Nunito', sans-serif; font-size: 16px; background: #FFFFFF; color: #1F2A44; box-sizing: border-box">
+</label>
+<button type="submit" style="height: 52px; padding: 0 28px; border-radius: 999px; border: 0; background: #1F2A44; color: #FFFFFF; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 16px; cursor: pointer">Suscribirme</button>
+</form>
+</div>
+</section>
+
+<!-- FOOTER -->
+<footer style="background: #1F2A44; color: #D5DAE6">
+<div style="max-width: 1280px; margin: 0 auto; padding: 56px 24px 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 32px">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 28px; color: #FFFFFF; line-height: 1">TOTAL <span style="color: #8EB8E6">K</span><span style="color: #FF9F80">I</span><span style="color: #97D46C">D</span><span style="color: #D0B3E6">S</span></span>
+<span style="font-size: 12px; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase; color: #FFC21F">Aprender jugando</span>
+<p style="margin: 0; font-size: 15px">Mobiliario infantil para hogares, jardines y colegios. Espacios a la medida de los niños.</p>
+</div>
+<div>
+<h3 style="margin: 0 0 14px; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 20px; color: #FFFFFF">Categorías</h3>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 15px">
+<li><a href="pages/catalogo.html" style="color: #D5DAE6">Mesas y sillas</a></li>
+<li><a href="pages/catalogo.html" style="color: #D5DAE6">Camas y cunas</a></li>
+<li><a href="pages/catalogo.html" style="color: #D5DAE6">Libreros y estantes</a></li>
+<li><a href="pages/catalogo.html" style="color: #D5DAE6">Organizadores y baúles</a></li>
+<li><a href="pages/catalogo.html" style="color: #D5DAE6">Línea Montessori</a></li>
+</ul>
+</div>
+<div>
+<h3 style="margin: 0 0 14px; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 20px; color: #FFFFFF">Ayuda</h3>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 15px">
+<li><a href="pages/politicas.html#despacho" style="color: #D5DAE6">Despachos y retiro</a></li>
+<li><a href="pages/politicas.html#compra" style="color: #D5DAE6">Medios de pago</a></li>
+<li><a href="pages/politicas.html#cambios" style="color: #D5DAE6">Cambios y garantía</a></li>
+<li><a href="pages/servicios.html" style="color: #D5DAE6">Guía de armado</a></li>
+<li><a href="pages/politicas.html" style="color: #D5DAE6">Preguntas frecuentes</a></li>
+</ul>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; font-size: 15px">
+<h3 style="margin: 0 0 4px; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 20px; color: #FFFFFF">Contacto</h3>
+<span style="display: flex; gap: 8px; align-items: center"><svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFC21F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg>[TU DIRECCIÓN], [COMUNA]</span>
+<span style="display: flex; gap: 8px; align-items: center"><svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFC21F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"></path></svg>+56 9 [TU NÚMERO]</span>
+<span style="display: flex; gap: 8px; align-items: center"><svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFC21F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path></svg>[TU CORREO]</span>
+<span style="display: flex; gap: 8px; align-items: center"><svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFC21F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>[HORARIO DE ATENCIÓN]</span>
+</div>
+</div>
+<div style="border-top: 1px solid #36415E">
+<div style="max-width: 1280px; margin: 0 auto; padding: 18px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 13px; color: #B4BCD0">
+<span>© 2026 Total Kids. Todos los derechos reservados.</span>
+<span><a href="pages/politicas.html" style="color:inherit">Términos y condiciones · Política de privacidad</a></span>
+</div>
+</div>
+<div style="padding:16px 24px;text-align:center"><a href="pages/suscripcion.html" style="color:#ffc21f">Suscribirme o darme de baja del newsletter</a></div></footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:4900}}">
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+
+
+</body></html>

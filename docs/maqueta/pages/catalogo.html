@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Total Kids – Catálogo de productos</title>
+<script defer src="../assets/js/react.production.min.js"></script>
+<script defer src="../assets/js/react-dom.production.min.js"></script>
+<script defer src="../assets/js/dc-runtime.js"></script>
+</head>
+<body>
+<nav aria-label="Navegación de la maqueta" style="font:700 13px Nunito,sans-serif;background:#1f2a44;color:white;padding:10px 20px;display:flex;justify-content:center;gap:20px;flex-wrap:wrap"><a style="color:white" href="mapa.html">Todas las pantallas</a><a style="color:white" href="acceso.html">Mi cuenta</a><a style="color:#ffc21f" href="../admin/acceso.html">Panel de administración</a></nav>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../assets/css/fonts.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<style>
+body{margin:0;background:#FFF9EE}
+a{color:#1A5299;text-decoration:none}a:hover{color:#103B70}
+.tk-dots{background-image:radial-gradient(#F3DDAE 2.5px, transparent 2.5px);background-size:30px 30px}
+.tk-card{transition:transform .2s ease, box-shadow .2s ease}
+.tk-card:hover{transform:translateY(-4px) rotate(-.5deg);box-shadow:0 14px 30px -12px rgba(31,42,68,.25)}
+@keyframes tk-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.tk-float{animation:tk-float 3.2s ease-in-out infinite}
+</style>
+</helmet>
+<div class="tk-dots" style="width: 100%; min-height: 100vh; background-color: #FFF9EE; color: #1F2A44; font-family: 'Nunito', system-ui, sans-serif; font-size: 16px; line-height: 1.5">
+
+<div aria-hidden="true" style="display: flex; height: 8px"><span style="flex: 1; background: #D0352A"></span><span style="flex: 1; background: #F28A1A"></span><span style="flex: 1; background: #FFC21F"></span><span style="flex: 1; background: #5FAE3A"></span><span style="flex: 1; background: #2E9BD6"></span><span style="flex: 1; background: #8447B0"></span></div>
+<header class="tk-site-header" style="background: #FFFFFF; border-bottom: 3px dashed #F3DFB5">
+<div class="tk-header-inner tk-compact-header" style="max-width: 1280px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px">
+<a class="tk-brand" href="../index.html" aria-label="Total Kids, inicio" style="display: flex; align-items: center; gap: 10px">
+<svg aria-hidden="true" width="48" height="48" sc-camel-view-box="0 0 56 56"><rect x="2" y="26" width="26" height="26" rx="6" fill="#1A5299"></rect><rect x="28" y="26" width="26" height="26" rx="6" fill="#D0352A"></rect><rect x="15" y="2" width="26" height="26" rx="6" fill="#FFC21F"></rect><text x="15" y="46" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="18" fill="#FFFFFF">T</text><text x="41" y="46" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="18" fill="#FFFFFF">K</text><path d="M22 15l4 4 8-8" stroke="#1F2A44" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="display: flex; flex-direction: column; line-height: 1"><span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 26px; color: #1F2A44"><span style="color: #F28A1A">T</span><span style="color: #2E9BD6">O</span><span style="color: #5FAE3A">T</span><span style="color: #F5B100">A</span><span style="color: #8447B0">L</span> <span style="color: #D0352A">K</span><span style="color: #2E9BD6">I</span><span style="color: #F5B100">D</span><span style="color: #5FAE3A">S</span></span><span style="font-size: 11px; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase; color: #5B6478; margin-top: 3px">Aprender jugando</span></span>
+</a>
+<nav class="tk-primary-nav" aria-label="Principal" style="flex: 1 1 360px; display: flex; flex-wrap: wrap; gap: 6px">
+<a href="../index.html" style="padding: 10px 16px; border-radius: 999px; font-weight: 800; color: #1F2A44">Inicio</a>
+<a href="catalogo.html" aria-current="page" style="padding: 10px 16px; border-radius: 999px; font-weight: 800; color: #FFFFFF; background: #1A5299">Productos</a>
+<a href="servicios.html" style="padding: 10px 16px; border-radius: 999px; font-weight: 800; color: #1F2A44">Servicios especiales</a>
+</nav>
+<a class="tk-cart-link" href="carrito.html" style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #FFFFFF; background: #D0352A; padding: 10px 18px; border-radius: 999px; min-height: 44px; box-sizing: border-box"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path></svg>Carrito (3)</a>
+</div>
+</header>
+
+<!-- CABECERA DE CATÁLOGO -->
+<section style="max-width: 1280px; margin: 0 auto; padding: 32px 24px 0">
+<div style="background: #1A5299; color: #FFFFFF; border-radius: 36px; padding: 36px 44px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px; position: relative; overflow: hidden">
+<div style="display: flex; flex-direction: column; gap: 8px; position: relative">
+<nav aria-label="Ruta" style="font-size: 14px; font-weight: 700"><a href="../index.html" style="color: #CFE0FF">Inicio</a><span style="color: #9DB8F0"> / </span><span>Productos</span></nav>
+<h1 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 56px; line-height: 1">¡Elige tu mueble favorito!</h1>
+<p style="margin: 0; font-size: 18px; color: #E0E9FF; max-width: 560px">Mesas, camas, libreros y organizadores pensados para aprender jugando.</p>
+</div>
+<svg class="tk-float" aria-hidden="true" sc-camel-view-box="0 0 220 140" style="width: 220px; height: 140px; position: relative"><rect x="10" y="70" width="60" height="60" rx="12" fill="#FFC21F"></rect><text x="40" y="114" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="40" fill="#1F2A44">A</text><rect x="78" y="70" width="60" height="60" rx="12" fill="#D0352A"></rect><text x="108" y="114" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="40" fill="#FFFFFF">B</text><rect x="146" y="70" width="60" height="60" rx="12" fill="#2F7A1F"></rect><text x="176" y="114" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="40" fill="#FFFFFF">C</text><rect x="80" y="8" width="56" height="56" rx="12" fill="#FFFFFF" transform="rotate(10 108 36)"></rect><text x="108" y="50" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="36" fill="#8447B0" transform="rotate(10 108 36)">1</text></svg>
+</div>
+</section>
+
+<!-- CATEGORÍAS -->
+<section style="max-width: 1280px; margin: 0 auto; padding: 24px 24px 0">
+<div role="tablist" aria-label="Categorías" style="display: flex; flex-wrap: wrap; gap: 10px">
+<sc-for list="{{cats}}" as="c" hint-placeholder-count="7">
+<sc-if value="{{c.active}}" hint-placeholder-val="{{false}}">
+<button type="button" role="tab" aria-selected="true" sc-camel-on-click="{{c.pick}}" style="font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 15px; min-height: 46px; padding: 10px 20px; border-radius: 999px; border: 0; background: {{c.color}}; color: {{c.text}}; cursor: pointer; box-shadow: 0 4px 0 rgba(31,42,68,.25)">{{c.label}}</button>
+</sc-if>
+<sc-if value="{{c.inactive}}" hint-placeholder-val="{{true}}">
+<button type="button" role="tab" aria-selected="false" sc-camel-on-click="{{c.pick}}" style="font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 15px; min-height: 46px; padding: 10px 20px; border-radius: 999px; border: 2px solid #E5D9BF; background: #FFFFFF; color: #1F2A44; cursor: pointer">{{c.label}}</button>
+</sc-if>
+</sc-for>
+</div>
+</section>
+
+<!-- CONTENIDO -->
+<section style="max-width: 1280px; margin: 0 auto; padding: 24px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+
+<!-- FILTROS -->
+<aside aria-label="Filtros" style="flex: 1 1 260px; max-width: 100%; display: flex; flex-direction: column; gap: 16px">
+<div style="background: #FFFFFF; border-radius: 28px; padding: 24px; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 2px 0 #F0E6D2">
+<h2 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 24px">Filtrar</h2>
+<fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+<legend style="font-weight: 800; margin-bottom: 8px">Edad</legend>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 15px"><input type="checkbox" style="width: 20px; height: 20px; accent-color: #1A5299">0 a 2 años</label>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 15px"><input type="checkbox" checked="" style="width: 20px; height: 20px; accent-color: #1A5299">3 a 5 años</label>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 15px"><input type="checkbox" style="width: 20px; height: 20px; accent-color: #1A5299">6 a 9 años</label>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 15px"><input type="checkbox" style="width: 20px; height: 20px; accent-color: #1A5299">10 años o más</label>
+</fieldset>
+<fieldset style="border: 0; margin: 0; padding: 0">
+<legend style="font-weight: 800; margin-bottom: 10px">Color</legend>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<button type="button" aria-label="Natural madera" style="width: 36px; height: 36px; border-radius: 12px; border: 3px solid #1F2A44; background: #E8B77A; cursor: pointer"></button>
+<button type="button" aria-label="Blanco" style="width: 36px; height: 36px; border-radius: 12px; border: 2px solid #D5CBB4; background: #FFFFFF; cursor: pointer"></button>
+<button type="button" aria-label="Azul" style="width: 36px; height: 36px; border-radius: 12px; border: 0; background: #1A5299; cursor: pointer"></button>
+<button type="button" aria-label="Rojo" style="width: 36px; height: 36px; border-radius: 12px; border: 0; background: #D0352A; cursor: pointer"></button>
+<button type="button" aria-label="Amarillo" style="width: 36px; height: 36px; border-radius: 12px; border: 0; background: #FFC21F; cursor: pointer"></button>
+<button type="button" aria-label="Verde" style="width: 36px; height: 36px; border-radius: 12px; border: 0; background: #2F7A1F; cursor: pointer"></button>
+<button type="button" aria-label="Lila" style="width: 36px; height: 36px; border-radius: 12px; border: 0; background: #AA7FD0; cursor: pointer"></button>
+</div>
+</fieldset>
+<fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+<legend style="font-weight: 800; margin-bottom: 8px">Precio</legend>
+<div style="display: flex; gap: 8px">
+<label style="flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 700; color: #5B6478">Desde<input type="text" placeholder="$ mín." style="height: 42px; border-radius: 12px; border: 2px solid #E5D9BF; padding: 0 12px; font-family: 'Nunito', sans-serif; font-size: 15px; min-width: 0"></label>
+<label style="flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 700; color: #5B6478">Hasta<input type="text" placeholder="$ máx." style="height: 42px; border-radius: 12px; border: 2px solid #E5D9BF; padding: 0 12px; font-family: 'Nunito', sans-serif; font-size: 15px; min-width: 0"></label>
+</div>
+</fieldset>
+<fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+<legend style="font-weight: 800; margin-bottom: 8px">Material</legend>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 15px"><input type="checkbox" style="width: 20px; height: 20px; accent-color: #1A5299">Madera</label>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 15px"><input type="checkbox" style="width: 20px; height: 20px; accent-color: #1A5299">MDF lacado</label>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 15px"><input type="checkbox" style="width: 20px; height: 20px; accent-color: #1A5299">Plástico resistente</label>
+</fieldset>
+</div>
+<div style="background: #FFC21F; border-radius: 28px; padding: 20px; display: flex; align-items: center; gap: 12px">
+<svg role="img" aria-label="Tito, la mascota" sc-camel-view-box="0 0 120 150" width="72" height="90" style="flex-shrink: 0"><rect x="40" y="2" width="40" height="24" rx="8" fill="#D0352A"></rect><path d="M104 74 Q118 84 112 100" stroke="#1F2A44" stroke-width="6" fill="none" stroke-linecap="round"></path><path d="M16 74 Q2 84 8 100" stroke="#1F2A44" stroke-width="6" fill="none" stroke-linecap="round"></path><rect x="44" y="110" width="10" height="28" rx="4" fill="#1F2A44"></rect><rect x="66" y="110" width="10" height="28" rx="4" fill="#1F2A44"></rect><rect x="14" y="24" width="92" height="92" rx="22" fill="#FFFFFF" stroke="#1F2A44" stroke-width="4"></rect><circle cx="44" cy="62" r="8" fill="#1F2A44"></circle><circle cx="76" cy="62" r="8" fill="#1F2A44"></circle><circle cx="32" cy="82" r="7" fill="#FF9F80"></circle><circle cx="88" cy="82" r="7" fill="#FF9F80"></circle><path d="M46 82 Q60 98 74 82" stroke="#1F2A44" stroke-width="5" fill="none" stroke-linecap="round"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px"><strong style="font-family: 'Baloo 2', sans-serif; font-size: 18px; line-height: 1.15">¿No sabes qué altura elegir?</strong><a href="servicios.html" style="color: #1F2A44; font-weight: 800; text-decoration: underline">Pide asesoría gratis</a></div>
+</div>
+</aside>
+
+<!-- GRILLA -->
+<div style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<p style="margin: 0; font-weight: 800; color: #5B6478">{{countLabel}}</p>
+<label style="display: flex; align-items: center; gap: 10px; font-weight: 800">Ordenar por
+<sc-raw-select style="height: 44px; border-radius: 999px; border: 2px solid #E5D9BF; padding: 0 16px; font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 15px; background: #FFFFFF; color: #1F2A44">
+<option>Más vendidos</option><option>Menor precio</option><option>Mayor precio</option><option>Novedades</option>
+</sc-raw-select>
+</label>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px">
+<sc-for list="{{items}}" as="p" hint-placeholder-count="9">
+<article class="tk-card" style="background: #FFFFFF; border-radius: 28px; padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 2px 0 #F0E6D2">
+<a href="producto.html" style="display: block; background: {{p.bg}}; border-radius: 20px; padding: 10px; position: relative; color: #1F2A44">
+<sc-if value="{{p.hasBadge}}" hint-placeholder-val="{{false}}"><span style="position: absolute; top: 10px; left: 10px; background: {{p.badgeBg}}; color: #FFFFFF; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px; transform: rotate(-4deg)">{{p.badge}}</span></sc-if>
+<sc-if value="{{p.isMesa}}" hint-placeholder-val="{{true}}"><svg role="img" aria-label="Mesa con sillas" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="156" rx="104" ry="7" fill="#1F2A44" opacity=".08"></ellipse><rect x="60" y="82" width="120" height="14" rx="6" fill="#FFC21F"></rect><rect x="70" y="96" width="10" height="56" rx="3" fill="#D9A21E"></rect><rect x="160" y="96" width="10" height="56" rx="3" fill="#D9A21E"></rect><rect x="16" y="112" width="42" height="10" rx="4" fill="#D0352A"></rect><rect x="16" y="72" width="10" height="50" rx="4" fill="#D0352A"></rect><rect x="19" y="122" width="6" height="30" rx="2" fill="#98271F"></rect><rect x="49" y="122" width="6" height="30" rx="2" fill="#98271F"></rect><rect x="182" y="112" width="42" height="10" rx="4" fill="#1A5299"></rect><rect x="214" y="72" width="10" height="50" rx="4" fill="#1A5299"></rect><rect x="185" y="122" width="6" height="30" rx="2" fill="#103B70"></rect><rect x="215" y="122" width="6" height="30" rx="2" fill="#103B70"></rect><rect x="94" y="62" width="20" height="20" rx="4" fill="#1A5299"></rect><rect x="118" y="62" width="20" height="20" rx="4" fill="#2F7A1F"></rect><rect x="106" y="42" width="20" height="20" rx="4" fill="#8447B0"></rect></svg></sc-if>
+<sc-if value="{{p.isLibro}}" hint-placeholder-val="{{false}}"><svg role="img" aria-label="Librero con libros" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="80" ry="6" fill="#1F2A44" opacity=".08"></ellipse><rect x="60" y="28" width="11" height="126" rx="4" fill="#C98B4E"></rect><rect x="169" y="28" width="11" height="126" rx="4" fill="#C98B4E"></rect><rect x="71" y="70" width="98" height="7" fill="#E8B77A"></rect><rect x="71" y="108" width="98" height="7" fill="#E8B77A"></rect><rect x="71" y="146" width="98" height="7" fill="#E8B77A"></rect><rect x="77" y="40" width="20" height="30" rx="3" fill="#1A5299"></rect><rect x="100" y="36" width="20" height="34" rx="3" fill="#D0352A"></rect><rect x="123" y="42" width="20" height="28" rx="3" fill="#FFC21F"></rect><rect x="146" y="38" width="18" height="32" rx="3" fill="#8447B0"></rect><rect x="77" y="80" width="22" height="28" rx="3" fill="#2F7A1F"></rect><rect x="102" y="76" width="22" height="32" rx="3" fill="#FFC21F"></rect><rect x="127" y="80" width="18" height="28" rx="3" fill="#1A5299"></rect><rect x="148" y="84" width="16" height="24" rx="3" fill="#D0352A"></rect><rect x="77" y="118" width="24" height="28" rx="3" fill="#8447B0"></rect><rect x="104" y="114" width="20" height="32" rx="3" fill="#D0352A"></rect><rect x="127" y="120" width="18" height="26" rx="3" fill="#2F7A1F"></rect><rect x="148" y="116" width="16" height="30" rx="3" fill="#FFC21F"></rect></svg></sc-if>
+<sc-if value="{{p.isCama}}" hint-placeholder-val="{{false}}"><svg role="img" aria-label="Cama casita" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="96" ry="6" fill="#1F2A44" opacity=".08"></ellipse><path d="M50 74 L120 22 L190 74" stroke="#C98B4E" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><path d="M50 74 V152 M190 74 V152" stroke="#C98B4E" stroke-width="10" stroke-linecap="round"></path><path d="M120 22 V6" stroke="#C98B4E" stroke-width="4" stroke-linecap="round"></path><path d="M120 6 l20 6 l-20 6z" fill="#D0352A"></path><rect x="56" y="118" width="128" height="20" rx="8" fill="#FFFFFF"></rect><rect x="62" y="104" width="40" height="18" rx="8" fill="#FFFFFF" stroke="#C9D6EE" stroke-width="2"></rect><rect x="96" y="112" width="88" height="26" rx="8" fill="#AA7FD0"></rect><rect x="45" y="136" width="150" height="14" rx="5" fill="#E8B77A"></rect></svg></sc-if>
+<sc-if value="{{p.isBaul}}" hint-placeholder-val="{{false}}"><svg role="img" aria-label="Baúl de juguetes" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="84" ry="6" fill="#1F2A44" opacity=".08"></ellipse><rect x="56" y="84" width="128" height="70" rx="12" fill="#2F7A1F"></rect><rect x="48" y="70" width="144" height="20" rx="9" fill="#255F18"></rect><text x="120" y="134" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="34" fill="#FFFFFF">ABC</text><circle cx="88" cy="54" r="16" fill="#D0352A"></circle><rect x="128" y="36" width="30" height="30" rx="6" fill="#FFC21F" transform="rotate(12 143 51)"></rect></svg></sc-if>
+<sc-if value="{{p.isCubos}}" hint-placeholder-val="{{false}}"><svg role="img" aria-label="Organizador de cubos" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="84" ry="6" fill="#1F2A44" opacity=".08"></ellipse><rect x="50" y="34" width="140" height="118" rx="10" fill="#E8B77A"></rect><rect x="58" y="42" width="40" height="48" rx="6" fill="#D0352A"></rect><rect x="100" y="42" width="40" height="48" rx="6" fill="#1A5299"></rect><rect x="142" y="42" width="40" height="48" rx="6" fill="#2F7A1F"></rect><rect x="58" y="96" width="40" height="48" rx="6" fill="#FFC21F"></rect><rect x="100" y="96" width="40" height="48" rx="6" fill="#8447B0"></rect><rect x="142" y="96" width="40" height="48" rx="6" fill="#D0352A"></rect></svg></sc-if>
+<sc-if value="{{p.isEscritorio}}" hint-placeholder-val="{{false}}"><svg role="img" aria-label="Escritorio con lámpara" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="104" ry="6" fill="#1F2A44" opacity=".08"></ellipse><rect x="34" y="80" width="136" height="12" rx="5" fill="#1A5299"></rect><rect x="40" y="92" width="9" height="60" rx="3" fill="#103B70"></rect><rect x="126" y="92" width="44" height="60" rx="5" fill="#103B70"></rect><circle cx="148" cy="110" r="3" fill="#FFC21F"></circle><circle cx="148" cy="136" r="3" fill="#FFC21F"></circle><rect x="52" y="72" width="26" height="8" rx="3" fill="#FFC21F"></rect><path d="M65 72 L80 46" stroke="#FFC21F" stroke-width="5" stroke-linecap="round"></path><path d="M72 40 L100 48 L86 60z" fill="#FFC21F"></path><rect x="180" y="112" width="42" height="10" rx="4" fill="#D0352A"></rect><rect x="212" y="74" width="10" height="48" rx="4" fill="#D0352A"></rect><rect x="183" y="122" width="6" height="30" rx="2" fill="#98271F"></rect><rect x="213" y="122" width="6" height="30" rx="2" fill="#98271F"></rect></svg></sc-if>
+<sc-if value="{{p.isAtril}}" hint-placeholder-val="{{false}}"><svg role="img" aria-label="Atril pizarra" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="70" ry="6" fill="#1F2A44" opacity=".08"></ellipse><path d="M84 154 L112 24 M156 154 L128 24" stroke="#C98B4E" stroke-width="8" stroke-linecap="round"></path><rect x="68" y="34" width="104" height="82" rx="8" fill="#1F4A17" stroke="#E8B77A" stroke-width="6"></rect><text x="104" y="88" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="700" font-size="26" fill="#FFFFFF">1 2 3</text><circle cx="146" cy="56" r="9" fill="none" stroke="#FFC21F" stroke-width="3"></circle><rect x="66" y="118" width="108" height="8" rx="3" fill="#E8B77A"></rect></svg></sc-if>
+<sc-if value="{{p.isTorre}}" hint-placeholder-val="{{false}}"><svg role="img" aria-label="Torre de aprendizaje" sc-camel-view-box="0 0 240 170" style="width: 100%; height: auto; display: block"><ellipse cx="120" cy="158" rx="70" ry="6" fill="#1F2A44" opacity=".08"></ellipse><rect x="70" y="24" width="12" height="130" rx="4" fill="#C98B4E"></rect><rect x="158" y="24" width="12" height="130" rx="4" fill="#C98B4E"></rect><rect x="70" y="24" width="100" height="9" rx="4" fill="#E8B77A"></rect><rect x="70" y="54" width="100" height="7" rx="3" fill="#E8B77A"></rect><rect x="66" y="92" width="108" height="12" rx="4" fill="#8447B0"></rect><rect x="66" y="126" width="108" height="12" rx="4" fill="#FFC21F"></rect></svg></sc-if>
+</a>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 0 4px">
+<span style="font-size: 13px; font-weight: 800; color: #5B6478">{{p.meta}}</span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 20px; line-height: 1.2"><a href="producto.html" style="color: #1F2A44">{{p.name}}</a></h3>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px; margin-top: auto">
+<strong style="font-size: 21px; font-weight: 800">$[PRECIO]</strong>
+<a href="carrito.html" aria-label="Agregar al carrito" style="width: 48px; height: 48px; border-radius: 16px; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 0 #103B70"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M12 12v5M9.5 14.5h5"></path></svg></a>
+</div>
+</article>
+</sc-for>
+</div>
+<nav aria-label="Paginación" style="display: flex; justify-content: center; gap: 8px; padding-top: 12px">
+<a href="catalogo.html" aria-current="page" style="width: 46px; height: 46px; border-radius: 14px; background: #1F2A44; color: #FFFFFF; font-weight: 800; display: flex; align-items: center; justify-content: center">1</a>
+<a href="catalogo.html" style="width: 46px; height: 46px; border-radius: 14px; background: #FFFFFF; color: #1F2A44; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 2px solid #E5D9BF; box-sizing: border-box">2</a>
+<a href="catalogo.html" style="width: 46px; height: 46px; border-radius: 14px; background: #FFFFFF; color: #1F2A44; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 2px solid #E5D9BF; box-sizing: border-box">3</a>
+<a href="catalogo.html" aria-label="Página siguiente" style="width: 46px; height: 46px; border-radius: 14px; background: #FFC21F; color: #1F2A44; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></a>
+</nav>
+</div>
+</section>
+
+<footer style="background: #1F2A44; color: #D5DAE6; margin-top: 48px">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; font-size: 14px">
+<span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 24px; color: #FFFFFF">TOTAL <span style="color: #8EB8E6">K</span><span style="color: #FF9F80">I</span><span style="color: #97D46C">D</span><span style="color: #D0B3E6">S</span> <span style="font-size: 13px; color: #FFC21F; letter-spacing: 2px">APRENDER JUGANDO</span></span>
+<span>+56 9 [TU NÚMERO] · [TU CORREO]</span>
+<span>© 2026 Total Kids</span>
+</div>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:2400}}">
+class Component extends DCLogic {
+renderVals() {
+const cat = (this.state && this.state.cat) || 'todos';
+const catDefs = [
+{ id: 'todos', label: 'Todos', color: '#1F2A44', text: '#FFFFFF' },
+{ id: 'mesas', label: 'Mesas y Sillas', color: '#1A5299', text: '#FFFFFF' },
+{ id: 'camas', label: 'Camas', color: '#8447B0', text: '#FFFFFF' },
+{ id: 'libreros', label: 'Libreros', color: '#2F7A1F', text: '#FFFFFF' },
+{ id: 'orden', label: 'Organizadores', color: '#FFC21F', text: '#1F2A44' },
+{ id: 'estudio', label: 'Estudio y Arte', color: '#D0352A', text: '#FFFFFF' },
+{ id: 'montessori', label: 'Montessori', color: '#8A2A12', text: '#FFFFFF' }
+];
+const cats = catDefs.map((c) => ({ ...c, active: c.id === cat, inactive: c.id !== cat, pick: () => this.setState({ cat: c.id }) }));
+const all = [
+{ name: 'Set mesa + 2 sillas Colores', meta: 'Mesas y Sillas · 3 a 6 años', kind: 'mesa', cats: ['mesas'], bg: '#FFF3CC', badge: '-[X]%', badgeBg: '#D0352A' },
+{ name: 'Mesa pizarra plegable', meta: 'Mesas y Sillas · 3 a 7 años', kind: 'mesa', cats: ['mesas', 'estudio'], bg: '#E6F0FF', badge: 'Nuevo', badgeBg: '#2F7A1F' },
+{ name: 'Librero frontal 3 niveles', meta: 'Libreros · 2 a 8 años', kind: 'libro', cats: ['libreros', 'montessori'], bg: '#EAF5DF', badge: 'Montessori', badgeBg: '#1F2A44' },
+{ name: 'Repisa librero Casita', meta: 'Libreros · 2 a 10 años', kind: 'libro', cats: ['libreros'], bg: '#FFE5DC', badge: '', badgeBg: '' },
+{ name: 'Cama casita Montessori 1 plaza', meta: 'Camas · 2 a 10 años', kind: 'cama', cats: ['camas', 'montessori'], bg: '#F4EAFA', badge: 'Top ventas', badgeBg: '#1A5299' },
+{ name: 'Cama suelo con baranda', meta: 'Camas · 1 a 5 años', kind: 'cama', cats: ['camas', 'montessori'], bg: '#FFF3CC', badge: '', badgeBg: '' },
+{ name: 'Baúl de juguetes con banca', meta: 'Organizadores · Todas las edades', kind: 'baul', cats: ['orden'], bg: '#FFE5DC', badge: '-[X]%', badgeBg: '#D0352A' },
+{ name: 'Organizador 6 cubos Arcoíris', meta: 'Organizadores · Todas las edades', kind: 'cubos', cats: ['orden'], bg: '#FFF3CC', badge: '', badgeBg: '' },
+{ name: 'Organizador 9 cubos con ruedas', meta: 'Organizadores · Todas las edades', kind: 'cubos', cats: ['orden'], bg: '#E6F0FF', badge: 'Nuevo', badgeBg: '#2F7A1F' },
+{ name: 'Escritorio Crece Conmigo', meta: 'Estudio · 6 a 12 años', kind: 'escritorio', cats: ['estudio'], bg: '#E6F0FF', badge: '', badgeBg: '' },
+{ name: 'Atril doble pizarra y magnética', meta: 'Arte · 3 a 8 años', kind: 'atril', cats: ['estudio'], bg: '#EAF5DF', badge: '', badgeBg: '' },
+{ name: 'Torre de aprendizaje regulable', meta: 'Montessori · 18 meses a 5 años', kind: 'torre', cats: ['montessori'], bg: '#F4EAFA', badge: 'Montessori', badgeBg: '#1F2A44' }
+];
+const items = all.filter((p) => cat === 'todos' || p.cats.indexOf(cat) >= 0).map((p) => ({
+...p,
+hasBadge: !!p.badge,
+isMesa: p.kind === 'mesa', isLibro: p.kind === 'libro', isCama: p.kind === 'cama', isBaul: p.kind === 'baul',
+isCubos: p.kind === 'cubos', isEscritorio: p.kind === 'escritorio', isAtril: p.kind === 'atril', isTorre: p.kind === 'torre'
+}));
+const countLabel = items.length === 1 ? '1 producto encontrado' : items.length + ' productos encontrados';
+return { cats, items, countLabel };
+}
+}
+</script>
+
+
+</body></html>

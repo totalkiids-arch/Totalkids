@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Total Kids – Servicios especiales</title>
+<script defer src="../assets/js/react.production.min.js"></script>
+<script defer src="../assets/js/react-dom.production.min.js"></script>
+<script defer src="../assets/js/dc-runtime.js"></script>
+</head>
+<body>
+<nav aria-label="Navegación de la maqueta" style="font:700 13px Nunito,sans-serif;background:#1f2a44;color:white;padding:10px 20px;display:flex;justify-content:center;gap:20px;flex-wrap:wrap"><a style="color:white" href="mapa.html">Todas las pantallas</a><a style="color:white" href="acceso.html">Mi cuenta</a><a style="color:#ffc21f" href="../admin/acceso.html">Panel de administración</a></nav>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../assets/css/fonts.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<style>
+body{margin:0;background:#FFF9EE}
+a{color:#1A5299;text-decoration:none}a:hover{color:#103B70}
+.tk-dots{background-image:radial-gradient(#F3DDAE 2.5px, transparent 2.5px);background-size:30px 30px}
+.tk-card{transition:transform .2s ease, box-shadow .2s ease}
+.tk-card:hover{transform:translateY(-5px) rotate(-.6deg);box-shadow:0 16px 32px -14px rgba(31,42,68,.3)}
+@keyframes tk-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.tk-float{animation:tk-float 3.2s ease-in-out infinite}
+.tk-in{height:50px;border-radius:16px;border:2px solid #E5D9BF;padding:0 16px;font-family:'Nunito',sans-serif;font-size:16px;color:#1F2A44;background:#FFFFFF;box-sizing:border-box;width:100%;min-width:0}
+details summary{cursor:pointer;list-style:none}
+details summary::-webkit-details-marker{display:none}
+</style>
+</helmet>
+<div class="tk-dots" style="width: 100%; min-height: 100vh; background-color: #FFF9EE; color: #1F2A44; font-family: 'Nunito', system-ui, sans-serif; font-size: 16px; line-height: 1.5">
+
+<div aria-hidden="true" style="display: flex; height: 8px"><span style="flex: 1; background: #D0352A"></span><span style="flex: 1; background: #F28A1A"></span><span style="flex: 1; background: #FFC21F"></span><span style="flex: 1; background: #5FAE3A"></span><span style="flex: 1; background: #2E9BD6"></span><span style="flex: 1; background: #8447B0"></span></div>
+<header class="tk-site-header" style="background: #FFFFFF; border-bottom: 3px dashed #F3DFB5">
+<div class="tk-header-inner tk-compact-header" style="max-width: 1280px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px">
+<a class="tk-brand" href="../index.html" aria-label="Total Kids, inicio" style="display: flex; align-items: center; gap: 10px">
+<svg aria-hidden="true" width="48" height="48" sc-camel-view-box="0 0 56 56"><rect x="2" y="26" width="26" height="26" rx="6" fill="#1A5299"></rect><rect x="28" y="26" width="26" height="26" rx="6" fill="#D0352A"></rect><rect x="15" y="2" width="26" height="26" rx="6" fill="#FFC21F"></rect><text x="15" y="46" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="18" fill="#FFFFFF">T</text><text x="41" y="46" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="18" fill="#FFFFFF">K</text><path d="M22 15l4 4 8-8" stroke="#1F2A44" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="display: flex; flex-direction: column; line-height: 1"><span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 26px; color: #1F2A44"><span style="color: #F28A1A">T</span><span style="color: #2E9BD6">O</span><span style="color: #5FAE3A">T</span><span style="color: #F5B100">A</span><span style="color: #8447B0">L</span> <span style="color: #D0352A">K</span><span style="color: #2E9BD6">I</span><span style="color: #F5B100">D</span><span style="color: #5FAE3A">S</span></span><span style="font-size: 11px; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase; color: #5B6478; margin-top: 3px">Aprender jugando</span></span>
+</a>
+<nav class="tk-primary-nav" aria-label="Principal" style="flex: 1 1 360px; display: flex; flex-wrap: wrap; gap: 6px">
+<a href="../index.html" style="padding: 10px 16px; border-radius: 999px; font-weight: 800; color: #1F2A44">Inicio</a>
+<a href="catalogo.html" style="padding: 10px 16px; border-radius: 999px; font-weight: 800; color: #1F2A44">Productos</a>
+<a href="servicios.html" aria-current="page" style="padding: 10px 16px; border-radius: 999px; font-weight: 800; color: #FFFFFF; background: #2F7A1F">Servicios especiales</a>
+</nav>
+<a class="tk-cart-link" href="carrito.html" style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #FFFFFF; background: #D0352A; padding: 10px 18px; border-radius: 999px; min-height: 44px; box-sizing: border-box"><svg aria-hidden="true" width="22" height="22" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path></svg>Carrito (3)</a>
+</div>
+</header>
+
+<!-- HERO -->
+<section class="tk-home-hero-section" style="max-width: 1280px; margin: 0 auto; padding: 32px 24px 0">
+<div style="background: #2F7A1F; color: #FFFFFF; border-radius: 40px; padding: 44px 48px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 28px; position: relative; overflow: hidden">
+<svg aria-hidden="true" sc-camel-view-box="0 0 300 200" style="position: absolute; right: 0; bottom: 0; width: 420px; height: 280px; opacity: .12"><rect x="20" y="100" width="80" height="80" rx="16" fill="#FFFFFF"></rect><rect x="110" y="60" width="90" height="90" rx="18" fill="#FFFFFF"></rect><rect x="210" y="20" width="70" height="70" rx="14" fill="#FFFFFF"></rect></svg>
+<div style="flex: 1 1 460px; display: flex; flex-direction: column; gap: 14px; position: relative">
+<span style="align-self: flex-start; background: #FFC21F; color: #1F2A44; font-weight: 800; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; padding: 6px 14px; border-radius: 999px; transform: rotate(-2deg)">Más que muebles</span>
+<h1 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 60px; line-height: 1">Servicios especiales</h1>
+<p style="margin: 0; font-size: 19px; color: #DDF3E8; max-width: 560px">Armamos, diseñamos y personalizamos espacios infantiles para que aprender jugando empiece desde el primer día.</p>
+<a href="solicitud-servicio.html" style="align-self: flex-start; background: #FFFFFF; color: #2F7A1F; font-weight: 800; font-size: 17px; padding: 14px 28px; border-radius: 999px; box-shadow: 0 6px 0 #1E4F14">Agenda tu servicio</a>
+</div>
+<div class="tk-float" style="position: relative; display: flex; align-items: flex-end; gap: 6px">
+<span style="background: #FFFFFF; color: #1F2A44; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 19px; line-height: 1.15; padding: 10px 16px; border-radius: 20px 20px 4px 20px; margin-bottom: 110px; max-width: 170px">¡Yo traigo las herramientas!</span>
+<svg role="img" aria-label="Tito con una llave de herramientas" sc-camel-view-box="0 0 140 160" width="160" height="183"><rect x="46" y="4" width="40" height="24" rx="8" fill="#D0352A"></rect><path d="M20 72 Q4 62 10 44" stroke="#1F2A44" stroke-width="6" fill="none" stroke-linecap="round"></path><path d="M110 76 Q124 70 128 56" stroke="#1F2A44" stroke-width="6" fill="none" stroke-linecap="round"></path><path d="M122 50 l14 -14 a8 8 0 0 0 -10 -10 l-4 8 -6 -2 -2 -6 8 -4 a8 8 0 0 0 -10 10 z" fill="#8EB8E6" stroke="#1F2A44" stroke-width="2.5" stroke-linejoin="round"></path><rect x="48" y="112" width="10" height="28" rx="4" fill="#1F2A44"></rect><rect x="72" y="112" width="10" height="28" rx="4" fill="#1F2A44"></rect><ellipse cx="52" cy="142" rx="11" ry="6" fill="#1A5299"></ellipse><ellipse cx="78" cy="142" rx="11" ry="6" fill="#1A5299"></ellipse><rect x="18" y="26" width="94" height="92" rx="22" fill="#FFC21F" stroke="#E0A92A" stroke-width="4"></rect><circle cx="50" cy="64" r="8" fill="#1F2A44"></circle><circle cx="82" cy="64" r="8" fill="#1F2A44"></circle><circle cx="53" cy="61" r="3" fill="#FFFFFF"></circle><circle cx="85" cy="61" r="3" fill="#FFFFFF"></circle><circle cx="36" cy="84" r="7" fill="#FF9F80"></circle><circle cx="96" cy="84" r="7" fill="#FF9F80"></circle><path d="M52 84 Q66 100 80 84" stroke="#1F2A44" stroke-width="5" fill="none" stroke-linecap="round"></path></svg>
+</div>
+</div>
+</section>
+
+<!-- SERVICIOS -->
+<section style="max-width: 1280px; margin: 0 auto; padding: 48px 24px 0">
+<h2 style="margin: 0 0 20px; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 42px; line-height: 1.1">¿En qué te ayudamos?</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px">
+<sc-for list="{{services}}" as="s" hint-placeholder-count="6">
+<article class="tk-card" style="background: {{s.bg}}; border-radius: 32px; padding: 26px; display: flex; flex-direction: column; gap: 12px; border: 3px solid {{s.ring}}">
+<span style="width: 64px; height: 64px; border-radius: 20px; background: {{s.tile}}; display: flex; align-items: center; justify-content: center; transform: rotate(-6deg); box-shadow: 0 5px 0 rgba(31,42,68,.18)">
+<sc-if value="{{s.isArmado}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="32" height="32" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7a4 4 0 0 0 5 5l-8 8a2.5 2.5 0 0 1-3.5-3.5z"></path></svg></sc-if>
+<sc-if value="{{s.isDiseno}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="32" height="32" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-5 7 5v13"></path><path d="M9 21v-6h6v6"></path></svg></sc-if>
+<sc-if value="{{s.isNombre}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="32" height="32" sc-camel-view-box="0 0 24 24" fill="none" stroke="#1F2A44" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16z"></path><path d="M14 6l3 3"></path></svg></sc-if>
+<sc-if value="{{s.isInst}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="32" height="32" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"></rect><rect x="13" y="3" width="8" height="8" rx="2"></rect><rect x="3" y="13" width="8" height="8" rx="2"></rect><rect x="13" y="13" width="8" height="8" rx="2"></rect></svg></sc-if>
+<sc-if value="{{s.isRegalo}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="32" height="32" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="12" rx="2"></rect><path d="M3 13h18M12 9v12M12 9c-2-4-6-4-6-1s6 1 6 1 6 2 6-1-4-3-6 1"></path></svg></sc-if>
+<sc-if value="{{s.isGarantia}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="32" height="32" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg></sc-if>
+</span>
+<h3 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 25px; line-height: 1.15">{{s.title}}</h3>
+<p style="margin: 0; font-size: 15px; color: #3D4660">{{s.desc}}</p>
+<ul style="margin: 0; padding-left: 18px; font-size: 14px; color: #3D4660; display: flex; flex-direction: column; gap: 2px">
+<sc-for list="{{s.points}}" as="pt" hint-placeholder-count="2"><li>{{pt}}</li></sc-for>
+</ul>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 6px">
+<strong style="font-size: 16px">{{s.price}}</strong>
+<button type="button" sc-camel-on-click="{{s.pick}}" aria-pressed="{{s.active}}" style="min-height: 46px; padding: 0 20px; border-radius: 999px; border: 0; background: #1F2A44; color: #FFFFFF; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 15px; cursor: pointer">{{s.cta}}</button>
+</div>
+</article>
+</sc-for>
+</div>
+</section>
+
+<!-- PROCESO -->
+<section style="max-width: 1280px; margin: 0 auto; padding: 56px 24px 0">
+<div style="background: #FFFFFF; border-radius: 40px; padding: 40px; box-shadow: 0 2px 0 #F0E6D2">
+<h2 style="margin: 0 0 24px; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 38px; text-align: center">Así de fácil, como contar 1, 2, 3… ¡4!</h2>
+<ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px">
+<li style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px"><span style="width: 76px; height: 76px; border-radius: 22px; background: #D0352A; color: #FFFFFF; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 44px; display: flex; align-items: center; justify-content: center; transform: rotate(-6deg); box-shadow: 0 6px 0 #98271F">1</span><strong style="font-family: 'Baloo 2', sans-serif; font-size: 21px">Cuéntanos</strong><span style="font-size: 15px; color: #5B6478">Llena el formulario o escríbenos por WhatsApp.</span></li>
+<li style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px"><span style="width: 76px; height: 76px; border-radius: 22px; background: #FFC21F; color: #1F2A44; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 44px; display: flex; align-items: center; justify-content: center; transform: rotate(4deg); box-shadow: 0 6px 0 #D9A21E">2</span><strong style="font-family: 'Baloo 2', sans-serif; font-size: 21px">Te asesoramos</strong><span style="font-size: 15px; color: #5B6478">Te proponemos muebles y medidas según la edad.</span></li>
+<li style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px"><span style="width: 76px; height: 76px; border-radius: 22px; background: #1A5299; color: #FFFFFF; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 44px; display: flex; align-items: center; justify-content: center; transform: rotate(-3deg); box-shadow: 0 6px 0 #103B70">3</span><strong style="font-family: 'Baloo 2', sans-serif; font-size: 21px">Agendamos</strong><span style="font-size: 15px; color: #5B6478">Coordinamos fecha de entrega y armado.</span></li>
+<li style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px"><span style="width: 76px; height: 76px; border-radius: 22px; background: #8447B0; color: #FFFFFF; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 44px; display: flex; align-items: center; justify-content: center; transform: rotate(6deg); box-shadow: 0 6px 0 #4E3292">4</span><strong style="font-family: 'Baloo 2', sans-serif; font-size: 21px">¡A jugar!</strong><span style="font-size: 15px; color: #5B6478">Dejamos el espacio listo y limpio.</span></li>
+</ol>
+</div>
+</section>
+
+<!-- FORMULARIO -->
+<section id="agenda" style="max-width: 1280px; margin: 0 auto; padding: 56px 24px 0; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+<div style="flex: 999 1 560px; min-width: 0; background: #FFFFFF; border-radius: 36px; padding: 32px; box-shadow: 0 2px 0 #F0E6D2">
+<sc-if value="{{notSent}}" hint-placeholder-val="{{true}}">
+<form style="display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 36px; line-height: 1.1">Agenda tu servicio</h2>
+<p style="margin: 0; color: #3D4660">Servicio elegido: <span style="background: #EAF5DF; color: #1E4F14; font-weight: 800; padding: 4px 12px; border-radius: 999px">{{svcName}}</span></p>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Nombre<input class="tk-in" type="text" autocomplete="name" placeholder="Tu nombre"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Correo<input class="tk-in" type="email" autocomplete="email" placeholder="nombre@correo.cl"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Teléfono<input class="tk-in" type="tel" placeholder="+56 9 1234 5678"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Comuna<input class="tk-in" type="text" placeholder="Ej: Providencia"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Edad de los niños<input class="tk-in" type="text" placeholder="Ej: 3 y 6 años"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Fecha preferida<input class="tk-in" type="date"></label>
+</div>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Cuéntanos tu idea<textarea class="tk-in" rows="4" placeholder="Ej: queremos un rincón de lectura en una pieza de 3x3 m" style="height: auto; padding: 12px 16px; resize: vertical"></textarea></label>
+<button type="button" sc-camel-on-click="{{send}}" style="align-self: flex-start; min-height: 56px; padding: 0 32px; border-radius: 999px; border: 0; background: #D0352A; color: #FFFFFF; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 17px; box-shadow: 0 6px 0 #98271F; cursor: pointer">Enviar solicitud</button>
+</form>
+</sc-if>
+<sc-if value="{{sent}}" hint-placeholder-val="{{false}}">
+<div role="status" style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 24px 0">
+<svg aria-hidden="true" sc-camel-view-box="0 0 80 80" width="96" height="96"><rect x="4" y="4" width="72" height="72" rx="22" fill="#2F7A1F"></rect><path d="M22 41l12 12 24-26" stroke="#FFFFFF" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<h2 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 36px">¡Solicitud enviada!</h2>
+<p style="margin: 0; color: #3D4660; max-width: 420px">Te contactaremos en [PLAZO DE RESPUESTA] para coordinar tu servicio de {{svcName}}.</p>
+<button type="button" sc-camel-on-click="{{reset}}" style="min-height: 46px; padding: 0 22px; border-radius: 999px; border: 2px solid #1F2A44; background: #FFFFFF; color: #1F2A44; font-family: 'Nunito', sans-serif; font-weight: 800; cursor: pointer">Enviar otra solicitud</button>
+</div>
+</sc-if>
+</div>
+<aside style="flex: 1 1 320px; max-width: 100%; display: flex; flex-direction: column; gap: 16px">
+<div style="background: #1A5299; color: #FFFFFF; border-radius: 32px; padding: 26px; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 26px">¿Prefieres hablar?</h2>
+<span>+56 9 [TU NÚMERO]</span>
+<span>[TU CORREO]</span>
+<span>[HORARIO DE ATENCIÓN]</span>
+<a href="solicitud-servicio.html" style="align-self: flex-start; margin-top: 6px; background: #FFFFFF; color: #1A5299; font-weight: 800; padding: 12px 20px; border-radius: 999px">Escribir por WhatsApp</a>
+</div>
+<div style="background: #FFFFFF; border-radius: 32px; padding: 22px 24px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 2px 0 #F0E6D2">
+<h2 style="margin: 0 0 4px; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 24px">Preguntas frecuentes</h2>
+<details style="border-bottom: 2px dashed #F0E6D2; padding: 8px 0"><summary style="font-weight: 800">¿Arman en regiones?</summary><p style="margin: 6px 0 0; font-size: 15px; color: #3D4660">[INDICA LAS ZONAS DE COBERTURA]</p></details>
+<details style="border-bottom: 2px dashed #F0E6D2; padding: 8px 0"><summary style="font-weight: 800">¿Cuánto demora el armado?</summary><p style="margin: 6px 0 0; font-size: 15px; color: #3D4660">Depende del mueble: [TIEMPOS ESTIMADOS].</p></details>
+<details style="padding: 8px 0"><summary style="font-weight: 800">¿Puedo personalizar colores?</summary><p style="margin: 6px 0 0; font-size: 15px; color: #3D4660">Sí, en los productos marcados como personalizables. [CONDICIONES]</p></details>
+</div>
+</aside>
+</section>
+
+<footer style="background: #1F2A44; color: #D5DAE6; margin-top: 64px">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; font-size: 14px">
+<span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 24px; color: #FFFFFF">TOTAL <span style="color: #8EB8E6">K</span><span style="color: #FF9F80">I</span><span style="color: #97D46C">D</span><span style="color: #D0B3E6">S</span> <span style="font-size: 13px; color: #FFC21F; letter-spacing: 2px">APRENDER JUGANDO</span></span>
+<span>+56 9 [TU NÚMERO] · [TU CORREO]</span>
+<span>© 2026 Total Kids</span>
+</div>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:3000}}">
+class Component extends DCLogic {
+renderVals() {
+const st = this.state || {};
+const svc = st.svc || 'armado';
+const defs = [
+{ id: 'armado', icon: 'isArmado', title: 'Armado e instalación', desc: 'Llevamos tus muebles, los armamos y fijamos a la pared para mayor seguridad.', points: ['Anclaje antivuelco incluido', 'Retiro de embalajes'], price: 'Desde $[PRECIO]', bg: '#FFE5DC', tile: '#D0352A' },
+{ id: 'diseno', icon: 'isDiseno', title: 'Diseño de espacios', desc: 'Proyectamos dormitorios y salas de juego Montessori a la medida de tu hogar.', points: ['Plano y propuesta de colores', 'Lista de muebles por edad'], price: 'Desde $[PRECIO]', bg: '#E6F0FF', tile: '#1A5299' },
+{ id: 'nombre', icon: 'isNombre', title: 'Personalización', desc: 'Nombres grabados, letras de colores y combinaciones únicas para cada niño.', points: ['Grabado en techos y cabeceras', 'Paleta de colores a elección'], price: 'Desde $[PRECIO]', bg: '#FFF3CC', tile: '#FFC21F' },
+{ id: 'inst', icon: 'isInst', title: 'Jardines y colegios', desc: 'Equipamiento completo de salas: mesas grupales, sillas apilables y casilleros.', points: ['Cotización formal con factura', 'Visita técnica'], price: 'Cotización a medida', bg: '#EAF5DF', tile: '#2F7A1F' },
+{ id: 'regalo', icon: 'isRegalo', title: 'Lista de regalos y Gift Card', desc: 'Arma tu lista para baby shower o cumpleaños y deja que la familia elija.', points: ['Link para compartir', 'Gift Card digital'], price: 'Sin costo', bg: '#F4EAFA', tile: '#8447B0' },
+{ id: 'garantia', icon: 'isGarantia', title: 'Garantía y mantención', desc: 'Revisamos, ajustamos y renovamos piezas para que tus muebles crezcan con ellos.', points: ['Ajuste de alturas', 'Repuestos originales'], price: 'Desde $[PRECIO]', bg: '#FFFFFF', tile: '#1F2A44' }
+];
+const services = defs.map((s) => {
+const on = s.id === svc;
+const o = { ...s, active: on, ring: on ? '#1F2A44' : 'transparent', cta: on ? 'Elegido' : 'Lo quiero', pick: () => this.setState({ svc: s.id, sent: false }) };
+['isArmado', 'isDiseno', 'isNombre', 'isInst', 'isRegalo', 'isGarantia'].forEach((k) => { o[k] = s.icon === k; });
+return o;
+});
+const cur = defs.find((s) => s.id === svc) || defs[0];
+return {
+services, svcName: cur.title,
+sent: !!st.sent, notSent: !st.sent,
+send: () => { window.location.href = 'solicitud-servicio.html'; },
+reset: () => this.setState({ sent: false })
+};
+}
+}
+</script>
+
+
+</body></html>

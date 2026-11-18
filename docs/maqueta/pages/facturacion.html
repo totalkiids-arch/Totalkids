@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Total Kids – Datos y facturación</title>
+<script defer src="../assets/js/react.production.min.js"></script>
+<script defer src="../assets/js/react-dom.production.min.js"></script>
+<script defer src="../assets/js/dc-runtime.js"></script>
+</head>
+<body>
+<nav aria-label="Navegación de la maqueta" style="font:700 13px Nunito,sans-serif;background:#1f2a44;color:white;padding:10px 20px;display:flex;justify-content:center;gap:20px;flex-wrap:wrap"><a style="color:white" href="mapa.html">Todas las pantallas</a><a style="color:white" href="acceso.html">Mi cuenta</a><a style="color:#ffc21f" href="../admin/acceso.html">Panel de administración</a></nav>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../assets/css/fonts.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<style>
+body{margin:0;background:#FFF9EE}
+a{color:#1A5299;text-decoration:none}a:hover{color:#103B70}
+.tk-dots{background-image:radial-gradient(#F3DDAE 2.5px, transparent 2.5px);background-size:30px 30px}
+.tk-in{height:50px;border-radius:16px;border:2px solid #E5D9BF;padding:0 16px;font-family:'Nunito',sans-serif;font-size:16px;color:#1F2A44;background:#FFFFFF;box-sizing:border-box;width:100%;min-width:0}
+.tk-in:focus{outline:3px solid #8EB8E6;outline-offset:1px;border-color:#1A5299}
+</style>
+</helmet>
+<div class="tk-dots" style="width: 100%; min-height: 100vh; background-color: #FFF9EE; color: #1F2A44; font-family: 'Nunito', system-ui, sans-serif; font-size: 16px; line-height: 1.5">
+
+<div aria-hidden="true" style="display: flex; height: 8px"><span style="flex: 1; background: #D0352A"></span><span style="flex: 1; background: #F28A1A"></span><span style="flex: 1; background: #FFC21F"></span><span style="flex: 1; background: #5FAE3A"></span><span style="flex: 1; background: #2E9BD6"></span><span style="flex: 1; background: #8447B0"></span></div>
+<header class="tk-site-header" style="background: #FFFFFF; border-bottom: 3px dashed #F3DFB5">
+<div class="tk-header-inner tk-compact-header" style="max-width: 1280px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px">
+<a class="tk-brand" href="../index.html" aria-label="Total Kids, inicio" style="display: flex; align-items: center; gap: 10px">
+<svg aria-hidden="true" width="48" height="48" sc-camel-view-box="0 0 56 56"><rect x="2" y="26" width="26" height="26" rx="6" fill="#1A5299"></rect><rect x="28" y="26" width="26" height="26" rx="6" fill="#D0352A"></rect><rect x="15" y="2" width="26" height="26" rx="6" fill="#FFC21F"></rect><text x="15" y="46" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="18" fill="#FFFFFF">T</text><text x="41" y="46" text-anchor="middle" font-family="Baloo 2, sans-serif" font-weight="800" font-size="18" fill="#FFFFFF">K</text><path d="M22 15l4 4 8-8" stroke="#1F2A44" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="display: flex; flex-direction: column; line-height: 1"><span style="font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 26px; color: #1F2A44"><span style="color: #F28A1A">T</span><span style="color: #2E9BD6">O</span><span style="color: #5FAE3A">T</span><span style="color: #F5B100">A</span><span style="color: #8447B0">L</span> <span style="color: #D0352A">K</span><span style="color: #2E9BD6">I</span><span style="color: #F5B100">D</span><span style="color: #5FAE3A">S</span></span><span style="font-size: 11px; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase; color: #5B6478; margin-top: 3px">Aprender jugando</span></span>
+</a>
+<span style="flex: 1"></span>
+<span class="tk-secure-label" style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #2F7A1F"><svg aria-hidden="true" width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Compra 100% segura</span>
+</div>
+</header>
+
+<section style="max-width: 960px; margin: 0 auto; padding: 28px 24px 8px">
+<ol aria-label="Pasos de compra" style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px">
+<li style="display: flex; align-items: center; gap: 8px; font-weight: 800"><a href="carrito.html" aria-label="Paso 1 completado: Carrito" style="width: 40px; height: 40px; border-radius: 14px; background: #2F7A1F; color: #FFFFFF; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></a>Carrito</li>
+<li aria-hidden="true" style="width: 40px; height: 4px; border-radius: 2px; background: #2F7A1F"></li>
+<li aria-current="step" style="display: flex; align-items: center; gap: 8px; font-weight: 800"><span style="width: 40px; height: 40px; border-radius: 14px; background: #1A5299; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'Baloo 2', sans-serif; font-size: 20px; box-shadow: 0 4px 0 #103B70">2</span>Datos y facturación</li>
+<li aria-hidden="true" style="width: 40px; height: 4px; border-radius: 2px; background: #E5D9BF"></li>
+<li style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #5B6478"><span style="width: 40px; height: 40px; border-radius: 14px; background: #FFFFFF; border: 2px solid #E5D9BF; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-family: 'Baloo 2', sans-serif; font-size: 20px">3</span>Pago</li>
+<li aria-hidden="true" style="width: 40px; height: 4px; border-radius: 2px; background: #E5D9BF"></li>
+<li style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #5B6478"><span style="width: 40px; height: 40px; border-radius: 14px; background: #FFFFFF; border: 2px solid #E5D9BF; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-family: 'Baloo 2', sans-serif; font-size: 20px">4</span>¡Listo!</li>
+</ol>
+</section>
+
+<section style="max-width: 1280px; margin: 0 auto; padding: 16px 24px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+<form style="flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+<h1 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 46px; line-height: 1.05">¿A dónde llevamos la diversión?</h1>
+
+<!-- 1 DATOS -->
+<div style="background: #FFFFFF; border-radius: 32px; padding: 28px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 2px 0 #F0E6D2">
+<h2 style="margin: 0; display: flex; align-items: center; gap: 12px; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 26px"><span style="width: 38px; height: 38px; border-radius: 12px; background: #FFC21F; display: flex; align-items: center; justify-content: center; font-size: 20px">A</span>Tus datos</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Nombre y apellido<input class="tk-in" type="text" autocomplete="name" placeholder="María González"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">RUT<input class="tk-in" type="text" placeholder="12.345.678-9"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Correo electrónico<input class="tk-in" type="email" autocomplete="email" placeholder="nombre@correo.cl"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Teléfono<input class="tk-in" type="tel" autocomplete="tel" placeholder="+56 9 1234 5678"></label>
+</div>
+</div>
+
+<!-- 2 ENTREGA -->
+<div style="background: #FFFFFF; border-radius: 32px; padding: 28px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 2px 0 #F0E6D2">
+<h2 style="margin: 0; display: flex; align-items: center; gap: 12px; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 26px"><span style="width: 38px; height: 38px; border-radius: 12px; background: #8EB8E6; display: flex; align-items: center; justify-content: center; font-size: 20px">B</span>Entrega</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px">
+<sc-for list="{{envios}}" as="e" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{e.active}}" sc-camel-on-click="{{e.pick}}" style="text-align: left; border-radius: 22px; border: 3px solid {{e.border}}; background: {{e.bg}}; padding: 16px 18px; cursor: pointer; font-family: 'Nunito', sans-serif; color: #1F2A44; display: flex; gap: 12px; align-items: flex-start">
+<span style="width: 22px; height: 22px; border-radius: 999px; border: 3px solid #1F2A44; box-sizing: border-box; flex-shrink: 0; margin-top: 2px; background: {{e.dot}}"></span>
+<span><strong style="display: block; font-size: 17px">{{e.title}}</strong><span style="font-size: 14px; color: #5B6478">{{e.desc}}</span></span>
+</button>
+</sc-for>
+</div>
+<sc-if value="{{isDomicilio}}" hint-placeholder-val="{{true}}">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Región
+<sc-raw-select class="tk-in"><option>Región Metropolitana</option><option>Valparaíso</option><option>O'Higgins</option><option>Maule</option><option>Biobío</option><option>La Araucanía</option><option>Los Lagos</option><option>Coquimbo</option><option>Antofagasta</option><option>Otra región</option></sc-raw-select></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Comuna<input class="tk-in" type="text" placeholder="Ej: Ñuñoa"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Calle y número<input class="tk-in" type="text" autocomplete="street-address" placeholder="Av. Siempre Viva 123"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Depto. / casa (opcional)<input class="tk-in" type="text" placeholder="Depto 45"></label>
+</div>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Indicaciones para el despacho (opcional)<textarea class="tk-in" rows="3" placeholder="Ej: tocar el timbre azul" style="height: auto; padding: 12px 16px; resize: vertical"></textarea></label>
+</sc-if>
+<sc-if value="{{isRetiro}}" hint-placeholder-val="{{false}}">
+<div style="background: #EAF5DF; border-radius: 20px; padding: 16px 18px; display: flex; gap: 12px; align-items: center">
+<svg aria-hidden="true" width="28" height="28" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2F7A1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg>
+<span><strong style="display: block">Tienda Total Kids</strong><span style="font-size: 14px; color: #3D4660">[TU DIRECCIÓN], [COMUNA] · [HORARIO DE RETIRO]</span></span>
+</div>
+</sc-if>
+</div>
+
+<!-- 3 DOCUMENTO -->
+<div style="background: #FFFFFF; border-radius: 32px; padding: 28px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 2px 0 #F0E6D2">
+<h2 style="margin: 0; display: flex; align-items: center; gap: 12px; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 26px"><span style="width: 38px; height: 38px; border-radius: 12px; background: #97D46C; display: flex; align-items: center; justify-content: center; font-size: 20px">C</span>Documento tributario</h2>
+<div role="group" aria-label="Tipo de documento" style="display: inline-flex; align-self: flex-start; background: #FFF3E0; border-radius: 999px; padding: 5px; gap: 4px">
+<sc-for list="{{docs}}" as="d" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{d.active}}" sc-camel-on-click="{{d.pick}}" style="min-height: 46px; padding: 0 26px; border-radius: 999px; border: 0; background: {{d.bg}}; color: {{d.text}}; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 16px; cursor: pointer">{{d.label}}</button>
+</sc-for>
+</div>
+<sc-if value="{{isBoleta}}" hint-placeholder-val="{{true}}">
+<p style="margin: 0; color: #3D4660">Enviaremos tu boleta electrónica al correo que ingresaste en “Tus datos”.</p>
+</sc-if>
+<sc-if value="{{isFactura}}" hint-placeholder-val="{{false}}">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">RUT empresa<input class="tk-in" type="text" placeholder="76.123.456-7"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Razón social<input class="tk-in" type="text" placeholder="Jardín Infantil Los Peques SpA"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Giro<input class="tk-in" type="text" placeholder="Educación preescolar"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Correo para facturas<input class="tk-in" type="email" placeholder="facturas@empresa.cl"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Dirección comercial<input class="tk-in" type="text" placeholder="Calle y número"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px">Comuna<input class="tk-in" type="text" placeholder="Comuna"></label>
+</div>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 15px"><input type="checkbox" style="width: 20px; height: 20px; accent-color: #1A5299">Necesito orden de compra o cotización formal</label>
+</sc-if>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px">
+<a href="carrito.html" style="font-weight: 800; display: flex; align-items: center; gap: 6px"><svg aria-hidden="true" width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>Volver al carrito</a>
+<a href="pago.html" style="display: flex; align-items: center; gap: 10px; background: #D0352A; color: #FFFFFF; font-weight: 800; font-size: 17px; min-height: 56px; padding: 0 32px; border-radius: 999px; box-shadow: 0 6px 0 #98271F">Ir a pagar<svg aria-hidden="true" width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a>
+</div>
+</form>
+
+<!-- RESUMEN -->
+<aside aria-label="Resumen del pedido" style="flex: 1 1 340px; max-width: 100%; display: flex; flex-direction: column; gap: 16px">
+<div style="background: #FFFFFF; border-radius: 32px; padding: 26px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 0 #F0E6D2">
+<h2 style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 26px">Tu pedido</h2>
+<div style="display: flex; justify-content: space-between; gap: 10px; font-size: 15px"><span style="display: flex; gap: 8px; align-items: center"><span style="width: 14px; height: 14px; border-radius: 4px; background: #AA7FD0"></span>Cama casita Montessori × 1</span><strong>$[PRECIO]</strong></div>
+<div style="display: flex; justify-content: space-between; gap: 10px; font-size: 15px"><span style="display: flex; gap: 8px; align-items: center"><span style="width: 14px; height: 14px; border-radius: 4px; background: #FFC21F"></span>Set mesa + 2 sillas × 1</span><strong>$[PRECIO]</strong></div>
+<div style="display: flex; justify-content: space-between; gap: 10px; font-size: 15px"><span style="display: flex; gap: 8px; align-items: center"><span style="width: 14px; height: 14px; border-radius: 4px; background: #2F7A1F"></span>Organizador 6 cubos × 1</span><strong>$[PRECIO]</strong></div>
+<div style="border-top: 3px dashed #F0E6D2"></div>
+<div style="display: flex; justify-content: space-between"><span>Subtotal</span><strong>$[SUBTOTAL]</strong></div>
+<div style="display: flex; justify-content: space-between"><span>Despacho</span><strong>{{envioCosto}}</strong></div>
+<div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-weight: 800; font-size: 18px">Total</span><strong style="font-family: 'Baloo 2', sans-serif; font-size: 32px">$[TOTAL]</strong></div>
+</div>
+<div style="background: #FFC21F; border-radius: 28px; padding: 18px; display: flex; gap: 12px; align-items: center">
+<svg role="img" aria-label="Tito, la mascota" sc-camel-view-box="0 0 120 150" width="64" height="80" style="flex-shrink: 0"><rect x="40" y="2" width="40" height="24" rx="8" fill="#2F7A1F"></rect><path d="M16 70 Q2 58 8 40" stroke="#1F2A44" stroke-width="6" fill="none" stroke-linecap="round"></path><path d="M104 74 Q118 84 112 100" stroke="#1F2A44" stroke-width="6" fill="none" stroke-linecap="round"></path><rect x="44" y="110" width="10" height="28" rx="4" fill="#1F2A44"></rect><rect x="66" y="110" width="10" height="28" rx="4" fill="#1F2A44"></rect><rect x="14" y="24" width="92" height="92" rx="22" fill="#FFFFFF" stroke="#1F2A44" stroke-width="4"></rect><circle cx="44" cy="62" r="8" fill="#1F2A44"></circle><circle cx="76" cy="62" r="8" fill="#1F2A44"></circle><circle cx="32" cy="82" r="7" fill="#FF9F80"></circle><circle cx="88" cy="82" r="7" fill="#FF9F80"></circle><path d="M46 82 Q60 98 74 82" stroke="#1F2A44" stroke-width="5" fill="none" stroke-linecap="round"></path></svg>
+<p style="margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 17px; line-height: 1.25">¿Compras para un jardín o colegio? Elige factura y te enviamos todo listo.</p>
+</div>
+</aside>
+</section>
+
+<footer style="background: #1F2A44; color: #D5DAE6; margin-top: 56px">
+<div style="max-width: 1280px; margin: 0 auto; padding: 28px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; font-size: 14px">
+<span>¿Dudas con tu compra? +56 9 [TU NÚMERO] · [TU CORREO]</span>
+<span>© 2026 Total Kids · Aprender jugando</span>
+</div>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:2100}}">
+class Component extends DCLogic {
+renderVals() {
+const st = this.state || {};
+const envio = st.envio || 'domicilio';
+const doc = st.doc || 'boleta';
+const envios = [
+{ id: 'domicilio', title: 'Despacho a domicilio', desc: 'Llega a tu casa en [PLAZO]' },
+{ id: 'retiro', title: 'Retiro en tienda', desc: 'Sin costo · [COMUNA]' }
+].map((e) => {
+const on = e.id === envio;
+return { ...e, active: on, border: on ? '#1A5299' : '#E5D9BF', bg: on ? '#E6F0FF' : '#FFFFFF', dot: on ? '#1A5299' : '#FFFFFF', pick: () => this.setState({ envio: e.id }) };
+});
+const docs = [{ id: 'boleta', label: 'Boleta' }, { id: 'factura', label: 'Factura' }].map((d) => {
+const on = d.id === doc;
+return { ...d, active: on, bg: on ? '#1F2A44' : 'transparent', text: on ? '#FFFFFF' : '#1F2A44', pick: () => this.setState({ doc: d.id }) };
+});
+return {
+envios, docs,
+isDomicilio: envio === 'domicilio', isRetiro: envio === 'retiro',
+isBoleta: doc === 'boleta', isFactura: doc === 'factura',
+envioCosto: envio === 'retiro' ? 'Gratis' : '$[DESPACHO]'
+};
+}
+}
+</script>
+
+
+</body></html>
