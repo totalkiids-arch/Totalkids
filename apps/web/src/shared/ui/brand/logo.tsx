@@ -1,70 +1,44 @@
-import { LogoMark } from "./logo-mark";
+import Image from "next/image";
+
+import logoImage from "./total-kids-logo.png";
 
 /**
- * Logo de Total Kids: isotipo en bloques (TK) + logotipo con cada letra del color
- * del logo ilustrado + lema "Aprender jugando". Fiel a la maqueta aprobada.
+ * Logo oficial de Total Kids entregado por el cliente: disco con anillo azul y las
+ * letras "TOTAL KIDS" formadas por animales, más el lema "Aprender jugando".
  *
- * Se anuncia a lectores de pantalla como "Total Kids"; las piezas son decorativas.
+ * El archivo se recortó de la imagen del cliente (docs/maqueta/total kids.png) con
+ * fondo transparente. Cuando llegue la versión vectorial (SVG), basta con reemplazar
+ * total-kids-logo.png.
  */
 
-const LETTERS = [
-  ["T", "text-logo-orange"],
-  ["O", "text-logo-sky"],
-  ["T", "text-logo-green"],
-  ["A", "text-logo-yellow"],
-  ["L", "text-brand-purple"],
-  [" ", ""],
-  ["K", "text-brand-red"],
-  ["I", "text-logo-sky"],
-  ["D", "text-logo-yellow"],
-  ["S", "text-logo-green"],
-] as const;
-
 const SIZES = {
-  sm: { mark: "size-10", word: "text-[22px]", tagline: "text-[9px] tracking-[2px]" },
-  md: { mark: "size-14", word: "text-[30px]", tagline: "text-xs tracking-[2.5px]" },
-  lg: { mark: "size-20", word: "text-[44px]", tagline: "text-sm tracking-[3px]" },
+  /** Panel administrativo. */
+  sm: { box: "size-11", px: 44 },
+  /** Cabecera de la tienda: más chico en móvil. */
+  md: { box: "size-16 sm:size-[88px]", px: 88 },
+  /** Pantallas de acceso. */
+  lg: { box: "size-32", px: 128 },
+  /** Pie de página. */
+  footer: { box: "size-24", px: 96 },
 } as const;
 
 interface LogoProps {
   size?: keyof typeof SIZES;
-  /** Muestra el lema "Aprender jugando" bajo el logotipo. */
-  withTagline?: boolean;
-  /** Muestra solo el isotipo (TK), p. ej. en espacios reducidos. */
-  markOnly?: boolean;
+  /** Precargar la imagen: solo en el logo visible al cargar la página (cabecera). */
+  preload?: boolean;
   className?: string;
 }
 
-export function Logo({
-  size = "md",
-  withTagline = true,
-  markOnly = false,
-  className = "",
-}: LogoProps) {
+export function Logo({ size = "md", preload = false, className = "" }: LogoProps) {
   const s = SIZES[size];
   return (
-    <span
-      role="img"
-      aria-label="Total Kids"
-      className={`inline-flex items-center gap-3 ${className}`}
-    >
-      <LogoMark className={`${s.mark} shrink-0`} />
-      {markOnly ? null : (
-        <span aria-hidden className="flex flex-col leading-none">
-          <span className={`font-heading font-extrabold tracking-[0.5px] whitespace-pre ${s.word}`}>
-            {LETTERS.map(([letter, color], index) => (
-              <span key={index} className={color}>
-                {letter}
-              </span>
-            ))}
-          </span>
-          {withTagline ? (
-            <span className={`mt-1 font-extrabold text-text-secondary uppercase ${s.tagline}`}>
-              Aprender jugando
-            </span>
-          ) : null}
-        </span>
-      )}
-    </span>
+    <Image
+      src={logoImage}
+      alt="Total Kids, aprender jugando"
+      // sizes permite a next/image servir la resolución justa (también en pantallas retina).
+      sizes={`${s.px}px`}
+      preload={preload}
+      className={`shrink-0 ${s.box} ${className}`}
+    />
   );
 }

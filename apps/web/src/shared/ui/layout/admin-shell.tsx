@@ -10,7 +10,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-dvh flex-col md:flex-row">
       <aside className="shrink-0 border-b border-border bg-surface md:w-64 md:border-r md:border-b-0">
         <div className="flex items-center gap-2 px-5 py-4">
-          <Logo size="sm" withTagline={false} />
+          <Logo size="sm" />
           <span className="rounded-full bg-soft-blue px-2 py-0.5 text-xs font-extrabold text-brand-blue">
             Admin
           </span>
