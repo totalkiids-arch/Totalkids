@@ -1,0 +1,28 @@
+name: totalkids
+
+services:
+  postgres:
+    image: postgres:18.7-alpine
+    container_name: totalkids-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: totalkids
+      POSTGRES_PASSWORD: totalkids
+      # Base principal; totalkids_test se crea con el script de init.
+      POSTGRES_DB: totalkids_dev
+    ports:
+      # 5434 en el host para no chocar con un Postgres local en 5432.
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      # Postgres 18 guarda los datos en /var/lib/postgresql/18/docker; se monta el padre.
+      - postgres-data:/var/lib/postgresql
+      # Solo se ejecuta cuando el volumen está vacío (primer arranque).
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U totalkids -d totalkids_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

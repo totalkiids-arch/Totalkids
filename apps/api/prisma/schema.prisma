@@ -1,0 +1,22 @@
+// Schema Prisma de Total Kids.
+// Por ahora solo contiene la tabla técnica "healthcheck"; los modelos de negocio
+// se agregan en iteraciones posteriores.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Tabla técnica para verificar que las migraciones funcionan.
+model Healthcheck {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("healthcheck")
+}

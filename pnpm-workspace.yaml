@@ -1,0 +1,21 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Fijar versiones exactas al agregar dependencias (pnpm add).
+saveExact: true
+
+# pnpm bloquea los scripts de instalación de dependencias por defecto.
+# Se aprueban solo los que compilan binarios nativos o descargan motores.
+allowBuilds:
+  "@prisma/engines": true
+  prisma: true
+  argon2: true
+  esbuild: true
+  # Telemetría de swagger-ui-dist: no se necesita.
+  "@scarf/scarf": false
+
+# eslint-config-next trae typescript-eslint con rango (^8.x). Se fuerza la misma
+# versión que @totalkids/config para evitar "Cannot redefine plugin @typescript-eslint".
+overrides:
+  typescript-eslint: 8.72.1

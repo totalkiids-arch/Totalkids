@@ -1,0 +1,56 @@
+openapi: 3.1.0
+info:
+  title: Total Kids API
+  version: 0.0.0
+  description: API de la tienda online Total Kids (mobiliario infantil).
+servers:
+  - url: http://localhost:4000/api/v1
+    description: Desarrollo local
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Estado de la API y de la conexión a la base de datos
+      tags: [Sistema]
+      responses:
+        "200":
+          description: API operativa y base de datos accesible
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+        "503":
+          description: Base de datos no disponible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: DATABASE_UNAVAILABLE
+                message: No hay conexión con la base de datos
+                details:
+                  cause: PrismaClientKnownRequestError
+                requestId: 3f0a9c1e-2b7d-4c55-9a3e-1d2f6b8e9a10
+components:
+  schemas:
+    Error:
+      type: object
+      description: Formato estándar de error de la API.
+      required: [code, message, details, requestId]
+      properties:
+        code:
+          type: string
+          description: Código legible por máquina (p. ej. NOT_FOUND, VALIDATION_ERROR).
+        message:
+          type: string
+          description: Mensaje legible por personas.
+        details:
+          description: Información adicional (p. ej. errores de validación) o null.
+        requestId:
+          type: string
+          description: Identificador de la petición (cabecera X-Request-Id).

@@ -1,0 +1,24 @@
+{
+  "name": "@totalkids/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./eslint/base": "./eslint/base.js",
+    "./eslint/node": "./eslint/node.js",
+    "./prettier": "./prettier/index.js",
+    "./tsconfig/base.json": "./typescript/base.json",
+    "./tsconfig/node.json": "./typescript/node.json",
+    "./tsconfig/nextjs.json": "./typescript/nextjs.json"
+  },
+  "dependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.14.0",
+    "typescript-eslint": "8.72.1"
+  },
+  "peerDependencies": {
+    "eslint": "9.39.5",
+    "prettier": "3.9.10"
+  }
+}

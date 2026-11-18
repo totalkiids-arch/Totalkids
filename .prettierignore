@@ -1,0 +1,7 @@
+pnpm-lock.yaml
+node_modules
+dist
+.next
+coverage
+apps/api/src/generated
+apps/api/prisma/migrations/**/*.sql
