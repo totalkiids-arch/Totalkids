@@ -8,7 +8,7 @@ Tienda online de mobiliario infantil. Monorepo con pnpm workspaces: sitio públi
 
 ```
 apps/
-  web/              Next.js 16 (App Router) + React 19 + Tailwind CSS 4
+  web/              Next.js 16 (App Router) + React 19 + Tailwind CSS 4 (ver apps/web/ARCHITECTURE.md)
   api/              Express 5 + Prisma 7 (rutas en /api/v1, docs en /api/docs)
 packages/
   config/           ESLint, Prettier y tsconfig compartidos
@@ -54,7 +54,7 @@ pnpm db:migrate:test
 pnpm dev
 ```
 
-- Web: http://localhost:3000 (muestra el estado de la API)
+- Web: http://localhost:3000 (tienda) y http://localhost:3000/admin (panel; el Resumen muestra el estado de la API)
 - API health: http://localhost:4000/api/v1/health → `{ "status": "ok" }`
 - Swagger UI: http://localhost:4000/api/docs (spec JSON en `/api/docs/openapi.json`)
 

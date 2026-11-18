@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Total Kids",
+  title: { default: "Total Kids", template: "%s | Total Kids" },
   description: "Tienda online de mobiliario infantil",
 };
 

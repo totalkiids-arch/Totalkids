@@ -1,21 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-import { serverEnv } from "@/lib/env";
+import { apiFetch } from "@/shared/infrastructure/api-client";
 
 // Ruta BFF: el navegador llama a /api/health (Next.js) y Next.js llama a la API.
 // Así la API nunca se expone directamente al navegador.
 export async function GET(request: Request): Promise<Response> {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
-  const forwardedFor = request.headers.get("x-forwarded-for");
 
   try {
-    const upstream = await fetch(`${serverEnv.API_URL}/api/v1/health`, {
-      cache: "no-store",
-      headers: {
-        "x-request-id": requestId,
-        ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}),
-      },
-      signal: AbortSignal.timeout(5000),
+    const upstream = await apiFetch("/api/v1/health", {
+      requestId,
+      forwardedFor: request.headers.get("x-forwarded-for"),
     });
     const body: unknown = await upstream.json();
     return Response.json(body, {
