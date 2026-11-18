@@ -1,10 +1,9 @@
 import cors from "cors";
 import express, { type Express } from "express";
 import helmet from "helmet";
-import { pinoHttp } from "pino-http";
 
 import { parseTrustProxy, type Env } from "./config/env.js";
-import type { Logger } from "./lib/logger.js";
+import { httpLogger, type Logger } from "./lib/logger.js";
 import type { PrismaClient } from "./lib/prisma.js";
 import { errorHandler, notFound } from "./middleware/error-handler.js";
 import { requestId } from "./middleware/request-id.js";
@@ -26,7 +25,7 @@ export function createApp({ env, logger, prisma }: AppDeps): Express {
   app.disable("x-powered-by");
 
   app.use(requestId);
-  app.use(pinoHttp({ logger, genReqId: (req) => String(req.id) }));
+  app.use(httpLogger(logger));
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGINS }));
   app.use(express.json({ limit: "1mb" }));
