@@ -28,12 +28,30 @@
   --color-text-secondary: #5b6478;
   --color-border: #f0e6d2;
 
-  /* Colores exclusivos del logotipo (letras del logo ilustrado). Solo para <Logo />:
-     no usar en texto ni UI, varios no cumplen contraste. */
+  /* Tonos de apoyo de la maqueta aprobada */
+  --color-brand-blue-deep: #103b70; /* sombra 3D de botones azules, patas de muebles */
+  --color-brand-red-deep: #98271f; /* sombra 3D de botones rojos, texto rojo sobre soft-red */
+  --color-text-body: #3d4660; /* párrafos destacados (hero, tarjetas) */
+  --color-ochre: #e3c877; /* sombra 3D de botones blancos sobre amarillo */
+  --color-cream: #fff3cc; /* fondo de ilustraciones y chips */
+  --color-input: #fff4de; /* fondo del buscador */
+  --color-input-border: #f3dfb5;
+  --color-chip-border: #e5d9bf;
+  --color-dots: #f3ddae; /* patrón de puntos del fondo */
+  --color-offer: #ffe3d6;
+  --color-offer-ink: #8a2a12;
+  --color-yellow-ink: #8a6100; /* íconos y texto "amarillo" legible sobre crema */
+  --color-on-yellow: #3d2e00; /* texto secundario sobre brand-yellow */
+  --color-on-blue: #e0e9ff; /* texto secundario sobre brand-blue */
+  --color-on-dark: #d5dae6; /* texto sobre brand-navy (footer) */
+  --color-on-dark-muted: #b4bcd0;
+  --color-navy-line: #36415e;
+
+  /* Acentos tomados del logo ilustrado (jirafa, mono, elefante). Solo decorativos
+     (franja arcoíris): no usar en texto, no cumplen contraste. */
   --color-logo-orange: #f28a1a;
   --color-logo-sky: #2e9bd6;
   --color-logo-green: #5fae3a;
-  --color-logo-yellow: #f5b100;
 
   /* Animación de Tito (respeta prefers-reduced-motion con motion-safe:) */
   --animate-float: float 3.2s ease-in-out infinite;
@@ -69,8 +87,26 @@
     @apply font-heading font-bold text-text-primary;
   }
 
-  /* Foco visible y consistente para navegación con teclado (accesibilidad). */
+  /* Foco visible y consistente para navegación con teclado (accesibilidad).
+     Sobre fondos oscuros (clase .on-dark) el contorno pasa a amarillo. */
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-brand-blue;
+    @apply outline-3 outline-offset-2 outline-brand-blue;
+  }
+
+  .on-dark :focus-visible {
+    @apply outline-brand-yellow;
+  }
+}
+
+@utility pattern-dots {
+  background-image: radial-gradient(var(--color-dots) 2.5px, transparent 2.5px);
+  background-size: 30px 30px;
+}
+
+/* Barras de desplazamiento horizontal sin scrollbar visible (píldoras en móvil). */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }

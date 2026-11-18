@@ -20,7 +20,7 @@ export function ScreenPlaceholder({
   children,
 }: ScreenPlaceholderProps) {
   return (
-    <section className="mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-3xl border-2 border-dashed border-border bg-surface p-8 shadow-sm">
+    <section className="mx-auto my-10 flex w-[calc(100%-2rem)] max-w-3xl flex-col gap-3 rounded-3xl border-2 border-dashed border-border bg-surface p-8 shadow-sm">
       <p className="text-xs font-extrabold tracking-wide text-brand-blue uppercase">{section}</p>
       <h1 className="text-3xl">{title}</h1>
       <p className="text-text-secondary">{description}</p>

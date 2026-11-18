@@ -5,22 +5,55 @@ export interface NavItem {
   label: string;
 }
 
-/** Navegación principal de la tienda. */
-export const storeNav = [
-  { href: "/catalogo", label: "Catálogo" },
-  { href: "/servicios", label: "Servicios" },
+/** Color de cada píldora de categoría (ver StoreHeader). */
+export type CategoryTone =
+  "blue" | "purple" | "green" | "yellow" | "red" | "navy" | "outline" | "offer";
+
+export interface CategoryNavItem extends NavItem {
+  tone: CategoryTone;
+  icon?: "star";
+}
+
+/**
+ * Categorías del encabezado. Provisional: cuando exista la API, las categorías
+ * vendrán del catálogo administrable (RF-26) y estos enlaces apuntarán a sus slugs.
+ */
+export const categoryNav = [
+  { href: "/catalogo?categoria=mesas-y-sillas", label: "Mesas y Sillas", tone: "blue" },
+  { href: "/catalogo?categoria=camas-y-cunas", label: "Camas y Cunas", tone: "purple" },
+  { href: "/catalogo?categoria=libreros-y-estantes", label: "Libreros y Estantes", tone: "green" },
+  {
+    href: "/catalogo?categoria=organizadores-y-baules",
+    label: "Organizadores y Baúles",
+    tone: "yellow",
+  },
+  { href: "/catalogo?categoria=escritorios", label: "Escritorios", tone: "red" },
+  { href: "/catalogo?categoria=linea-montessori", label: "Línea Montessori", tone: "navy" },
+  {
+    href: "/catalogo?categoria=jardines-y-colegios",
+    label: "Jardines y Colegios",
+    tone: "outline",
+  },
+  { href: "/servicios", label: "Servicios especiales", tone: "green", icon: "star" },
+  { href: "/catalogo?ofertas=1", label: "Ofertas", tone: "offer" },
+] as const satisfies readonly CategoryNavItem[];
+
+/** Columna "Categorías" del pie de página. */
+export const footerCategoryNav = [
+  { href: "/catalogo?categoria=mesas-y-sillas", label: "Mesas y sillas" },
+  { href: "/catalogo?categoria=camas-y-cunas", label: "Camas y cunas" },
+  { href: "/catalogo?categoria=libreros-y-estantes", label: "Libreros y estantes" },
+  { href: "/catalogo?categoria=organizadores-y-baules", label: "Organizadores y baúles" },
+  { href: "/catalogo?categoria=linea-montessori", label: "Línea Montessori" },
 ] as const satisfies readonly NavItem[];
 
-/** Enlaces del pie de página de la tienda. */
-export const storeFooterNav = [
-  { href: "/politicas", label: "Políticas" },
-  { href: "/suscripcion", label: "Suscripción" },
-] as const satisfies readonly NavItem[];
-
-/** Navegación del área de cuenta del comprador. */
-export const accountNav = [
-  { href: "/ingresar", label: "Iniciar sesión" },
-  { href: "/cuenta/pedidos", label: "Mis pedidos" },
+/** Columna "Ayuda" del pie de página. */
+export const footerHelpNav = [
+  { href: "/politicas#despacho", label: "Despachos y retiro" },
+  { href: "/politicas#compra", label: "Medios de pago" },
+  { href: "/politicas#cambios", label: "Cambios y garantía" },
+  { href: "/servicios", label: "Guía de armado" },
+  { href: "/politicas", label: "Preguntas frecuentes" },
 ] as const satisfies readonly NavItem[];
 
 /** Menú lateral del panel administrativo. */
