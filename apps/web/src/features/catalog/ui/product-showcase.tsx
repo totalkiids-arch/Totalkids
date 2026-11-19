@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, useTransition, type FormEvent } from "react";
 
 import { Button } from "@/shared/ui/button";
+import { notifyCartChanged } from "@/shared/ui/cart-signal";
 import { Checkbox, TextField } from "@/shared/ui/form";
 import { BagPlusIcon, ChildIcon, StarIcon, TruckIcon } from "@/shared/ui/icons";
 
@@ -23,12 +24,29 @@ import {
 } from "../domain/product-detail";
 import { ProductGallery } from "./product-gallery";
 
+/** Agrega al carrito en el servidor (lo implementa la feature cart). */
+export type AddToCart = (request: {
+  slug: string;
+  sku: string;
+  quantity: number;
+  extras: string[];
+  texts: Record<string, string>;
+}) => Promise<{ ok: true } | { ok: false; error: string }>;
+
 /**
  * Galería + información y compra de la ficha (RF-03, RF-04). La variante elegida
  * define precio, SKU y stock; una variante agotada no se puede comprar.
  */
-export function ProductShowcase({ product }: { product: ProductDetail }) {
+export function ProductShowcase({
+  product,
+  addToCart,
+}: {
+  product: ProductDetail;
+  addToCart: AddToCart;
+}) {
   const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [serverError, setServerError] = useState<string | null>(null);
   const [option, setOption] = useState<string | null>(() => initialOption(product));
   const [quantity, setQuantity] = useState(1);
   const [chosenExtras, setChosenExtras] = useState<ReadonlySet<string>>(new Set());
@@ -78,13 +96,29 @@ export function ProductShowcase({ product }: { product: ProductDetail }) {
     }
 
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-    // TODO(carrito): enviar { sku, cantidad, extras y textos } al carrito del servidor (RF-05).
-    if (submitter?.value === "comprar") {
-      router.push("/checkout");
-      return;
-    }
-    const detail = variant.option ? ` (${variant.option})` : "";
-    setAdded(`Agregaste ${quantity} × ${product.name}${detail} al carrito.`);
+    const buyNow = submitter?.value === "comprar";
+    setServerError(null);
+    setAdded(null);
+    startTransition(async () => {
+      const result = await addToCart({
+        slug: product.slug,
+        sku: variant.sku,
+        quantity,
+        extras: extras.map((e) => e.id),
+        texts: Object.fromEntries(extras.map((e) => [e.id, texts[e.id] ?? ""])),
+      });
+      if (!result.ok) {
+        setServerError(result.error);
+        return;
+      }
+      notifyCartChanged();
+      if (buyNow) {
+        router.push("/checkout");
+        return;
+      }
+      const detail = variant.option ? ` (${variant.option})` : "";
+      setAdded(`Agregaste ${quantity} × ${product.name}${detail} al carrito.`);
+    });
   }
 
   return (
@@ -194,6 +228,7 @@ export function ProductShowcase({ product }: { product: ProductDetail }) {
               type="submit"
               name="intencion"
               value="agregar"
+              disabled={pending}
               size="lg"
               className="min-h-13.5 flex-[1_1_200px]"
             >
@@ -221,13 +256,18 @@ export function ProductShowcase({ product }: { product: ProductDetail }) {
           value="comprar"
           variant="accent"
           size="lg"
-          disabled={!purchasable}
+          disabled={!purchasable || pending}
           className="min-h-13.5"
         >
           Comprar ahora
         </Button>
 
         <div role="status" className="empty:hidden">
+          {serverError ? (
+            <p className="rounded-[20px] bg-soft-red px-4 py-3 font-bold text-brand-red-deep">
+              {serverError}
+            </p>
+          ) : null}
           {added ? (
             <p className="flex flex-wrap items-center justify-between gap-2 rounded-[20px] bg-soft-green px-4 py-3 font-bold">
               {added}

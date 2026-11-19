@@ -12,14 +12,21 @@ import { catalogHref } from "./catalog-href";
 import { loadProductDetail } from "./product-detail-data";
 import { ProductPhoto } from "./product-photo";
 import { ProductJsonLd } from "./product-json-ld";
-import { ProductShowcase } from "./product-showcase";
+import { ProductShowcase, type AddToCart } from "./product-showcase";
 
 /** Fondos de las tarjetas de medidas y beneficios, en el orden de la maqueta. */
 const TILE_TINTS = ["bg-soft-blue", "bg-soft-green", "bg-cream", "bg-soft-red"] as const;
 const LEARNING_TINTS = ["bg-cream", "bg-soft-purple", "bg-soft-green"] as const;
 
 /** Tienda y compra · Ficha de producto (RF-03, RF-04). */
-export async function ProductDetailScreen({ slug }: { slug: string }) {
+export async function ProductDetailScreen({
+  slug,
+  addToCart,
+}: {
+  slug: string;
+  /** Server Action del carrito (feature cart), inyectada por la página. */
+  addToCart: AddToCart;
+}) {
   const product = await loadProductDetail(slug);
   if (!product) notFound();
   const related = await listRelatedProducts(slug);
@@ -30,7 +37,7 @@ export async function ProductDetailScreen({ slug }: { slug: string }) {
       <Breadcrumbs product={product} />
 
       <section aria-label="Producto" className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
-        <ProductShowcase product={product} />
+        <ProductShowcase product={product} addToCart={addToCart} />
       </section>
 
       <section aria-labelledby="info-producto" className="mx-auto max-w-7xl px-4 py-6 sm:px-6">

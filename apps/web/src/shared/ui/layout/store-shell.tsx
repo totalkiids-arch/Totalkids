@@ -4,7 +4,7 @@ import { StoreFooter } from "./store-footer";
 import { StoreHeader } from "./store-header";
 
 /** Estructura común de la tienda y la cuenta del comprador: cabecera, contenido y pie. */
-export function StoreShell({ children }: { children: ReactNode }) {
+export function StoreShell({ children, cartLink }: { children: ReactNode; cartLink: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col bg-background pattern-dots">
       <a
@@ -13,7 +13,7 @@ export function StoreShell({ children }: { children: ReactNode }) {
       >
         Saltar al contenido
       </a>
-      <StoreHeader />
+      <StoreHeader cartLink={cartLink} />
       <main id="contenido" className="flex-1">
         {children}
       </main>

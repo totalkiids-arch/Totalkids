@@ -1,11 +1,11 @@
 import Form from "next/form";
+import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { categoryNav, type CategoryTone } from "@/shared/config/routes";
 import { site } from "@/shared/config/site";
 import { Logo } from "@/shared/ui/brand/logo";
 import {
-  BagIcon,
   CardIcon,
   MailIcon,
   PhoneIcon,
@@ -107,10 +107,7 @@ function SearchForm() {
   );
 }
 
-/** Cantidad de productos en el carrito. Provisional: lo entregará la feature "cart" (UI-05). */
-const CART_COUNT = 0;
-
-function HeaderActions() {
+function HeaderActions({ cartLink }: { cartLink: ReactNode }) {
   return (
     <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:gap-3 lg:order-none lg:ml-0">
       <Link
@@ -123,19 +120,7 @@ function HeaderActions() {
           Mi cuenta
         </span>
       </Link>
-      <Link
-        href="/carrito"
-        aria-label={`Carrito, ${CART_COUNT} productos`}
-        className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-full bg-brand-red px-3.5 font-extrabold whitespace-nowrap text-white sm:gap-2 sm:px-4.5"
-      >
-        <BagIcon size={22} />
-        {/* En pantallas angostas solo ícono + cantidad, para que quepa junto al logo. */}
-        <span aria-hidden>
-          <span className="max-[430px]:hidden">Carrito </span>
-          <span className="max-[430px]:hidden">({CART_COUNT})</span>
-          <span className="min-[431px]:hidden">{CART_COUNT}</span>
-        </span>
-      </Link>
+      {cartLink}
     </div>
   );
 }
@@ -161,7 +146,11 @@ function CategoryPills() {
 }
 
 /** Encabezado completo de la tienda, fiel a la maqueta aprobada. */
-export function StoreHeader() {
+/**
+ * `cartLink` lo entrega la feature "cart" desde el layout (shared no depende de
+ * features): el botón del carrito con su cantidad.
+ */
+export function StoreHeader({ cartLink }: { cartLink: ReactNode }) {
   return (
     <>
       <RainbowStripe />
@@ -172,7 +161,7 @@ export function StoreHeader() {
             <Logo size="md" preload />
           </Link>
           <SearchForm />
-          <HeaderActions />
+          <HeaderActions cartLink={cartLink} />
         </div>
         <CategoryPills />
       </header>

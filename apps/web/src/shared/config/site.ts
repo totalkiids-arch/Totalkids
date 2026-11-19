@@ -14,6 +14,8 @@ export const site = {
   hours: "[HORARIO DE ATENCIÓN]",
   installments: "Paga en cuotas [CONDICIONES]",
   shippingLeadTime: "Plazos: [TUS PLAZOS]",
+  /** Despacho gratis desde este subtotal en CLP (RF-08). null = el cliente aún no lo define. */
+  freeShippingThreshold: null as number | null,
   safetyCertification: "Cantos redondeados, pinturas [CERTIFICACIÓN]",
   /** Número de WhatsApp en formato internacional sin "+" (p. ej. "56912345678"). null = no se muestra. */
   whatsapp: null as string | null,

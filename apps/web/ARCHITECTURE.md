@@ -129,3 +129,12 @@ Ambos resultados se versionan. Volver a ejecutarlo actualiza precios, stock y fo
 - **Categorías**: las del cliente (Cunas y camas, Mesas, Sillas, Mudadores, Almacenamiento, Montessori y Pikler) más la línea JUNJI. El nombre del producto manda sobre las categorías del sitio, que tienen ruido.
 - **Niveles** (filtro `nivel`): sala cuna, nivel medio, transición y educadoras/adultos, detectados por el nombre. Un producto sin nivel solo aparece sin ese filtro.
 - **Sin datos en el sitio**: SKU (se usa `TK-<id del sitio>`), variantes, colores, cuotas, garantía y cantidad exacta de stock (con stock sin cantidad se permite hasta 9 por línea).
+
+## Carrito (UI-05)
+
+- **Dónde vive**: cookie `tk_carrito` con las líneas (SKU, cantidad, extras y textos), sin precios ni datos personales (`features/cart/domain/cart-cookie.ts`, validada con zod; una línea inválida se descarta sin perder las demás). Es provisional: con la API, la cookie guardará un id opaco y las líneas irán a la base de datos (RF-05). Solo cambia el adaptador `CartStore`.
+- **Revalidación (RF-06)**: `application/price-cart.ts` recalcula cada vez contra el catálogo vigente: quita productos retirados, descarta extras que ya no se ofrecen, ajusta la cantidad al stock e informa, y bloquea el pago si hay líneas agotadas. Lo que no tiene precio (p. ej. el armado) se lista aparte y no se suma.
+- **Agregar** valida en el servidor (`application/validate-add.ts`): variante vigente, stock contando lo que ya está en el carrito, extras ofrecidos y textos personalizados. Mismo SKU con extras o textos distintos son líneas distintas.
+- **Mutaciones**: Server Actions en `ui/cart-actions.ts`. La ficha (catalog) no importa cart: la página `/producto/[slug]` le inyecta `addToCartAction`, para no crear un ciclo entre features.
+- **Contador del encabezado**: `CartLink` lee la cookie en el navegador (`useSyncExternalStore`), así las páginas de la tienda siguen estáticas. `shared/ui/cart-signal.ts` avisa los cambios. El layout entrega `CartLink` a `StoreShell` (shared no depende de features).
+- **Pendiente**: cupones (RF-07; hoy responde que no hay cupones vigentes) y umbral de despacho gratis (`site.freeShippingThreshold`, RF-08), ambos según la API y el cliente.

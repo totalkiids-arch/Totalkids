@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { addToCartAction } from "@/features/cart";
 import { listProductSlugs, loadProductDetail, ProductDetailScreen } from "@/features/catalog";
 
 /** Prerenderiza las fichas publicadas; un slug nuevo se genera al primer pedido. */
@@ -24,5 +25,5 @@ export async function generateMetadata({
 
 export default async function Page({ params }: PageProps<"/producto/[slug]">) {
   const { slug } = await params;
-  return <ProductDetailScreen slug={slug} />;
+  return <ProductDetailScreen slug={slug} addToCart={addToCartAction} />;
 }

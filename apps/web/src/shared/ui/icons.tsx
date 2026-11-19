@@ -139,3 +139,15 @@ export const ChevronLeftIcon = make(<path d="M15 5l-7 7 7 7" />, 2.5);
 export const ChevronRightIcon = make(<path d="M9 5l7 7-7 7" />, 2.5);
 export const PauseIcon = make(<path d="M9 5v14M15 5v14" />, 3);
 export const PlayIcon = make(<path d="M7 5l12 7-12 7z" />, 2.5);
+export const TrashIcon = make(
+  <>
+    <path d="M4 7h16" />
+    <path d="M9 7V4h6v3" />
+    <path d="M6 7l1 13h10l1-13" />
+    <path d="M10 11v6M14 11v6" />
+  </>,
+);
+export const ArrowLeftIcon = make(<path d="M19 12H5M11 6l-6 6 6 6" />, 2.5);
+export const ToolIcon = make(
+  <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.8-.7-.7-2.8z" />,
+);
