@@ -10,6 +10,7 @@ import {
   type CheckoutErrors,
   type CheckoutInput,
 } from "./domain/checkout-details";
+import { parsePaymentConfirmation } from "./domain/payment-confirmation";
 import { cartCheckoutReader } from "./infrastructure/cart-checkout-reader";
 import { cookieCheckoutDraftStore } from "./infrastructure/cookie-checkout-draft-store";
 
@@ -92,4 +93,25 @@ export async function getConfirmedCheckout(): Promise<{
 /** Caso de uso: olvidar el borrador (al terminar o abandonar la compra). */
 export async function clearCheckoutDraft() {
   await drafts.clear();
+}
+
+export type StartPaymentResult =
+  | { ok: true; redirectTo: "/checkout/resultado?estado=pending" }
+  | { ok: false; reason: "terms"; error: string }
+  | { ok: false; reason: "details" };
+
+/**
+ * Caso de uso: ir a pagar con Flow (RF-15). Exige aceptar las condiciones y
+ * vuelve a revisar los datos y el carrito en el servidor.
+ *
+ * Pago de DEMOSTRACIÓN: no crea el pedido ni abre la pasarela. Lleva al
+ * resultado "pendiente", que es lo que ve el comprador al volver de Flow antes
+ * de que la API confirme el cobro (RF-17). Con la API, aquí se crea el pedido,
+ * se reserva el stock y se redirige a la URL de pago que entrega Flow.
+ */
+export async function startDemoPayment(input: CheckoutInput): Promise<StartPaymentResult> {
+  const confirmation = parsePaymentConfirmation(input);
+  if (!confirmation.ok) return { ok: false, reason: "terms", error: confirmation.error };
+  if (!(await getConfirmedCheckout())) return { ok: false, reason: "details" };
+  return { ok: true, redirectTo: "/checkout/resultado?estado=pending" };
 }

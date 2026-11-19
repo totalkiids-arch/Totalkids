@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 
-import { saveCheckoutDetails, type SaveDetailsResult } from "../container";
+import { saveCheckoutDetails, startDemoPayment, type SaveDetailsResult } from "../container";
 
 /** Estado del formulario "Datos y facturación" (useActionState). null = sin enviar. */
 export type CheckoutDetailsState = Extract<SaveDetailsResult, { ok: false }> | null;
@@ -19,4 +19,22 @@ export async function submitCheckoutDetailsAction(
   const result = await saveCheckoutDetails(Object.fromEntries(formData));
   if (!result.ok) return result;
   redirect("/checkout/pago");
+}
+
+/** Estado del formulario de pago (useActionState). null = sin enviar. */
+export type PaymentState = { error: string } | null;
+
+/**
+ * Envía el paso "Pago" (demostración de Flow). Sin condiciones aceptadas
+ * devuelve el error; si faltan datos o el carrito cambió, vuelve a "Datos y
+ * facturación"; si todo está en orden, lleva al resultado del pago.
+ */
+export async function startPaymentAction(
+  _: PaymentState,
+  formData: FormData,
+): Promise<PaymentState> {
+  const result = await startDemoPayment(Object.fromEntries(formData));
+  if (result.ok) redirect(result.redirectTo);
+  if (result.reason === "details") redirect("/checkout");
+  return { error: result.error };
 }
