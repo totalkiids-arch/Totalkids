@@ -61,6 +61,127 @@
   /* Animaciones (usar siempre con motion-safe: para respetar prefers-reduced-motion) */
   --animate-float: float 3.2s ease-in-out infinite;
   --animate-pop-in: pop-in 180ms ease-out;
+  /* Escenas animadas del carrusel de portada (features/home/ui/animal-scenes.tsx) */
+  --animate-swing: swing 1s ease-in-out infinite;
+  --animate-sway: sway 1.6s ease-in-out infinite;
+  --animate-lift: lift 1.8s ease-in-out infinite;
+  --animate-drop-in: drop-in 3s ease-in infinite;
+  --animate-hit: hit 1s ease-out infinite;
+  --animate-twinkle: twinkle 1.8s ease-in-out infinite;
+  --animate-drip: drip 2.2s ease-in infinite;
+  /* Barra de avance del carrusel: la duración se fija en línea */
+  --animate-progress: progress linear both;
+
+  @keyframes swing {
+    0%,
+    100% {
+      transform: rotate(28deg);
+    }
+    45% {
+      transform: rotate(-3deg);
+    }
+    55% {
+      transform: rotate(0deg);
+    }
+  }
+
+  @keyframes sway {
+    0%,
+    100% {
+      transform: rotate(-5deg);
+    }
+    50% {
+      transform: rotate(5deg);
+    }
+  }
+
+  @keyframes lift {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-14px);
+    }
+  }
+
+  @keyframes drop-in {
+    0% {
+      opacity: 0;
+      transform: translateY(-110px);
+    }
+    15% {
+      opacity: 1;
+    }
+    35% {
+      transform: translateY(0);
+    }
+    42% {
+      transform: translateY(-10px);
+    }
+    50%,
+    85% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes hit {
+    0%,
+    40% {
+      opacity: 0;
+      transform: scale(0.4);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+    75%,
+    100% {
+      opacity: 0;
+      transform: scale(1.3);
+    }
+  }
+
+  @keyframes twinkle {
+    0%,
+    100% {
+      opacity: 0.35;
+      transform: scale(0.7);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes drip {
+    0%,
+    20% {
+      opacity: 0;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(26px);
+    }
+  }
+
+  @keyframes progress {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
 
   @keyframes pop-in {
     from {

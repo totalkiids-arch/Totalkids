@@ -135,3 +135,7 @@ export const ClockIcon = make(
     <path d="M12 7v5l3 2" />
   </>,
 );
+export const ChevronLeftIcon = make(<path d="M15 5l-7 7 7 7" />, 2.5);
+export const ChevronRightIcon = make(<path d="M9 5l7 7-7 7" />, 2.5);
+export const PauseIcon = make(<path d="M9 5v14M15 5v14" />, 3);
+export const PlayIcon = make(<path d="M7 5l12 7-12 7z" />, 2.5);

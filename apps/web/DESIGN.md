@@ -98,6 +98,7 @@ Se cargan con `next/font/google` (`src/app/fonts.ts`): se descargan en el build 
 - `icons.tsx`: íconos de trazo de la maqueta (decorativos, `aria-hidden`).
 - `form.tsx`: `TextField`, `TextareaField`, `SelectField`, `Checkbox` y `RadioGroup` (lista o tarjetas). Etiqueta visible, ayuda y error conectados con `aria-describedby`; `aria-invalid` cuando hay error.
 - `modal.tsx`: `Modal` sobre `<dialog>` nativo (foco atrapado y devuelto, Esc, clic en el fondo, sin scroll de fondo). Variante `sheet` para móvil.
+- `carousel.tsx`: `Carousel` accesible (patrón APG). Rota cada 7 s; se pausa al pasar el mouse, al enfocar un control o con el botón Pausar. Con `prefers-reduced-motion` no rota ni anima. Las diapositivas inactivas quedan `inert`. Admite deslizar en pantallas táctiles.
 - Galería en vivo: `/dev/componentes` (solo en desarrollo).
 - `layout/StoreHeader`, `layout/StoreFooter`: cabecera (franja arcoíris, barra superior, buscador, categorías) y pie de la maqueta.
 - Contenedor de página: `mx-auto max-w-7xl px-4 sm:px-6` (1280 px).
@@ -109,3 +110,11 @@ Se cargan con `next/font/google` (`src/app/fonts.ts`): se descargan en el build 
 - Enlace "Saltar al contenido" en la tienda.
 - `nav` con `aria-label` y `main#contenido` en tienda y panel.
 - Responsive: probar en **360, 768 y 1440 px** (criterio de UI-01).
+
+## Banner principal (portada)
+
+Carrusel de 5 diapositivas. En cada una, un animal del logo arma un mueble de la categoría que presenta:
+jirafa (libreros), león (camas casita), elefante (mesas y sillas), oso (organizadores) y mono
+(jardines y colegios). Las escenas son SVG en línea (`features/home/ui/animal-scenes.tsx`), animadas
+con los tokens `--animate-swing`, `sway`, `lift`, `drop-in`, `hit`, `twinkle` y `drip`, siempre bajo
+`motion-safe:`. El texto de cada diapositiva es provisional hasta tener banners administrables (UI-13).
