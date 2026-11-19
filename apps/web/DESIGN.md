@@ -96,6 +96,9 @@ Se cargan con `next/font/google` (`src/app/fonts.ts`): se descargan en el build 
 - `Button` / `ButtonLink`: píldora "de juguete" con sombra sólida. Variantes `primary`, `danger`, `light`, `dark`, `outline`, `ghost`.
 - `SectionHeading`: antetítulo de color + título + complemento (texto, filtros o enlace).
 - `icons.tsx`: íconos de trazo de la maqueta (decorativos, `aria-hidden`).
+- `form.tsx`: `TextField`, `TextareaField`, `SelectField`, `Checkbox` y `RadioGroup` (lista o tarjetas). Etiqueta visible, ayuda y error conectados con `aria-describedby`; `aria-invalid` cuando hay error.
+- `modal.tsx`: `Modal` sobre `<dialog>` nativo (foco atrapado y devuelto, Esc, clic en el fondo, sin scroll de fondo). Variante `sheet` para móvil.
+- Galería en vivo: `/dev/componentes` (solo en desarrollo).
 - `layout/StoreHeader`, `layout/StoreFooter`: cabecera (franja arcoíris, barra superior, buscador, categorías) y pie de la maqueta.
 - Contenedor de página: `mx-auto max-w-7xl px-4 sm:px-6` (1280 px).
 - Fondos oscuros: agrega la clase `on-dark` para que el foco sea amarillo.
