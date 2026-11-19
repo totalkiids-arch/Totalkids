@@ -1,5 +1,6 @@
 import { FeaturedProducts, listFeaturedProducts } from "@/features/catalog";
 
+import { Clients } from "./sections/clients";
 import { Hero } from "./sections/hero";
 import { Ideas } from "./sections/ideas";
 import { Institutions } from "./sections/institutions";
@@ -19,6 +20,7 @@ export async function HomeScreen() {
       <FeaturedProducts products={featured} />
       <Philosophy />
       <Institutions />
+      <Clients />
       <Ideas />
       <NewsletterSignup />
     </>
