@@ -2,8 +2,8 @@ import Link from "next/link";
 
 import { BagPlusIcon } from "@/shared/ui/icons";
 
-import { formatClp, type ProductBadgeTone, type ProductSummary } from "../domain/product";
-import { ILLUSTRATION_TINT, ProductIllustration } from "./product-illustration";
+import { formatClp, isOnSale, type ProductBadgeTone, type ProductSummary } from "../domain/product";
+import { ProductIllustration, TINT_CLASS } from "./product-illustration";
 
 const BADGE_TONE: Record<ProductBadgeTone, string> = {
   sale: "bg-brand-red text-white",
@@ -16,8 +16,8 @@ const BADGE_TONE: Record<ProductBadgeTone, string> = {
 export function ProductCard({ product }: { product: ProductSummary }) {
   const href = `/producto/${product.slug}` as const;
   return (
-    <article className="group relative flex flex-col gap-3 rounded-[28px] bg-surface p-4 shadow-[0_2px_0_var(--color-border)] motion-safe:transition motion-safe:hover:-translate-y-1 motion-safe:hover:shadow-[0_14px_30px_-12px_rgb(31_42_68/0.25)]">
-      <div className={`relative rounded-[20px] p-3 ${ILLUSTRATION_TINT[product.illustration.key]}`}>
+    <article className="group relative flex w-full flex-col gap-3 rounded-[28px] bg-surface p-4 shadow-[0_2px_0_var(--color-border)] motion-safe:transition motion-safe:hover:-translate-y-1 motion-safe:hover:shadow-[0_14px_30px_-12px_rgb(31_42_68/0.25)]">
+      <div className={`relative rounded-[20px] p-3 ${TINT_CLASS[product.illustration.tint]}`}>
         {product.badge ? (
           <span
             className={`absolute top-3 left-3 rounded-full px-2.5 py-1 text-xs font-extrabold ${BADGE_TONE[product.badge.tone]}`}
@@ -48,7 +48,7 @@ export function ProductCard({ product }: { product: ProductSummary }) {
         <p className="flex flex-col">
           <span className="sr-only">Precio:</span>
           <strong className="text-[22px] font-extrabold">{formatClp(product.price)}</strong>
-          {product.badge?.tone === "sale" ? (
+          {isOnSale(product) ? (
             <span className="text-[13px] text-text-secondary line-through">
               <span className="sr-only">Antes: </span>
               {product.compareAtPrice === null

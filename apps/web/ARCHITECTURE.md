@@ -99,3 +99,10 @@ app ──> features/<f>/index.ts ──> ui ──> container ──> infrastru
 |                      | Historial de actividad        | `/admin/actividad`                                | `activity`   |
 
 **Estados de pago** (Pagado, Pendiente, Rechazado, En revisión, Vencido) no son pantallas: son `PaymentStatus` en `features/payments/domain`, y los muestra la pantalla Resultado de pago. Mientras tanto se pueden previsualizar con `/checkout/resultado?estado=paid|pending|rejected|in_review|expired`.
+
+## Catálogo (UI-02)
+
+- Todo el estado vive en la URL: `/catalogo?q=&categoria=&edad=&color=&material=&precio_min=&precio_max=&ofertas=1&orden=&pagina=`. Se puede compartir, funciona con atrás/adelante y sin JavaScript.
+- `features/catalog/domain/catalog-query.ts`: leer la consulta (`parseCatalogQuery`), armar enlaces (`toQueryString`) y aplicar búsqueda, filtros, orden y paginación (`applyCatalogQuery`). Funciones puras con tests.
+- El adaptador `demo-product-catalog.ts` aplica esas reglas sobre los 12 productos de la maqueta. Al existir la API, el adaptador traduce `CatalogQuery` a la consulta del endpoint y el filtrado pasa al servidor.
+- Búsquedas y combinaciones de filtros llevan `noindex`; el catálogo y sus categorías sí se indexan.

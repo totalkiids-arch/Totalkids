@@ -2,18 +2,15 @@
 // Se reemplazan por las fotos reales del catálogo (CL-01) cuando estén disponibles.
 import type { ReactNode } from "react";
 
-import type { ProductIllustrationKey } from "../domain/product";
+import type { IllustrationTint, ProductIllustrationKey } from "../domain/product";
 
-/** Fondo de cada ilustración (token de color). */
-export const ILLUSTRATION_TINT: Record<ProductIllustrationKey, string> = {
-  "mesa-sillas": "bg-cream",
-  librero: "bg-soft-green",
-  "cama-casita": "bg-soft-purple",
-  baul: "bg-soft-red",
-  escritorio: "bg-soft-blue",
-  organizador: "bg-cream",
-  atril: "bg-soft-green",
-  torre: "bg-soft-purple",
+/** Clase de fondo para cada tinte de ilustración. */
+export const TINT_CLASS: Record<IllustrationTint, string> = {
+  cream: "bg-cream",
+  "soft-blue": "bg-soft-blue",
+  "soft-green": "bg-soft-green",
+  "soft-purple": "bg-soft-purple",
+  "soft-red": "bg-soft-red",
 };
 
 const ART: Record<ProductIllustrationKey, ReactNode> = {

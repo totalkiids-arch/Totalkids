@@ -1,5 +1,6 @@
 // API pública de la feature "catalog". app/ y otras features importan solo desde aquí.
-export { listFeaturedProducts } from "./container";
+export { listFeaturedProducts, searchCatalog } from "./container";
+export { parseCatalogQuery, countActiveFilters, type CatalogQuery } from "./domain/catalog-query";
 export type { ProductSummary } from "./domain/product";
 export { CatalogScreen } from "./ui/catalog-screen";
 export { ProductDetailScreen } from "./ui/product-detail-screen";
