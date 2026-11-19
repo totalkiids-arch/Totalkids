@@ -27,7 +27,7 @@ export type PaymentState = { error: string } | null;
 /**
  * Envía el paso "Pago" (demostración de Flow). Sin condiciones aceptadas
  * devuelve el error; si faltan datos o el carrito cambió, vuelve a "Datos y
- * facturación"; si todo está en orden, lleva al resultado del pago.
+ * facturación" o al carrito; si todo está en orden, lleva al resultado del pago.
  */
 export async function startPaymentAction(
   _: PaymentState,
@@ -35,6 +35,6 @@ export async function startPaymentAction(
 ): Promise<PaymentState> {
   const result = await startDemoPayment(Object.fromEntries(formData));
   if (result.ok) redirect(result.redirectTo);
-  if (result.reason === "details") redirect("/checkout");
+  if (result.reason === "details") redirect(result.redirectTo);
   return { error: result.error };
 }

@@ -1,7 +1,8 @@
 // Raíz de composición de "checkout": conecta los puertos con sus adaptadores actuales.
 import { site } from "@/shared/config/site";
 
-import { checkoutBlocker, summarizeOrder } from "./application/order-summary";
+import { checkoutBlocker, summarizeOrder, type OrderSummary } from "./application/order-summary";
+import { paymentStepRedirect, type PaymentStepRedirect } from "./application/payment-guard";
 import type { CheckoutCartReader, CheckoutDraftStore } from "./application/ports";
 import { pickCheckoutValues, type CheckoutValues } from "./domain/checkout-draft";
 import {
@@ -73,18 +74,21 @@ export async function saveCheckoutDetails(input: CheckoutInput): Promise<SaveDet
   return { ok: true };
 }
 
+export type PaymentStep =
+  | { ok: true; details: CheckoutDetails; summary: OrderSummary }
+  | { ok: false; redirectTo: PaymentStepRedirect };
+
 /**
- * Caso de uso: lo que el paso de pago necesita. null si faltan datos válidos o
- * el carrito ya no se puede pagar (el paso de pago vuelve a "Datos y facturación").
+ * Caso de uso: abrir el paso "Pago". Revalida en el servidor el carrito y los
+ * datos guardados; si algo falta, indica adónde volver (ver paymentStepRedirect).
  */
-export async function getConfirmedCheckout(): Promise<{
-  details: CheckoutDetails;
-  summary: ReturnType<typeof summarizeOrder>;
-} | null> {
+export async function getPaymentStep(): Promise<PaymentStep> {
   const [current, values] = await Promise.all([cart.read(), drafts.read()]);
   const result = parseCheckoutDetails(values);
-  if (!result.ok || checkoutBlocker(current)) return null;
+  const redirectTo = paymentStepRedirect(current, result);
+  if (redirectTo || !result.ok) return { ok: false, redirectTo: redirectTo ?? "/checkout" };
   return {
+    ok: true,
     details: result.details,
     summary: summarizeOrder(current, result.details.delivery.method, FREE_SHIPPING_THRESHOLD),
   };
@@ -98,7 +102,7 @@ export async function clearCheckoutDraft() {
 export type StartPaymentResult =
   | { ok: true; redirectTo: "/checkout/resultado?estado=pending" }
   | { ok: false; reason: "terms"; error: string }
-  | { ok: false; reason: "details" };
+  | { ok: false; reason: "details"; redirectTo: PaymentStepRedirect };
 
 /**
  * Caso de uso: ir a pagar con Flow (RF-15). Exige aceptar las condiciones y
@@ -112,6 +116,7 @@ export type StartPaymentResult =
 export async function startDemoPayment(input: CheckoutInput): Promise<StartPaymentResult> {
   const confirmation = parsePaymentConfirmation(input);
   if (!confirmation.ok) return { ok: false, reason: "terms", error: confirmation.error };
-  if (!(await getConfirmedCheckout())) return { ok: false, reason: "details" };
+  const step = await getPaymentStep();
+  if (!step.ok) return { ok: false, reason: "details", redirectTo: step.redirectTo };
   return { ok: true, redirectTo: "/checkout/resultado?estado=pending" };
 }
