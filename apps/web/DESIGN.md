@@ -35,6 +35,7 @@ Los tokens viven en `src/app/globals.css` (bloque `@theme`). Cada uno genera uti
 | `yellow-ink`                                       | `#8A6100`             | Íconos/texto "amarillo" legible sobre crema                 |
 | `on-yellow`, `on-blue`, `on-dark`, `on-dark-muted` | —                     | Texto secundario sobre amarillo, azul y navy                |
 | `navy-line`                                        | `#36415E`             | Separadores en el pie                                       |
+| `step-blue` / `step-green`                         | `#8EB8E6` / `#97D46C` | Insignias B y C de las secciones del checkout (texto navy)  |
 
 Todas las combinaciones de texto con estos tonos pasan AA (≥ 5:1).
 

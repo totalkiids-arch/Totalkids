@@ -47,6 +47,8 @@
   --color-on-dark: #d5dae6; /* texto sobre brand-navy (footer) */
   --color-on-dark-muted: #b4bcd0;
   --color-navy-line: #36415e;
+  --color-step-blue: #8eb8e6; /* insignia de sección del checkout (texto navy encima) */
+  --color-step-green: #97d46c; /* insignia de sección del checkout (texto navy encima) */
 
   /* Muestras de color de producto (filtro de catálogo) */
   --color-swatch-wood: #e8b77a;
