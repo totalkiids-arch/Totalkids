@@ -19,32 +19,25 @@ export interface CategoryNavItem extends NavItem {
  * vendrán del catálogo administrable (RF-26) y estos enlaces apuntarán a sus slugs.
  */
 export const categoryNav = [
-  { href: "/catalogo?categoria=mesas-y-sillas", label: "Mesas y Sillas", tone: "blue" },
-  { href: "/catalogo?categoria=camas-y-cunas", label: "Camas y Cunas", tone: "purple" },
-  { href: "/catalogo?categoria=libreros-y-estantes", label: "Libreros y Estantes", tone: "green" },
-  {
-    href: "/catalogo?categoria=organizadores-y-baules",
-    label: "Organizadores y Baúles",
-    tone: "yellow",
-  },
-  { href: "/catalogo?categoria=escritorios", label: "Escritorios", tone: "red" },
-  { href: "/catalogo?categoria=linea-montessori", label: "Línea Montessori", tone: "navy" },
-  {
-    href: "/catalogo?categoria=jardines-y-colegios",
-    label: "Jardines y Colegios",
-    tone: "outline",
-  },
+  { href: "/catalogo?categoria=cunas", label: "Cunas y camas", tone: "purple" },
+  { href: "/catalogo?categoria=mesas", label: "Mesas", tone: "blue" },
+  { href: "/catalogo?categoria=sillas", label: "Sillas", tone: "red" },
+  { href: "/catalogo?categoria=mudadores", label: "Mudadores", tone: "green" },
+  { href: "/catalogo?categoria=almacenamiento", label: "Almacenamiento", tone: "yellow" },
+  { href: "/catalogo?categoria=montessori-pikler", label: "Montessori y Pikler", tone: "navy" },
+  { href: "/catalogo?categoria=junji", label: "Línea JUNJI", tone: "outline" },
   { href: "/servicios", label: "Servicios especiales", tone: "green", icon: "star" },
   { href: "/catalogo?ofertas=1", label: "Ofertas", tone: "offer" },
 ] as const satisfies readonly CategoryNavItem[];
 
 /** Columna "Categorías" del pie de página. */
 export const footerCategoryNav = [
-  { href: "/catalogo?categoria=mesas-y-sillas", label: "Mesas y sillas" },
-  { href: "/catalogo?categoria=camas-y-cunas", label: "Camas y cunas" },
-  { href: "/catalogo?categoria=libreros-y-estantes", label: "Libreros y estantes" },
-  { href: "/catalogo?categoria=organizadores-y-baules", label: "Organizadores y baúles" },
-  { href: "/catalogo?categoria=linea-montessori", label: "Línea Montessori" },
+  { href: "/catalogo?categoria=cunas", label: "Cunas y camas" },
+  { href: "/catalogo?categoria=mesas", label: "Mesas" },
+  { href: "/catalogo?categoria=sillas", label: "Sillas" },
+  { href: "/catalogo?categoria=mudadores", label: "Mudadores" },
+  { href: "/catalogo?categoria=almacenamiento", label: "Almacenamiento" },
+  { href: "/catalogo?categoria=montessori-pikler", label: "Montessori y Pikler" },
 ] as const satisfies readonly NavItem[];
 
 /** Columna "Ayuda" del pie de página. */

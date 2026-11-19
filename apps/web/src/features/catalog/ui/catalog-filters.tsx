@@ -7,19 +7,9 @@ import type { FormEvent } from "react";
 import { Checkbox, TextField } from "@/shared/ui/form";
 
 import { countActiveFilters, type CatalogQuery } from "../domain/catalog-query";
-import { AGE_BUCKETS, COLORS, MATERIALS, type ColorSlug } from "../domain/product";
+import { LEVELS, MATERIALS } from "../domain/product";
 import { catalogHref } from "./catalog-href";
 import { QueryHiddenFields } from "./query-hidden-fields";
-
-const SWATCH: Record<ColorSlug, string> = {
-  natural: "bg-swatch-wood",
-  blanco: "bg-white border-2 border-swatch-border",
-  azul: "bg-brand-blue",
-  rojo: "bg-brand-red",
-  amarillo: "bg-brand-yellow",
-  verde: "bg-brand-green",
-  lila: "bg-swatch-lilac",
-};
 
 interface CatalogFiltersProps {
   query: CatalogQuery;
@@ -68,50 +58,17 @@ export function CatalogFilters({ query, variant, onApply }: CatalogFiltersProps)
       <QueryHiddenFields query={query} keep={["q", "category", "sort"]} />
 
       <fieldset className="flex flex-col">
-        <legend className="mb-1 font-extrabold">Edad</legend>
-        {AGE_BUCKETS.map((bucket) => (
+        <legend className="mb-1 font-extrabold">Nivel</legend>
+        {LEVELS.map((level) => (
           <Checkbox
-            key={bucket.id}
-            name="edad"
-            value={bucket.id}
-            label={bucket.label}
-            defaultChecked={query.ages.includes(bucket.id)}
+            key={level.id}
+            name="nivel"
+            value={level.id}
+            label={level.label}
+            description={level.detail}
+            defaultChecked={query.levels.includes(level.id)}
           />
         ))}
-      </fieldset>
-
-      <fieldset>
-        <legend className="mb-2.5 font-extrabold">Color</legend>
-        <div className="flex flex-wrap gap-2.5">
-          {COLORS.map((color) => (
-            <label key={color.slug} className="relative cursor-pointer" title={color.label}>
-              <input
-                type="checkbox"
-                name="color"
-                value={color.slug}
-                defaultChecked={query.colors.includes(color.slug)}
-                className="peer sr-only"
-              />
-              <span className="sr-only">{color.label}</span>
-              <span
-                aria-hidden
-                className={`block size-11 rounded-xl ${SWATCH[color.slug]} ring-brand-navy ring-offset-2 peer-checked:ring-3 peer-focus-visible:outline-3 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-brand-blue`}
-              />
-              <svg
-                aria-hidden
-                viewBox="0 0 24 24"
-                className={`pointer-events-none absolute inset-0 m-auto hidden size-5 peer-checked:block ${color.slug === "blanco" || color.slug === "amarillo" ? "text-brand-navy" : "text-white"}`}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M5 12l5 5 9-10" />
-              </svg>
-            </label>
-          ))}
-        </div>
       </fieldset>
 
       <fieldset className="flex flex-col gap-2">
@@ -175,8 +132,7 @@ export function CatalogFilters({ query, variant, onApply }: CatalogFiltersProps)
         {active > 0 ? (
           <Link
             href={catalogHref(query, {
-              ages: [],
-              colors: [],
+              levels: [],
               materials: [],
               priceMin: null,
               priceMax: null,

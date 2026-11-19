@@ -6,23 +6,23 @@ import { ButtonLink } from "@/shared/ui/button";
 import { ArrowRightIcon } from "@/shared/ui/icons";
 import { SectionHeading } from "@/shared/ui/section-heading";
 
-import { ROOM_LABEL, type ProductRoom, type ProductSummary } from "../domain/product";
+import { LEVELS, type LevelId, type ProductSummary } from "../domain/product";
 import { ProductCard } from "./product-card";
 
-type Filter = ProductRoom | "todos";
+type Filter = LevelId | "todos";
 
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: "todos", label: "Todos" },
-  ...(Object.entries(ROOM_LABEL) as [ProductRoom, string][]).map(([value, label]) => ({
-    value,
-    label,
-  })),
-];
-
-/** Productos destacados de la portada con filtro por ambiente. */
+/** Productos destacados de la portada con filtro por nivel. */
 export function FeaturedProducts({ products }: { products: ProductSummary[] }) {
   const [filter, setFilter] = useState<Filter>("todos");
-  const visible = filter === "todos" ? products : products.filter((p) => p.room === filter);
+  const visible = filter === "todos" ? products : products.filter((p) => p.levels.includes(filter));
+  // Solo los niveles que tienen algún destacado: un filtro nunca deja la grilla vacía.
+  const filters: { value: Filter; label: string }[] = [
+    { value: "todos", label: "Todos" },
+    ...LEVELS.filter((l) => products.some((p) => p.levels.includes(l.id))).map((l) => ({
+      value: l.id,
+      label: l.label,
+    })),
+  ];
 
   return (
     <section aria-labelledby="destacados" className="mx-auto max-w-7xl px-4 pt-14 pb-6 sm:px-6">
@@ -32,8 +32,8 @@ export function FeaturedProducts({ products }: { products: ProductSummary[] }) {
         eyebrowTone="green"
         title="Productos destacados"
         aside={
-          <div role="group" aria-label="Filtrar por ambiente" className="flex flex-wrap gap-2">
-            {FILTERS.map(({ value, label }) => (
+          <div role="group" aria-label="Filtrar por nivel" className="flex flex-wrap gap-2">
+            {filters.map(({ value, label }) => (
               <button
                 key={value}
                 type="button"

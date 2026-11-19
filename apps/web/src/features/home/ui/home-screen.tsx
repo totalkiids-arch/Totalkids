@@ -6,7 +6,7 @@ import { Ideas } from "./sections/ideas";
 import { Institutions } from "./sections/institutions";
 import { NewsletterSignup } from "./sections/newsletter-signup";
 import { Philosophy } from "./sections/philosophy";
-import { ShopByAge } from "./sections/shop-by-age";
+import { ShopByLevel } from "./sections/shop-by-level";
 import { TrustStrip } from "./sections/trust-strip";
 
 /** Tienda y compra · Inicio. Réplica de la portada de la maqueta aprobada. */
@@ -16,7 +16,7 @@ export async function HomeScreen() {
     <>
       <Hero />
       <TrustStrip />
-      <ShopByAge />
+      <ShopByLevel />
       <FeaturedProducts products={featured} />
       <Philosophy />
       <Institutions />

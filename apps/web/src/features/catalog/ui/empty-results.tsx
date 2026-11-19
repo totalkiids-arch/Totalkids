@@ -28,8 +28,7 @@ export function EmptyResults({ query }: { query: CatalogQuery }) {
         {filters > 0 ? (
           <ButtonLink
             href={catalogHref(query, {
-              ages: [],
-              colors: [],
+              levels: [],
               materials: [],
               priceMin: null,
               priceMax: null,

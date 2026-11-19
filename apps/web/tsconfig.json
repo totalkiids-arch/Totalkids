@@ -1,6 +1,8 @@
 {
   "extends": "@totalkids/config/tsconfig/nextjs.json",
   "compilerOptions": {
+    // Permite que scripts/ importe .ts con extensión (Node los ejecuta sin compilar).
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": ["./src/*"]
     }

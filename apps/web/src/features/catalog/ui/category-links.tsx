@@ -6,13 +6,13 @@ import { catalogHref } from "./catalog-href";
 
 const ACTIVE: Record<CategorySlug | "todas", string> = {
   todas: "bg-brand-navy text-white",
-  "mesas-y-sillas": "bg-brand-blue text-white",
-  "camas-y-cunas": "bg-brand-purple text-white",
-  "libreros-y-estantes": "bg-brand-green text-white",
-  "organizadores-y-baules": "bg-brand-yellow text-brand-navy",
-  escritorios: "bg-brand-red text-white",
-  "linea-montessori": "bg-offer-ink text-white",
-  "jardines-y-colegios": "bg-brand-navy text-white",
+  cunas: "bg-brand-purple text-white",
+  mesas: "bg-brand-blue text-white",
+  sillas: "bg-brand-red text-white",
+  mudadores: "bg-brand-green text-white",
+  almacenamiento: "bg-brand-yellow text-brand-navy",
+  "montessori-pikler": "bg-brand-navy text-white",
+  junji: "bg-offer-ink text-white",
 };
 
 /** Categorías como enlaces (conservan búsqueda, filtros y orden). */

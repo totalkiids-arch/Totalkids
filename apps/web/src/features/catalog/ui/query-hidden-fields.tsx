@@ -17,8 +17,7 @@ export function QueryHiddenFields({
   if (keep.includes("q") && query.q) fields.push(["q", query.q]);
   if (keep.includes("category") && query.category) fields.push(["categoria", query.category]);
   if (keep.includes("filters")) {
-    query.ages.forEach((v) => fields.push(["edad", v]));
-    query.colors.forEach((v) => fields.push(["color", v]));
+    query.levels.forEach((v) => fields.push(["nivel", v]));
     query.materials.forEach((v) => fields.push(["material", v]));
     if (query.priceMin !== null) fields.push(["precio_min", String(query.priceMin)]);
     if (query.priceMax !== null) fields.push(["precio_max", String(query.priceMax)]);

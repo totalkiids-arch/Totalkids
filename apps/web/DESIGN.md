@@ -24,6 +24,7 @@ Los tokens viven en `src/app/globals.css` (bloque `@theme`). Cada uno genera uti
 | Token                                              | Hex                   | Uso                                                         |
 | -------------------------------------------------- | --------------------- | ----------------------------------------------------------- |
 | `brand-blue-deep` / `brand-red-deep`               | `#103B70` / `#98271F` | Sombra 3D de botones azul/rojo; texto rojo sobre `soft-red` |
+| `brand-yellow-deep`                                | `#D9A21E`             | Sombra 3D del botón amarillo (`accent`)                     |
 | `ochre`                                            | `#E3C877`             | Sombra 3D de botones y chips blancos                        |
 | `text-body`                                        | `#3D4660`             | Párrafos destacados (hero, tarjetas)                        |
 | `cream`                                            | `#FFF3CC`             | Fondo de ilustraciones y chips                              |
@@ -93,11 +94,12 @@ Se cargan con `next/font/google` (`src/app/fonts.ts`): se descargan en el build 
 
 ## Componentes compartidos (`src/shared/ui`)
 
-- `Button` / `ButtonLink`: píldora "de juguete" con sombra sólida. Variantes `primary`, `danger`, `light`, `dark`, `outline`, `ghost`.
+- `Button` / `ButtonLink`: píldora "de juguete" con sombra sólida. Variantes `primary`, `accent` (amarillo, "Comprar ahora"), `danger`, `light`, `dark`, `outline`, `ghost`.
 - `SectionHeading`: antetítulo de color + título + complemento (texto, filtros o enlace).
 - `icons.tsx`: íconos de trazo de la maqueta (decorativos, `aria-hidden`).
 - `form.tsx`: `TextField`, `TextareaField`, `SelectField`, `Checkbox` y `RadioGroup` (lista o tarjetas). Etiqueta visible, ayuda y error conectados con `aria-describedby`; `aria-invalid` cuando hay error.
 - `modal.tsx`: `Modal` sobre `<dialog>` nativo (foco atrapado y devuelto, Esc, clic en el fondo, sin scroll de fondo). Variante `sheet` para móvil.
+- `tabs.tsx`: `Tabs` accesibles (patrón APG, activación automática): flechas, Inicio y Fin; todos los paneles se renderizan en el servidor y los inactivos quedan `hidden`. Color de la pestaña activa con `tone`.
 - `carousel.tsx`: `Carousel` accesible (patrón APG). Rota cada 7 s; se pausa al pasar el mouse, al enfocar un control o con el botón Pausar. Con `prefers-reduced-motion` no rota ni anima. Las diapositivas inactivas quedan `inert`. Admite deslizar en pantallas táctiles.
 - Galería en vivo: `/dev/componentes` (solo en desarrollo).
 - `layout/StoreHeader`, `layout/StoreFooter`: cabecera (franja arcoíris, barra superior, buscador, categorías) y pie de la maqueta.

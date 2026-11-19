@@ -16,55 +16,55 @@ const STAGES: {
 }[] = [
   {
     range: "0–2",
-    label: "0 a 2 años",
-    title: "Primeros pasos",
-    text: "Cunas, camas suelo Montessori, espejos y gimnasios de gateo.",
-    href: "/catalogo?edad=0-2",
+    label: "Sala cuna, 0 a 2 años",
+    title: "Sala cuna",
+    text: "Cunas, mudadores, sillas de ingesta y equipamiento Pikler para los primeros movimientos.",
+    href: "/catalogo?nivel=sala-cuna",
     card: "bg-soft-blue",
     accent: "text-brand-blue",
     link: "text-brand-blue",
   },
   {
-    range: "3–5",
-    label: "3 a 5 años",
-    title: "Exploradores",
-    text: "Mesas con sillas, camas casita, libreros frontales y torres de aprendizaje.",
-    href: "/catalogo?edad=3-5",
+    range: "2–4",
+    label: "Nivel medio, 2 a 4 años",
+    title: "Nivel medio",
+    text: "Sillas y mesas párvulo, libreros a su altura y triángulos para trepar.",
+    href: "/catalogo?nivel=nivel-medio",
     card: "bg-soft-red",
     accent: "text-brand-red",
     link: "text-brand-red-deep",
   },
   {
-    range: "6–9",
-    label: "6 a 9 años",
-    title: "Pequeños estudiantes",
-    text: "Escritorios regulables, sillas ergonómicas y organizadores de cubos.",
-    href: "/catalogo?edad=6-9",
+    range: "4–6",
+    label: "Transición, 4 a 6 años",
+    title: "Transición",
+    text: "Sillas infantiles, mesas de trabajo, estantes escolares y roperos.",
+    href: "/catalogo?nivel=transicion",
     card: "bg-soft-green",
     accent: "text-brand-green",
     link: "text-brand-green",
   },
   {
-    range: "10+",
-    label: "10 años o más",
-    title: "Grandes ideas",
-    text: "Camas nido, repisas, escritorios de estudio y almacenamiento.",
-    href: "/catalogo?edad=10",
+    range: "+",
+    label: "Educadoras y adultos",
+    title: "Educadoras",
+    text: "Escritorios, cajoneras, estantes docentes y sillas de adulto para el aula.",
+    href: "/catalogo?nivel=adultos",
     card: "bg-soft-purple",
     accent: "text-brand-purple",
     link: "text-brand-purple",
   },
 ];
 
-/** Accesos al catálogo por etapa de edad. */
-export function ShopByAge() {
+/** Accesos al catálogo por nivel educativo (sala cuna, nivel medio, transición, docentes). */
+export function ShopByLevel() {
   return (
-    <section aria-labelledby="por-edad" className="mx-auto max-w-7xl px-4 pt-12 pb-6 sm:px-6">
+    <section aria-labelledby="por-nivel" className="mx-auto max-w-7xl px-4 pt-12 pb-6 sm:px-6">
       <SectionHeading
-        id="por-edad"
-        eyebrow="Cada etapa, su mueble"
+        id="por-nivel"
+        eyebrow="Cada nivel, su mueble"
         eyebrowTone="red"
-        title="Compra por edad"
+        title="Compra por nivel"
         aside={
           <p className="max-w-[420px] text-text-secondary">
             La altura correcta de mesa, silla y estante hace la diferencia en postura, seguridad y

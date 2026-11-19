@@ -102,7 +102,30 @@ app ──> features/<f>/index.ts ──> ui ──> container ──> infrastru
 
 ## Catálogo (UI-02)
 
-- Todo el estado vive en la URL: `/catalogo?q=&categoria=&edad=&color=&material=&precio_min=&precio_max=&ofertas=1&orden=&pagina=`. Se puede compartir, funciona con atrás/adelante y sin JavaScript.
+- Todo el estado vive en la URL: `/catalogo?q=&categoria=&nivel=&material=&precio_min=&precio_max=&ofertas=1&orden=&pagina=`. Se puede compartir, funciona con atrás/adelante y sin JavaScript.
 - `features/catalog/domain/catalog-query.ts`: leer la consulta (`parseCatalogQuery`), armar enlaces (`toQueryString`) y aplicar búsqueda, filtros, orden y paginación (`applyCatalogQuery`). Funciones puras con tests.
-- El adaptador `demo-product-catalog.ts` aplica esas reglas sobre los 12 productos de la maqueta. Al existir la API, el adaptador traduce `CatalogQuery` a la consulta del endpoint y el filtrado pasa al servidor.
+- El adaptador `imported-product-catalog.ts` aplica esas reglas sobre el catálogo importado (ver abajo). Al existir la API, el adaptador traduce `CatalogQuery` a la consulta del endpoint y el filtrado pasa al servidor.
 - Búsquedas y combinaciones de filtros llevan `noindex`; el catálogo y sus categorías sí se indexan.
+
+## Ficha de producto (UI-04)
+
+- `/producto/[slug]` se prerenderiza con `generateStaticParams` (`listProductSlugs`); un slug inexistente responde 404 con `not-found.tsx`.
+- `features/catalog/domain/product-detail.ts`: fotos, variantes (una opción por variante, con SKU, precio y stock; un producto simple tiene una sola), extras y reglas puras con tests: selección de variante, opciones agotadas, tope de cantidad (stock y 9 por línea), total con extras y validación del texto personalizado (RF-03, RF-04).
+- `ProductShowcase` (cliente) guarda la selección; precio, SKU y disponibilidad salen de la variante. Una variante agotada no se puede comprar. Las pestañas sin contenido (p. ej. Medidas) no se muestran.
+- `loadProductDetail` usa `cache` de React: `generateMetadata` y la pantalla comparten una sola consulta. JSON-LD `Product` publica ofertas solo cuando hay precio.
+- Pendiente: "Agregar al carrito" valida y confirma, pero aún no persiste la línea (RF-05, pantalla Carrito).
+
+## Catálogo importado de totalmuebles.cl
+
+Los productos son los del sitio WooCommerce del cliente. `pnpm --filter web catalogo:importar` (`scripts/importar-catalogo.ts`):
+
+1. Lee la Store API pública (solo JSON) de las categorías `junji`, `infantil` y `montessori-pikler`, más el ranking de ventas, las fechas de publicación y los destacados.
+2. Descarta `EXCLUDED_SLUGS` (productos no infantiles ni de aula, y "Diseños de salas", que es un servicio).
+3. Normaliza con funciones puras y probadas (`infrastructure/totalmuebles/transform.ts`): nombres en mayúsculas a oración, HTML a texto plano (nunca se renderiza HTML del sitio), medidas y ficha técnica desde la descripción, categorías, niveles y materiales por palabras clave.
+4. Descarga hasta 6 fotos por producto como WebP (1200 px) en `public/productos/<slug>/` y escribe `infrastructure/totalmuebles/catalogo.json`.
+
+Ambos resultados se versionan. Volver a ejecutarlo actualiza precios, stock y fotos; revisa el diff antes de commitear. El JSON será la semilla de la tabla de productos cuando el catálogo pase a la API.
+
+- **Categorías**: las del cliente (Cunas y camas, Mesas, Sillas, Mudadores, Almacenamiento, Montessori y Pikler) más la línea JUNJI. El nombre del producto manda sobre las categorías del sitio, que tienen ruido.
+- **Niveles** (filtro `nivel`): sala cuna, nivel medio, transición y educadoras/adultos, detectados por el nombre. Un producto sin nivel solo aparece sin ese filtro.
+- **Sin datos en el sitio**: SKU (se usa `TK-<id del sitio>`), variantes, colores, cuotas, garantía y cantidad exacta de stock (con stock sin cantidad se permite hasta 9 por línea).

@@ -2,6 +2,7 @@ import {
   useId,
   type InputHTMLAttributes,
   type ReactNode,
+  type Ref,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
@@ -110,7 +111,11 @@ function Messages({
 }
 
 type TextFieldProps = FieldChromeProps &
-  Omit<InputHTMLAttributes<HTMLInputElement>, "children"> & { shape?: keyof typeof SHAPE };
+  Omit<InputHTMLAttributes<HTMLInputElement>, "children"> & {
+    shape?: keyof typeof SHAPE;
+    /** React 19: el ref llega como prop y se pasa al <input> (p. ej. para enfocar un error). */
+    ref?: Ref<HTMLInputElement>;
+  };
 
 export function TextField({
   label,

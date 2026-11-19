@@ -4,14 +4,12 @@
  * y, más adelante, traducirse a la consulta de la API.
  */
 import {
-  AGE_BUCKETS,
   CATEGORIES,
-  COLORS,
+  LEVELS,
   MATERIALS,
   isOnSale,
-  type AgeBucketId,
   type CategorySlug,
-  type ColorSlug,
+  type LevelId,
   type MaterialSlug,
   type ProductSummary,
 } from "./product";
@@ -29,8 +27,7 @@ export const PAGE_SIZE = 9;
 export interface CatalogQuery {
   q: string;
   category: CategorySlug | null;
-  ages: AgeBucketId[];
-  colors: ColorSlug[];
+  levels: LevelId[];
   materials: MaterialSlug[];
   priceMin: number | null;
   priceMax: number | null;
@@ -42,8 +39,7 @@ export interface CatalogQuery {
 export const EMPTY_QUERY: CatalogQuery = {
   q: "",
   category: null,
-  ages: [],
-  colors: [],
+  levels: [],
   materials: [],
   priceMin: null,
   priceMax: null,
@@ -90,13 +86,9 @@ export function parseCatalogQuery(params: RawParams): CatalogQuery {
   return {
     q: (first(params.q) ?? "").trim().slice(0, 100),
     category: CATEGORIES.some((c) => c.slug === category) ? (category as CategorySlug) : null,
-    ages: pick<AgeBucketId>(
-      list(params.edad),
-      AGE_BUCKETS.map((b) => b.id),
-    ),
-    colors: pick<ColorSlug>(
-      list(params.color),
-      COLORS.map((c) => c.slug),
+    levels: pick<LevelId>(
+      list(params.nivel),
+      LEVELS.map((l) => l.id),
     ),
     materials: pick<MaterialSlug>(
       list(params.material),
@@ -110,13 +102,12 @@ export function parseCatalogQuery(params: RawParams): CatalogQuery {
   };
 }
 
-/** Arma el query string ("?q=…&edad=3-5") de una consulta. Omite valores por defecto. */
+/** Arma el query string ("?q=…&nivel=sala-cuna") de una consulta. Omite valores por defecto. */
 export function toQueryString(query: CatalogQuery): string {
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
   if (query.category) params.set("categoria", query.category);
-  query.ages.forEach((v) => params.append("edad", v));
-  query.colors.forEach((v) => params.append("color", v));
+  query.levels.forEach((v) => params.append("nivel", v));
   query.materials.forEach((v) => params.append("material", v));
   if (query.priceMin !== null) params.set("precio_min", String(query.priceMin));
   if (query.priceMax !== null) params.set("precio_max", String(query.priceMax));
@@ -130,8 +121,7 @@ export function toQueryString(query: CatalogQuery): string {
 /** Cantidad de filtros activos (sin contar búsqueda, categoría ni orden). */
 export function countActiveFilters(query: CatalogQuery): number {
   return (
-    query.ages.length +
-    query.colors.length +
+    query.levels.length +
     query.materials.length +
     (query.priceMin !== null || query.priceMax !== null ? 1 : 0) +
     (query.onSale ? 1 : 0)
@@ -152,14 +142,6 @@ function matchesSearch(product: ProductSummary, q: string): boolean {
   return normalize(q)
     .split(/\s+/)
     .every((word) => haystack.includes(word));
-}
-
-function matchesAges(product: ProductSummary, ages: AgeBucketId[]): boolean {
-  if (ages.length === 0) return true;
-  const productMax = product.ages.max ?? Infinity;
-  return AGE_BUCKETS.filter((b) => ages.includes(b.id)).some(
-    (b) => product.ages.min <= (b.max ?? Infinity) && productMax >= b.min,
-  );
 }
 
 function matchesPrice(product: ProductSummary, min: number | null, max: number | null): boolean {
@@ -198,8 +180,7 @@ export function applyCatalogQuery(
       (p) =>
         matchesSearch(p, query.q) &&
         (query.category === null || p.categories.includes(query.category)) &&
-        matchesAges(p, query.ages) &&
-        anyOf(query.colors, p.colors) &&
+        anyOf(query.levels, p.levels) &&
         anyOf(query.materials, p.materials) &&
         matchesPrice(p, query.priceMin, query.priceMax) &&
         (!query.onSale || isOnSale(p)),

@@ -7,6 +7,7 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
  */
 const VARIANTS = {
   primary: "bg-brand-blue text-white shadow-[0_6px_0_var(--color-brand-blue-deep)]",
+  accent: "bg-brand-yellow text-brand-navy shadow-[0_6px_0_var(--color-brand-yellow-deep)]",
   danger: "bg-brand-red text-white shadow-[0_5px_0_var(--color-brand-red-deep)]",
   light: "bg-surface text-text-primary shadow-[0_6px_0_var(--color-ochre)]",
   dark: "bg-brand-navy text-white",
