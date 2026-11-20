@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { isRegionCode, type RegionCode } from "./regions";
+import { isRegionCode, type RegionCode } from "@/shared/config/regions";
 import { formatRut, isValidRut } from "./rut";
 
 /**

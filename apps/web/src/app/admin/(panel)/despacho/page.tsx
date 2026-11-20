@@ -5,10 +5,10 @@ import { ShippingScreen } from "@/features/shipping";
 
 export const metadata: Metadata = { title: "Despacho y retiro" };
 
-export default function Page() {
+export default async function Page({ searchParams }: PageProps<"/admin/despacho">) {
   return (
     <AdminSectionGate section="despacho">
-      <ShippingScreen />
+      <ShippingScreen searchParams={await searchParams} />
     </AdminSectionGate>
   );
 }

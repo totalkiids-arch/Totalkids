@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseCheckoutDetails, type CheckoutInput } from "./checkout-details";
-import { isRegionCode, REGIONS, regionName } from "./regions";
+import { isRegionCode, REGIONS, regionName } from "@/shared/config/regions";
 
 const buyer = {
   nombre: "  María González ",

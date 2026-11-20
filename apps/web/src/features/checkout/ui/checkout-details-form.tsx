@@ -17,7 +17,7 @@ import {
   type DeliveryMethod,
   type TaxDocument,
 } from "../domain/checkout-details";
-import { REGIONS } from "../domain/regions";
+import { REGIONS } from "@/shared/config/regions";
 import { submitCheckoutDetailsAction } from "./checkout-actions";
 import { OrderSummaryCard } from "./order-summary-card";
 

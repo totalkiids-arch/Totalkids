@@ -7,7 +7,7 @@ import { ArrowLeftIcon } from "@/shared/ui/icons";
 
 import { getPaymentStep } from "../container";
 import type { CheckoutDetails } from "../domain/checkout-details";
-import { regionName } from "../domain/regions";
+import { regionName } from "@/shared/config/regions";
 import { FlowPaymentForm } from "./flow-payment-form";
 import { OrderSummaryCard } from "./order-summary-card";
 
