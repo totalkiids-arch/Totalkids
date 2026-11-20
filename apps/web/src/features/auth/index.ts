@@ -4,3 +4,7 @@ export { RegisterScreen } from "./ui/register-screen";
 export { RecoverAccessScreen } from "./ui/recover-access-screen";
 export { ResetPasswordScreen } from "./ui/reset-password-screen";
 export { AdminLoginScreen } from "./ui/admin-login-screen";
+export { AdminSignOutButton } from "./ui/admin-sign-out-button";
+export { AdminSectionGate } from "./ui/admin-section-gate";
+export { getAdminSession } from "./container";
+export type { AdminSession } from "./application/admin-session";

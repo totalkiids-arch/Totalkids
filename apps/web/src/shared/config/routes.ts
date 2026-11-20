@@ -49,21 +49,124 @@ export const footerHelpNav = [
   { href: "/politicas", label: "Preguntas frecuentes" },
 ] as const satisfies readonly NavItem[];
 
-/** Menú lateral del panel administrativo. */
+/** Grupos del menú lateral del panel, en el orden de la maqueta. */
+export const ADMIN_NAV_GROUPS = ["Principal", "Tienda", "Relaciones", "Administración"] as const;
+export type AdminNavGroup = (typeof ADMIN_NAV_GROUPS)[number];
+
+/** Ícono de cada enlace del panel (AdminShell lo traduce al componente). */
+export type AdminNavIcon =
+  | "grid"
+  | "bag"
+  | "card"
+  | "box"
+  | "tag"
+  | "truck"
+  | "image"
+  | "mail"
+  | "users"
+  | "chart"
+  | "clock";
+
+export interface AdminNavItem extends NavItem {
+  group: AdminNavGroup;
+  icon: AdminNavIcon;
+  /**
+   * Sección del panel. Qué rol la ve lo decide features/users (canAccessSection);
+   * el layout filtra antes de entregar el menú a AdminShell.
+   */
+  section: string;
+}
+
+/** Menú lateral del panel administrativo (todas las secciones, sin filtrar por rol). */
 export const adminNav = [
-  { href: "/admin", label: "Resumen" },
-  { href: "/admin/pedidos", label: "Pedidos" },
-  { href: "/admin/pagos", label: "Pagos y conciliación" },
-  { href: "/admin/productos", label: "Productos" },
-  { href: "/admin/categorias", label: "Categorías" },
-  { href: "/admin/inventario", label: "Inventario" },
-  { href: "/admin/cupones", label: "Cupones" },
-  { href: "/admin/despacho", label: "Despacho y retiro" },
-  { href: "/admin/banners", label: "Banners" },
-  { href: "/admin/solicitudes", label: "Solicitudes" },
-  { href: "/admin/suscriptores", label: "Suscriptores" },
-  { href: "/admin/correos", label: "Correos" },
-  { href: "/admin/reportes", label: "Reportes" },
-  { href: "/admin/usuarios", label: "Usuarios y roles" },
-  { href: "/admin/actividad", label: "Historial de actividad" },
-] as const satisfies readonly NavItem[];
+  { href: "/admin", label: "Resumen", group: "Principal", icon: "grid", section: "resumen" },
+  { href: "/admin/pedidos", label: "Pedidos", group: "Principal", icon: "bag", section: "pedidos" },
+  {
+    href: "/admin/pagos",
+    label: "Pagos y conciliación",
+    group: "Principal",
+    icon: "card",
+    section: "pagos",
+  },
+  {
+    href: "/admin/productos",
+    label: "Productos",
+    group: "Tienda",
+    icon: "box",
+    section: "productos",
+  },
+  {
+    href: "/admin/categorias",
+    label: "Categorías",
+    group: "Tienda",
+    icon: "grid",
+    section: "categorias",
+  },
+  {
+    href: "/admin/inventario",
+    label: "Inventario",
+    group: "Tienda",
+    icon: "box",
+    section: "inventario",
+  },
+  { href: "/admin/cupones", label: "Cupones", group: "Tienda", icon: "tag", section: "cupones" },
+  {
+    href: "/admin/despacho",
+    label: "Despacho y retiro",
+    group: "Tienda",
+    icon: "truck",
+    section: "despacho",
+  },
+  { href: "/admin/banners", label: "Banners", group: "Tienda", icon: "image", section: "banners" },
+  {
+    href: "/admin/solicitudes",
+    label: "Solicitudes",
+    group: "Relaciones",
+    icon: "mail",
+    section: "solicitudes",
+  },
+  {
+    href: "/admin/suscriptores",
+    label: "Suscriptores",
+    group: "Relaciones",
+    icon: "users",
+    section: "suscriptores",
+  },
+  {
+    href: "/admin/correos",
+    label: "Correos",
+    group: "Relaciones",
+    icon: "mail",
+    section: "correos",
+  },
+  {
+    href: "/admin/reportes",
+    label: "Reportes",
+    group: "Administración",
+    icon: "chart",
+    section: "reportes",
+  },
+  {
+    href: "/admin/usuarios",
+    label: "Usuarios y roles",
+    group: "Administración",
+    icon: "users",
+    section: "usuarios",
+  },
+  {
+    href: "/admin/actividad",
+    label: "Historial de actividad",
+    group: "Administración",
+    icon: "clock",
+    section: "actividad",
+  },
+] as const satisfies readonly AdminNavItem[];
+
+/**
+ * ¿El enlace del menú corresponde a la página actual? El resumen solo en /admin;
+ * el resto también en sus subrutas (/admin/pedidos/[id], /admin/productos/nuevo).
+ */
+export function isActiveAdminHref(pathname: string, href: string): boolean {
+  if (href === "/admin") return pathname === "/admin" || pathname === "/admin/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}

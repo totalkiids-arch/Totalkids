@@ -138,3 +138,11 @@ Ambos resultados se versionan. Volver a ejecutarlo actualiza precios, stock y fo
 - **Mutaciones**: Server Actions en `ui/cart-actions.ts`. La ficha (catalog) no importa cart: la página `/producto/[slug]` le inyecta `addToCartAction`, para no crear un ciclo entre features.
 - **Contador del encabezado**: `CartLink` lee la cookie en el navegador (`useSyncExternalStore`), así las páginas de la tienda siguen estáticas. `shared/ui/cart-signal.ts` avisa los cambios. El layout entrega `CartLink` a `StoreShell` (shared no depende de features).
 - **Pendiente**: cupones (RF-07; hoy responde que no hay cupones vigentes) y umbral de despacho gratis (`site.freeShippingThreshold`, RF-08), ambos según la API y el cliente.
+
+## Panel y sesión demo (UI-10)
+
+- **Sesión de demostración, sin seguridad real**: `/admin/ingresar` guarda el rol elegido en la cookie `tk_demo_rol` (`admin` | `operator`) con una Server Action. No hay credenciales: correo y contraseña son de ejemplo y no se envían. Lo implementa `features/auth/infrastructure/demo-admin-session.ts` tras los puertos de `application/admin-session.ts`; en LN-04 solo cambia ese adaptador (RNF-01, RF-31).
+- **Roles y secciones**: `features/users/domain/admin-role.ts` define los roles, las 15 secciones y `canAccessSection`. El operador ve resumen, pedidos (con su detalle), pagos, solicitudes, correos y reportes (SRS 2.3).
+- **Layout** `app/admin/(panel)/layout.tsx`: sin sesión redirige a `/admin/ingresar`; filtra `adminNav` con `canAccessSection` y entrega a `AdminShell` los ítems, el rol y `AdminSignOutButton` (shared no decide permisos ni depende de features).
+- **URL directa**: las páginas solo de administrador envuelven su pantalla en `AdminSectionGate`, que muestra «Acceso restringido» al operador (CA-07). Es interfaz: la autorización real la aplica el backend.
+- **Menú móvil** (≤760 px, como la maqueta): botón con `aria-expanded`, menú `inert` e invisible cuando está cerrado, Escape cierra y devuelve el foco; se cierra al navegar.

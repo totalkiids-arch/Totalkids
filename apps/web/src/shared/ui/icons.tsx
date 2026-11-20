@@ -148,6 +148,32 @@ export const TrashIcon = make(
   </>,
 );
 export const ArrowLeftIcon = make(<path d="M19 12H5M11 6l-6 6 6 6" />, 2.5);
+// Íconos del panel administrativo (trazos de panel.js de la maqueta).
+export const BoxIcon = make(<path d="m12 3 9 5v9l-9 5-9-5V8zM3 8l9 5 9-5M12 13v9M7.5 5.5l9 5" />);
+export const TagIcon = make(
+  <>
+    <path d="M3 3h8l10 10-8 8L3 11z" />
+    <circle cx="7.5" cy="7.5" r="1" />
+  </>,
+);
+export const ImageIcon = make(
+  <>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <circle cx="8" cy="8" r="2" />
+    <path d="m3 17 6-6 5 5 3-3 4 4" />
+  </>,
+);
+export const UsersIcon = make(
+  <>
+    <circle cx="9" cy="8" r="3" />
+    <path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-3-5" />
+  </>,
+);
+export const ChartIcon = make(<path d="M3 3v18h18M7 16v-4M12 16V6M17 16V9" />);
+export const MenuIcon = make(<path d="M4 6h16M4 12h16M4 18h16" />, 2.5);
+export const CloseIcon = make(<path d="M6 6l12 12M18 6L6 18" />, 2.5);
+export const ExitIcon = make(<path d="M9 3H3v18h6M13 7l5 5-5 5M8 12h13" />);
+export const AlertIcon = make(<path d="m12 3 10 18H2zM12 9v4M12 17h.01" />);
 export const ToolIcon = make(
   <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.8-.7-.7-2.8z" />,
 );
