@@ -1,6 +1,8 @@
 // Raíz de composición de "catalog": conecta el puerto con su adaptador actual.
+import type { AdminCatalog } from "./application/admin-catalog";
 import type { ProductCatalog } from "./application/product-catalog";
 import type { CatalogQuery } from "./domain/catalog-query";
+import { demoAdminCatalog } from "./infrastructure/demo-admin-catalog";
 import { importedProductCatalog } from "./infrastructure/imported-product-catalog";
 
 export const productCatalog: ProductCatalog = importedProductCatalog;
@@ -29,3 +31,7 @@ export function listRelatedProducts(slug: string, limit = 4) {
 export function listProductSlugs() {
   return productCatalog.listSlugs();
 }
+
+// ── Panel administrativo (UI-11) ─────────────────────────────────────────────
+// DEMO (ver infrastructure/demo-admin-catalog.ts). En LN-12 se cambia solo esta línea.
+export const adminCatalog: AdminCatalog = demoAdminCatalog;

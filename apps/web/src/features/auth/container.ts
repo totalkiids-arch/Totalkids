@@ -1,4 +1,7 @@
 // Raíz de composición de "auth": conecta los puertos con sus adaptadores actuales.
+import type { AdminRole } from "@/features/users";
+
+import type { AdminSessionReader, AdminSessionWriter } from "./application/admin-session";
 import type { AccountGateway, SessionStore } from "./application/ports";
 import {
   parseLogin,
@@ -11,6 +14,7 @@ import {
 import type { Buyer } from "./domain/session";
 import { cookieSessionStore } from "./infrastructure/cookie-session-store";
 import { DEMO_ACCOUNT, demoAccountGateway } from "./infrastructure/demo-account-gateway";
+import { demoAdminSession } from "./infrastructure/demo-admin-session";
 
 const accounts: AccountGateway = demoAccountGateway;
 const sessions: SessionStore = cookieSessionStore;
@@ -67,4 +71,20 @@ export async function resetPassword(input: AuthInput): Promise<AuthResult> {
 /** Caso de uso: cerrar sesión. */
 export async function logout() {
   await sessions.clear();
+}
+
+// DEMO (ver infrastructure/demo-admin-session.ts). En LN-04 se cambia solo esta línea.
+const session: AdminSessionReader & AdminSessionWriter = demoAdminSession;
+
+/** Sesión actual del panel, o null si nadie ingresó. */
+export function getAdminSession() {
+  return session.read();
+}
+
+export function startAdminSession(role: AdminRole) {
+  return session.start(role);
+}
+
+export function endAdminSession() {
+  return session.end();
 }

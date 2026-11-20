@@ -138,3 +138,22 @@ Ambos resultados se versionan. Volver a ejecutarlo actualiza precios, stock y fo
 - **Mutaciones**: Server Actions en `ui/cart-actions.ts`. La ficha (catalog) no importa cart: la página `/producto/[slug]` le inyecta `addToCartAction`, para no crear un ciclo entre features.
 - **Contador del encabezado**: `CartLink` lee la cookie en el navegador (`useSyncExternalStore`), así las páginas de la tienda siguen estáticas. `shared/ui/cart-signal.ts` avisa los cambios. El layout entrega `CartLink` a `StoreShell` (shared no depende de features).
 - **Pendiente**: cupones (RF-07; hoy responde que no hay cupones vigentes) y umbral de despacho gratis (`site.freeShippingThreshold`, RF-08), ambos según la API y el cliente.
+
+## Panel y sesión demo (UI-10)
+
+- **Sesión de demostración, sin seguridad real**: `/admin/ingresar` guarda el rol elegido en la cookie `tk_demo_rol` (`admin` | `operator`) con una Server Action. No hay credenciales: correo y contraseña son de ejemplo y no se envían. Lo implementa `features/auth/infrastructure/demo-admin-session.ts` tras los puertos de `application/admin-session.ts`; en LN-04 solo cambia ese adaptador (RNF-01, RF-31).
+- **Roles y secciones**: `features/users/domain/admin-role.ts` define los roles, las 15 secciones y `canAccessSection`. El operador ve resumen, pedidos (con su detalle), pagos, solicitudes, correos y reportes (SRS 2.3).
+- **Layout** `app/admin/(panel)/layout.tsx`: sin sesión redirige a `/admin/ingresar`; filtra `adminNav` con `canAccessSection` y entrega a `AdminShell` los ítems, el rol y `AdminSignOutButton` (shared no decide permisos ni depende de features).
+- **URL directa**: las páginas solo de administrador envuelven su pantalla en `AdminSectionGate`, que muestra «Acceso restringido» al operador (CA-07). Es interfaz: la autorización real la aplica el backend.
+- **Menú móvil** (≤760 px, como la maqueta): botón con `aria-expanded`, menú `inert` e invisible cuando está cerrado, Escape cierra y devuelve el foco; se cierra al navegar.
+
+## Panel de catálogo (UI-11)
+
+- **Pantallas** (solo Administrador, dentro de `AdminSectionGate`): `/admin/productos` (búsqueda por nombre o SKU, filtro Publicación y paginación en la URL: `?q=&estado=&pagina=`), `/admin/productos/nuevo` y `/admin/productos/[id]` (mismo editor; un id inexistente responde 404), `/admin/categorias` y `/admin/inventario`.
+- **Almacén DEMO**: `features/catalog/infrastructure/demo-admin-catalog.ts` implementa el puerto `application/admin-catalog.ts` en la memoria del servidor, sembrado desde `catalogo.json` (una variante `TK-<id>` por producto; stock físico y reservado ficticios y deterministas). Se pierde al reiniciar y **no se refleja en la tienda pública**, que sigue leyendo el JSON. En LN-12 se cambia solo `adminCatalog` en `container.ts` por un adaptador de la API.
+- **Reglas** (`domain/admin-product.ts`, con tests): SKU único sin distinguir mayúsculas, CLP enteros ≥ 0, precio anterior ≥ precio, al menos una variante, físico entero ≥ reservado, disponible = físico − reservado, "Stock bajo" con `LOW_STOCK_THRESHOLD`, imágenes JPG/PNG/WebP ≤ 2 MB con texto alternativo, nombre y slug de categoría únicos. `admin-product-form.ts` convierte el formulario (texto) en borrador; `admin-product-query.ts` lee la URL del listado.
+- **Mutaciones**: Server Actions en `ui/admin/admin-catalog-actions.ts`. Comprueban el rol de la sesión demo, validan con zod y delegan en el puerto, que vuelve a validar con el dominio. Los formularios usan `useActionState` + `redirect` y funcionan sin JavaScript (agregar/quitar variante son botones `name="intent"`); los avisos llegan por `?aviso=` y se anuncian con `role="status"`.
+- **Imágenes**: vista previa local y validación de tipo, tamaño y alt; el archivo **no se sube** (solo viajan sus metadatos). El almacenamiento se define en PR-05/LN-12.
+- **Inventario (RF-34)**: cada ajuste exige motivo y registra fecha, rol, antes → después. "Ajustar stock" en una fila enlaza a `?sku=…#ajuste` y precarga el formulario.
+- **Componentes reutilizables** en `shared/ui/admin/` (para UI-12 a UI-14): `AdminPageHeading`, `DataTable` (caption, `th scope`, scroll horizontal solo en su contenedor), `StatusBadge`/`ActiveBadge`, `FilterBar` (GET), `AdminPanel`, `LiveNotice`, `InfoNote`, `FormErrorSummary` y `PaginationNav`.
+- `demo-admin-catalog.ts` no lleva `server-only`: el índice de catalog llega a un componente de cliente (`cart-line-item` importa `ProductPhoto`) y ese import rompería el bundle.
