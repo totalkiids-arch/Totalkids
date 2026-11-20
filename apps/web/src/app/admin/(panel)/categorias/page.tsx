@@ -5,10 +5,10 @@ import { CategoriesScreen } from "@/features/catalog";
 
 export const metadata: Metadata = { title: "Categorías" };
 
-export default function Page() {
+export default async function Page({ searchParams }: PageProps<"/admin/categorias">) {
   return (
     <AdminSectionGate section="categorias">
-      <CategoriesScreen />
+      <CategoriesScreen searchParams={await searchParams} />
     </AdminSectionGate>
   );
 }

@@ -5,10 +5,10 @@ import { InventoryScreen } from "@/features/catalog";
 
 export const metadata: Metadata = { title: "Inventario" };
 
-export default function Page() {
+export default async function Page({ searchParams }: PageProps<"/admin/inventario">) {
   return (
     <AdminSectionGate section="inventario">
-      <InventoryScreen />
+      <InventoryScreen searchParams={await searchParams} />
     </AdminSectionGate>
   );
 }

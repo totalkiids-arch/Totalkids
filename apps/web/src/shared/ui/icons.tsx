@@ -177,3 +177,4 @@ export const AlertIcon = make(<path d="m12 3 10 18H2zM12 9v4M12 17h.01" />);
 export const ToolIcon = make(
   <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.8-.7-.7-2.8z" />,
 );
+export const PlusIcon = make(<path d="M12 5v14M5 12h14" />, 2.5);
