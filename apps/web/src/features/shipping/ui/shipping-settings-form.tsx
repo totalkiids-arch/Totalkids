@@ -5,7 +5,7 @@ import { useActionState } from "react";
 import { FormErrorSummary } from "@/shared/ui/admin/notice";
 import { AdminMuted } from "@/shared/ui/admin/panel";
 import { Button } from "@/shared/ui/button";
-import { TextField } from "@/shared/ui/form";
+import { TextareaField, TextField } from "@/shared/ui/form";
 
 import {
   PICKUP_MAX,
@@ -37,9 +37,10 @@ export function ShippingSettingsForm({ settings }: { settings: ShippingSettings 
     <form action={action} noValidate aria-busy={pending} className="flex flex-col gap-4">
       <FormErrorSummary errors={summary} />
       <div id={fieldId("pickup")} className="scroll-mt-24">
-        <TextField
+        <TextareaField
           label="Dirección y horario de retiro"
           name="pickup"
+          rows={3}
           defaultValue={state.values.pickup}
           maxLength={PICKUP_MAX}
           error={state.errors.pickup}

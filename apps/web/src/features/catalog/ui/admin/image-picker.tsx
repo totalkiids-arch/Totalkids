@@ -48,8 +48,8 @@ export function ImagePicker({
   return (
     <div className="flex flex-col gap-5">
       <p className="rounded-lg bg-cream px-3.5 py-3 text-[13px] text-on-yellow">
-        Las imágenes no se suben todavía: el almacenamiento de archivos se define en PR-05/LN-12.
-        Aquí se valida el archivo y se muestra una vista previa local.
+        La carga de imágenes todavía no está disponible. Puedes elegir un archivo para revisar que
+        cumpla los requisitos y ver cómo se vería.
       </p>
 
       {images.length > 0 ? (

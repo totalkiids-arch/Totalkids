@@ -69,9 +69,8 @@ export async function ShippingScreen({ searchParams = {} }: { searchParams?: Par
       />
       {notice ? <LiveNotice message={notice.message} tone={notice.tone} /> : null}
       <InfoNote>
-        Datos de demostración: los cambios viven en la memoria del servidor y se pierden al
-        reiniciar. El checkout todavía no usa estas zonas (muestra el despacho «por confirmar»); la
-        API real llega en LN-12.
+        Datos de ejemplo: los cambios se borran al reiniciar el sistema. La tienda todavía no usa
+        estas zonas: al comprar, el despacho aparece «por confirmar».
       </InfoNote>
 
       <AdminPanel
@@ -94,7 +93,7 @@ export async function ShippingScreen({ searchParams = {} }: { searchParams?: Par
               zone: <CellTitle title={zone.commune} meta={regionName(zone.region)} />,
               price: zone.price === 0 ? "Sin costo" : formatPrice(zone.price),
               leadTime: zone.leadTime,
-              status: <ActiveBadge active={zone.active} />,
+              status: <ActiveBadge active={zone.active} feminine />,
               actions: (
                 <span className="flex items-center gap-1">
                   <Link

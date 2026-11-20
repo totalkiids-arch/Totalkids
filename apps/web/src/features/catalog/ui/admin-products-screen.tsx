@@ -32,7 +32,7 @@ const NOTICES: Record<string, { message: string; tone: "success" | "info" | "war
   },
   "guardado-sin-imagen": {
     message:
-      "Producto guardado. La imagen elegida no se subió: el almacenamiento de archivos se define en PR-05/LN-12.",
+      "Producto guardado. La imagen elegida no se guardó: la carga de imágenes todavía no está disponible.",
     tone: "info",
   },
   activado: {
@@ -178,7 +178,7 @@ export async function AdminProductsScreen({
       </AdminPanel>
       <p className="text-[13px] text-text-secondary">
         Desactivar quita el producto del catálogo y de nuevas compras; no borra el producto ni sus
-        pedidos históricos (RF-26).
+        pedidos históricos.
       </p>
     </>
   );

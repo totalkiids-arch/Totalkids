@@ -203,7 +203,7 @@ export function SelectField({
         id={ids.id}
         aria-invalid={error ? true : undefined}
         aria-describedby={ids.describedBy}
-        className={`${CONTROL} h-11 w-auto cursor-pointer rounded-full pr-10 pl-4 font-bold`}
+        className={`${CONTROL} h-12 w-auto cursor-pointer rounded-full pr-10 pl-4 font-bold`}
         {...props}
       >
         {options.map((option) => (

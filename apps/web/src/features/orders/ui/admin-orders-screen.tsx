@@ -35,7 +35,7 @@ const STATUS_TONE: Record<OrderTone, StatusTone> = {
 const PAYMENT_TONE: Record<PaymentStatus, StatusTone> = {
   paid: "green",
   pending: "yellow",
-  uncertain: "red",
+  uncertain: "yellow",
   unpaid: "neutral",
 };
 
@@ -67,8 +67,7 @@ export async function AdminOrdersScreen({
         }
       />
       <InfoNote>
-        Pedidos de demostración. La API de pedidos real llega en LN-09; hasta entonces el listado es
-        de solo lectura.
+        Pedidos de ejemplo. Por ahora se pueden buscar, revisar y exportar, pero no modificar.
       </InfoNote>
 
       <FilterBar label="Buscar pedidos">
