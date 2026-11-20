@@ -5,3 +5,9 @@ export { GuestOrderLookup } from "./ui/guest-order-lookup";
 export { AdminOrdersScreen } from "./ui/admin-orders-screen";
 export { AdminOrderDetailScreen } from "./ui/admin-order-detail-screen";
 export { exportAdminOrdersCsv } from "./container";
+
+// Panel: pagos y resumen (Tanda A).
+export { getAdminOrdersOverview, listPaymentAttempts } from "./container";
+export { reconcilePaymentAction } from "./ui/admin-order-actions";
+export { ORDER_STATUS_LABEL, ORDER_STATUSES, orderTotal, type OrderStatus } from "./domain/order";
+export { AdminOrderStatusBadge, AdminPaymentBadge } from "./ui/admin/order-badges";

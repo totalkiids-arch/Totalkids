@@ -1,4 +1,7 @@
 // Raíz de composición de "orders": conecta los puertos con sus adaptadores actuales.
+import type { PaymentAttemptRow } from "@/features/payments";
+
+import type { AdminOrderPanel } from "./application/admin-order-panel";
 import type { GuestAccessStore, OrderRepository, ViewerSession } from "./application/ports";
 import {
   applyAdminOrderQuery,
@@ -15,11 +18,15 @@ import {
   parseGuestLookup,
 } from "./domain/guest-lookup";
 import { sortByNewest, type Order } from "./domain/order";
+import { ordersOverview, type AdminOrderRecord } from "./domain/order-workflow";
 import { authViewerSession } from "./infrastructure/auth-viewer-session";
 import { cookieGuestAccessStore } from "./infrastructure/cookie-guest-access-store";
-import { demoOrderRepository } from "./infrastructure/demo-orders";
+import { demoAdminOrderPanel } from "./infrastructure/demo-admin-order-panel";
 
-const orders: OrderRepository = demoOrderRepository;
+// DEMO (ver infrastructure/demo-admin-order-panel.ts): el almacén del panel,
+// sembrado con demo-orders.ts, también responde como OrderRepository para que
+// el listado, el CSV y el seguimiento reflejen los cambios hechos en el panel.
+const orders: OrderRepository = demoAdminOrderPanel;
 const session: ViewerSession = authViewerSession;
 const guestAccess: GuestAccessStore = cookieGuestAccessStore;
 
@@ -88,4 +95,41 @@ export async function exportAdminOrdersCsv(
   params: Record<string, string | string[] | undefined>,
 ): Promise<string> {
   return ordersToCsv(filterAdminOrders(await orders.listAll(), parseAdminOrderQuery(params)));
+}
+
+// ── Panel: detalle, pagos y resumen (Tanda A) ────────────────────────────────
+// DEMO hasta LN-09/LN-16. Las pantallas y las Server Actions verifican el rol antes.
+export const adminOrderPanel: AdminOrderPanel = demoAdminOrderPanel;
+
+/** Caso de uso: detalle del pedido en el panel (RF-27). null si no existe. */
+export async function getAdminOrder(id: string): Promise<AdminOrderRecord | null> {
+  const orderId = normalizeOrderId(id);
+  return orderId ? adminOrderPanel.get(orderId) : null;
+}
+
+/** Caso de uso: intentos de pago de todos los pedidos (RF-33). */
+export async function listPaymentAttempts(): Promise<PaymentAttemptRow[]> {
+  return (await adminOrderPanel.list()).flatMap((record) =>
+    record.attempts.map((attempt, index) => ({
+      orderId: record.order.id,
+      buyerName: record.order.buyerName,
+      commerceOrder: attempt.commerceOrder,
+      amount: attempt.amount,
+      status: attempt.status,
+      createdAt: attempt.createdAt,
+      lastCheckedAt: attempt.lastCheckedAt,
+      current: index === record.attempts.length - 1,
+    })),
+  );
+}
+
+/** Caso de uso: indicadores y últimos pedidos del resumen del panel. */
+export async function getAdminOrdersOverview(recent = 5) {
+  const records = await adminOrderPanel.list();
+  return {
+    overview: ordersOverview(records),
+    recent: [...records]
+      .sort((a, b) => b.order.createdAt.localeCompare(a.order.createdAt))
+      .slice(0, recent),
+  };
 }
