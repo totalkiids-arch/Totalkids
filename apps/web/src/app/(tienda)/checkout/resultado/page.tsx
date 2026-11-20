@@ -3,7 +3,11 @@ import type { Metadata } from "next";
 import { PaymentResultScreen } from "@/features/checkout";
 import { isPaymentStatus } from "@/features/payments";
 
-export const metadata: Metadata = { title: "Resultado de pago" };
+// Datos personales del comprador: no se indexa (RNF-10).
+export const metadata: Metadata = {
+  title: "Resultado de pago",
+  robots: { index: false, follow: false },
+};
 
 // Provisional: ?estado= sirve solo para previsualizar los estados. La versión real
 // obtendrá el estado desde la API usando el token que devuelve Flow (nunca de la URL).
