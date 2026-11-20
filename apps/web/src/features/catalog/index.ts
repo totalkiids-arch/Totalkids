@@ -1,5 +1,6 @@
 // API pública de la feature "catalog". app/ y otras features importan solo desde aquí.
 export {
+  countLowStockVariants,
   getProductDetail,
   listFeaturedProducts,
   listProductSlugs,

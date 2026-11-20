@@ -1,6 +1,7 @@
 // Raíz de composición de "catalog": conecta el puerto con su adaptador actual.
 import type { AdminCatalog } from "./application/admin-catalog";
 import type { ProductCatalog } from "./application/product-catalog";
+import { inventoryStatus } from "./domain/admin-product";
 import type { CatalogQuery } from "./domain/catalog-query";
 import { demoAdminCatalog } from "./infrastructure/demo-admin-catalog";
 import { importedProductCatalog } from "./infrastructure/imported-product-catalog";
@@ -35,3 +36,11 @@ export function listProductSlugs() {
 // ── Panel administrativo (UI-11) ─────────────────────────────────────────────
 // DEMO (ver infrastructure/demo-admin-catalog.ts). En LN-12 se cambia solo esta línea.
 export const adminCatalog: AdminCatalog = demoAdminCatalog;
+
+/**
+ * Caso de uso (resumen del panel): variantes con stock bajo o agotadas, con el
+ * mismo criterio que la pantalla de inventario.
+ */
+export async function countLowStockVariants(): Promise<number> {
+  return (await adminCatalog.listInventory()).filter((row) => inventoryStatus(row) !== "ok").length;
+}
