@@ -1,13 +1,22 @@
 // Raíz de composición de "services": conecta los puertos con sus adaptadores actuales.
+import { chileDateTimeForCsv } from "@/shared/lib/chile-time";
+import { toCsv } from "@/shared/lib/csv";
+
 import type { ServiceRequestGateway } from "./application/ports";
+import type { ServiceRequestAdmin } from "./application/service-request-admin";
 import {
   parseServiceRequest,
   requestServiceTitle,
   type RequestErrors,
 } from "./domain/service-request";
-import { demoServiceRequestGateway } from "./infrastructure/demo-service-request-gateway";
+import {
+  filterRequests,
+  parseRequestQuery,
+  requestsCsvTable,
+} from "./domain/service-request-admin";
+import { demoServiceRequestDesk } from "./infrastructure/demo-service-request-desk";
 
-const gateway: ServiceRequestGateway = demoServiceRequestGateway;
+const gateway: ServiceRequestGateway = demoServiceRequestDesk;
 
 /** Fecha de hoy en Chile, "AAAA-MM-DD" (para validar la fecha preferida). */
 function todayInChile(): string {
@@ -31,4 +40,22 @@ export async function submitServiceRequest(
     serviceTitle: requestServiceTitle(result.request),
     email: result.request.email,
   };
+}
+
+// ── Panel: solicitudes (UI-14) ───────────────────────────────────────────────
+// DEMO hasta LN-08/LN-13 (ver infrastructure/demo-service-request-desk.ts): el
+// mismo almacén recibe el formulario público y responde al panel. Las
+// pantallas, las acciones y la exportación verifican el rol antes.
+export const serviceRequestAdmin: ServiceRequestAdmin = demoServiceRequestDesk;
+
+/**
+ * Caso de uso: CSV de solicitudes con los filtros de la URL (RF-29), solo para
+ * el Administrador (lo verifica el Route Handler). Datos personales mínimos.
+ */
+export async function exportServiceRequestsCsv(
+  params: Record<string, string | string[] | undefined>,
+): Promise<string> {
+  const rows = filterRequests(await serviceRequestAdmin.list(), parseRequestQuery(params));
+  const table = requestsCsvTable(rows, chileDateTimeForCsv);
+  return toCsv(table.header, table.rows);
 }

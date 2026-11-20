@@ -4,6 +4,6 @@ import { ServiceRequestsScreen } from "@/features/services";
 
 export const metadata: Metadata = { title: "Solicitudes" };
 
-export default function Page() {
-  return <ServiceRequestsScreen />;
+export default async function Page({ searchParams }: PageProps<"/admin/solicitudes">) {
+  return <ServiceRequestsScreen searchParams={await searchParams} />;
 }

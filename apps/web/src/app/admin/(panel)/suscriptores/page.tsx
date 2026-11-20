@@ -5,10 +5,10 @@ import { SubscribersScreen } from "@/features/newsletter";
 
 export const metadata: Metadata = { title: "Suscriptores" };
 
-export default function Page() {
+export default async function Page({ searchParams }: PageProps<"/admin/suscriptores">) {
   return (
     <AdminSectionGate section="suscriptores">
-      <SubscribersScreen />
+      <SubscribersScreen searchParams={await searchParams} />
     </AdminSectionGate>
   );
 }

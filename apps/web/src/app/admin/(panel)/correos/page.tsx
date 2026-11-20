@@ -4,6 +4,6 @@ import { EmailsScreen } from "@/features/emails";
 
 export const metadata: Metadata = { title: "Correos" };
 
-export default function Page() {
-  return <EmailsScreen />;
+export default async function Page({ searchParams }: PageProps<"/admin/correos">) {
+  return <EmailsScreen searchParams={await searchParams} />;
 }
