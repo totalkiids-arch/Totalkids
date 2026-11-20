@@ -5,10 +5,10 @@ import { CouponsScreen } from "@/features/coupons";
 
 export const metadata: Metadata = { title: "Cupones" };
 
-export default function Page() {
+export default async function Page({ searchParams }: PageProps<"/admin/cupones">) {
   return (
     <AdminSectionGate section="cupones">
-      <CouponsScreen />
+      <CouponsScreen searchParams={await searchParams} />
     </AdminSectionGate>
   );
 }

@@ -5,10 +5,10 @@ import { BannersScreen } from "@/features/content";
 
 export const metadata: Metadata = { title: "Banners" };
 
-export default function Page() {
+export default async function Page({ searchParams }: PageProps<"/admin/banners">) {
   return (
     <AdminSectionGate section="banners">
-      <BannersScreen />
+      <BannersScreen searchParams={await searchParams} />
     </AdminSectionGate>
   );
 }
