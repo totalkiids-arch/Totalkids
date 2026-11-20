@@ -1,6 +1,14 @@
 // Raíz de composición de "orders": conecta los puertos con sus adaptadores actuales.
 import type { GuestAccessStore, OrderRepository, ViewerSession } from "./application/ports";
 import {
+  applyAdminOrderQuery,
+  filterAdminOrders,
+  ordersToCsv,
+  parseAdminOrderQuery,
+  type AdminOrderPage,
+  type AdminOrderQuery,
+} from "./domain/admin-order-query";
+import {
   canViewOrder,
   LOOKUP_NOT_FOUND,
   normalizeOrderId,
@@ -65,4 +73,19 @@ export async function lookupGuestOrder(
   }
   await guestAccess.grant(order.id);
   return { ok: true, orderId: order.id };
+}
+
+/**
+ * Caso de uso: listado de pedidos del panel (RF-28). La pantalla y la
+ * exportación verifican antes el rol (sección "pedidos").
+ */
+export async function listAdminOrders(query: AdminOrderQuery): Promise<AdminOrderPage> {
+  return applyAdminOrderQuery(await orders.listAll(), query);
+}
+
+/** Caso de uso: CSV con todos los pedidos que cumplen los filtros de la URL, sin paginar. */
+export async function exportAdminOrdersCsv(
+  params: Record<string, string | string[] | undefined>,
+): Promise<string> {
+  return ordersToCsv(filterAdminOrders(await orders.listAll(), parseAdminOrderQuery(params)));
 }

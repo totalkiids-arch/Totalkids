@@ -1,0 +1,25 @@
+import { getAdminSession } from "@/features/auth";
+import { exportAdminOrdersCsv } from "@/features/orders";
+import { canAccessSection } from "@/features/users";
+
+/**
+ * Exportación CSV del listado de pedidos con los filtros de la URL (RF-28).
+ * Los route handlers no pasan por el layout del panel: el rol se verifica aquí.
+ * Sesión de DEMOSTRACIÓN; la autorización real la aplica el backend (LN-04).
+ */
+export async function GET(request: Request) {
+  const session = await getAdminSession();
+  if (!session || !canAccessSection(session.role, "pedidos")) {
+    return new Response("No autorizado", { status: 403 });
+  }
+  const params = Object.fromEntries(new URL(request.url).searchParams);
+  // BOM para que Excel lea bien las tildes.
+  const csv = `\uFEFF${await exportAdminOrdersCsv(params)}`;
+  return new Response(csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="pedidos.csv"',
+      "Cache-Control": "no-store",
+    },
+  });
+}
