@@ -1,12 +1,23 @@
-import { ScreenPlaceholder } from "@/shared/ui/screen-placeholder";
+import Link from "next/link";
+import { redirect } from "next/navigation";
 
-/** Cuenta del comprador · Crear cuenta. */
-export function RegisterScreen() {
+import { getCurrentBuyer } from "../container";
+import { RegisterForm } from "./auth-forms";
+import { AuthLayout, DemoNotice } from "./auth-layout";
+
+/** Cuenta del comprador · Crear cuenta (RF-22). */
+export async function RegisterScreen() {
+  if (await getCurrentBuyer()) redirect("/cuenta/pedidos");
   return (
-    <ScreenPlaceholder
-      section="Cuenta del comprador"
-      title="Crear cuenta"
-      description="Registro de un nuevo comprador."
-    />
+    <AuthLayout title="Crea tu cuenta">
+      <RegisterForm />
+      <p className="font-extrabold">
+        ¿Ya tienes cuenta?{" "}
+        <Link href="/ingresar" className="text-brand-blue underline">
+          Inicia sesión
+        </Link>
+      </p>
+      <DemoNotice>Por ahora la cuenta no se guarda: solo inicia una sesión de ejemplo.</DemoNotice>
+    </AuthLayout>
   );
 }
