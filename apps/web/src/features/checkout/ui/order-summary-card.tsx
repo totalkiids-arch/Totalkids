@@ -7,8 +7,17 @@ import { shippingLabel } from "../domain/shipping";
 /** Colores de los cuadritos de cada línea, como en la maqueta. */
 const SWATCHES = ["bg-swatch-lilac", "bg-brand-yellow", "bg-brand-green", "bg-brand-blue"];
 
-/** "Tu pedido": líneas, subtotal, despacho y total (RF-08). */
-export function OrderSummaryCard({ summary }: { summary: OrderSummary }) {
+/**
+ * "Tu pedido": líneas, subtotal, despacho y total (RF-08). `invoiceTip` muestra
+ * la sugerencia de factura para instituciones (solo en "Datos y facturación").
+ */
+export function OrderSummaryCard({
+  summary,
+  invoiceTip = true,
+}: {
+  summary: OrderSummary;
+  invoiceTip?: boolean;
+}) {
   return (
     <aside
       aria-labelledby="tu-pedido"
@@ -62,7 +71,7 @@ export function OrderSummaryCard({ summary }: { summary: OrderSummary }) {
         </dl>
         {summary.shipping.kind === "pending" ? (
           <p className="text-[13px] text-text-secondary">
-            El costo de despacho depende de tu comuna y te lo confirmamos antes del pago.
+            El despacho depende de tu comuna y aún no está incluido en el total.
           </p>
         ) : null}
         {summary.unpriced.length > 0 ? (
@@ -72,12 +81,14 @@ export function OrderSummaryCard({ summary }: { summary: OrderSummary }) {
         ) : null}
       </div>
 
-      <div className="flex items-center gap-3 rounded-[28px] bg-brand-yellow p-4.5">
-        <Tito className="w-16 shrink-0" />
-        <p className="font-heading text-[17px] leading-tight font-bold">
-          ¿Compras para un jardín o colegio? Elige factura y te enviamos todo listo.
-        </p>
-      </div>
+      {invoiceTip ? (
+        <div className="flex items-center gap-3 rounded-[28px] bg-brand-yellow p-4.5">
+          <Tito className="w-16 shrink-0" />
+          <p className="font-heading text-[17px] leading-tight font-bold">
+            ¿Compras para un jardín o colegio? Elige factura y te enviamos todo listo.
+          </p>
+        </div>
+      ) : null}
     </aside>
   );
 }
