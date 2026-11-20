@@ -27,4 +27,4 @@ export function units(n: number): string {
 
 /** Aviso fijo de las pantallas del catálogo administrable. */
 export const DEMO_STORE_NOTE =
-  "Datos de demostración: los cambios viven en la memoria del servidor, se pierden al reiniciar y todavía no se reflejan en la tienda pública. La API real llega en LN-12.";
+  "Datos de ejemplo: los cambios se borran al reiniciar el sistema y todavía no se ven en la tienda.";

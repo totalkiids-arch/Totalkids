@@ -96,7 +96,7 @@ export async function CategoriesScreen({
             cells: {
               name: <CellTitle title={category.name} meta={category.slug} />,
               count: products(category.productCount),
-              status: <ActiveBadge active={category.active} />,
+              status: <ActiveBadge active={category.active} feminine />,
               actions: (
                 <span className="flex items-center gap-1">
                   <Link

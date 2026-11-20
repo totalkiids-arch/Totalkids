@@ -3,13 +3,30 @@ import { AlertIcon, MailIcon, ToolIcon } from "@/shared/ui/icons";
 
 import { POLICY_SECTIONS } from "../domain/policies";
 
+/** Enlaces a cada sección. Área táctil de 44 px (RNF-09). */
+function SectionLinks({ className = "" }: { className?: string }) {
+  return (
+    <ul className={`flex flex-col ${className}`}>
+      {POLICY_SECTIONS.map((section) => (
+        <li key={section.id}>
+          <a
+            href={`#${section.id}`}
+            className="flex min-h-11 items-center rounded-xl px-3 font-bold hover:bg-soft-blue"
+          >
+            {section.title}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Tienda y compra · Políticas: condiciones de compra, despacho y privacidad. */
 export function PoliciesScreen() {
   return (
     <>
       <section aria-labelledby="politicas-titulo" className="bg-soft-blue">
         <div className="mx-auto flex max-w-7xl flex-col items-start gap-3 px-4 py-12 sm:px-6">
-          <p className="text-sm font-extrabold tracking-[2px] text-brand-blue uppercase">Ayuda</p>
           <h1
             id="politicas-titulo"
             className="text-[clamp(2.25rem,5vw,3.5rem)] leading-none font-extrabold"
@@ -23,25 +40,25 @@ export function PoliciesScreen() {
       </section>
 
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[240px_1fr]">
-        <nav aria-label="En esta página" className="lg:sticky lg:top-6 lg:self-start">
-          <p className="mb-2 text-xs font-extrabold tracking-wide text-text-secondary uppercase">
+        {/* Teléfono: índice plegable, para no empujar el contenido. Escritorio: fijo al costado. */}
+        <details className="group rounded-2xl border-2 border-chip-border bg-surface lg:hidden">
+          <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 font-extrabold [&::-webkit-details-marker]:hidden">
             En esta página
-          </p>
-          <ul className="flex flex-wrap gap-2 lg:flex-col lg:gap-1">
-            {POLICY_SECTIONS.map((section) => (
-              <li key={section.id}>
-                <a
-                  href={`#${section.id}`}
-                  className="inline-flex min-h-11 items-center rounded-full border-2 border-chip-border px-4 font-bold hover:border-brand-blue lg:min-h-9 lg:border-0 lg:px-3 lg:hover:bg-soft-blue"
-                >
-                  {section.title}
-                </a>
-              </li>
-            ))}
-          </ul>
+            <span aria-hidden className="text-xl transition-transform group-open:rotate-45">
+              +
+            </span>
+          </summary>
+          <SectionLinks className="px-2 pb-2" />
+        </details>
+        <nav
+          aria-label="En esta página"
+          className="hidden lg:sticky lg:top-6 lg:block lg:self-start"
+        >
+          <p className="mb-2 px-3 font-extrabold text-text-secondary">En esta página</p>
+          <SectionLinks />
         </nav>
 
-        <article className="flex max-w-3xl flex-col gap-8">
+        <article className="flex max-w-[65ch] flex-col gap-8">
           <p
             role="note"
             className="flex gap-3 rounded-2xl border-2 border-brand-yellow bg-soft-yellow p-4 text-text-body"

@@ -35,13 +35,46 @@ export function DataTable({
   footer?: ReactNode;
 }) {
   const align = (column: DataTableColumn) => (column.align === "end" ? "text-right" : "text-left");
+  const [first, ...rest] = columns;
+  const actions = rest.find((c) => c.key === "actions");
+  const details = rest.filter((c) => c !== actions);
   return (
     <div className="min-w-0">
+      {/*
+        Teléfono: una tarjeta por fila, con todas las columnas a la vista (en una
+        tabla, estado y acciones quedaban fuera de la pantalla). Desde sm: tabla.
+        Solo una de las dos se muestra; la otra queda fuera del árbol de accesibilidad.
+      */}
+      <ul aria-label={caption} className="sm:hidden">
+        {rows.length === 0 ? (
+          <li className="px-5 py-10 text-center text-text-secondary">{empty}</li>
+        ) : (
+          rows.map((row) => (
+            <li
+              key={row.key}
+              className="flex flex-col gap-3 border-t border-border px-5 py-4 first:border-t-0"
+            >
+              {first ? <div className="min-w-0">{row.cells[first.key]}</div> : null}
+              {details.length > 0 ? (
+                <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
+                  {details.map((column) => (
+                    <div key={column.key} className="contents">
+                      <dt className="text-[13px] font-bold text-text-secondary">{column.label}</dt>
+                      <dd className="min-w-0 tabular-nums">{row.cells[column.key]}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {actions ? <div className="-ml-2">{row.cells[actions.key]}</div> : null}
+            </li>
+          ))
+        )}
+      </ul>
       <div
         role="region"
         aria-label={`${caption}. Desplázate horizontalmente para ver todas las columnas.`}
         tabIndex={0}
-        className="w-full overflow-x-auto focus-visible:outline-3 focus-visible:-outline-offset-3 focus-visible:outline-brand-blue"
+        className="hidden w-full overflow-x-auto focus-visible:outline-3 focus-visible:-outline-offset-3 focus-visible:outline-brand-blue sm:block"
       >
         <table className="w-full border-collapse text-sm whitespace-nowrap">
           <caption className={captionHidden ? "sr-only" : "px-5 py-3 text-left font-extrabold"}>

@@ -114,7 +114,7 @@ export async function InventoryScreen({ searchParams = {} }: { searchParams?: Ad
         id="ajustes"
         flush
         title="Ajustes recientes"
-        description="Historial de esta sesión de demostración (RF-34)."
+        description="Ajustes hechos desde que se inició el sistema."
       >
         <DataTable
           caption="Ajustes de inventario recientes"
