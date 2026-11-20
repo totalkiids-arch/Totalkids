@@ -1,4 +1,5 @@
 // Raíz de composición de "checkout": conecta los puertos con sus adaptadores actuales.
+import type { PaymentStatus } from "@/features/payments";
 import { site } from "@/shared/config/site";
 
 import { checkoutBlocker, summarizeOrder, type OrderSummary } from "./application/order-summary";
@@ -12,6 +13,7 @@ import {
   type CheckoutInput,
 } from "./domain/checkout-details";
 import { parsePaymentConfirmation } from "./domain/payment-confirmation";
+import { paymentResultView, type PaymentResultView } from "./domain/payment-result";
 import { cartCheckoutReader } from "./infrastructure/cart-checkout-reader";
 import { cookieCheckoutDraftStore } from "./infrastructure/cookie-checkout-draft-store";
 
@@ -119,4 +121,31 @@ export async function startDemoPayment(input: CheckoutInput): Promise<StartPayme
   const step = await getPaymentStep();
   if (!step.ok) return { ok: false, reason: "details", redirectTo: step.redirectTo };
   return { ok: true, redirectTo: "/checkout/resultado?estado=pending" };
+}
+
+export interface PaymentResult {
+  view: PaymentResultView;
+  /** Pedido en curso para mostrar en el resultado; null si ya no hay datos o carrito. */
+  order: { buyerName: string; email: string; summary: OrderSummary } | null;
+}
+
+/**
+ * Caso de uso: resultado del pago al volver de Flow (RF-17).
+ *
+ * Provisional: el estado llega por la URL solo para previsualizar la pantalla.
+ * Con la API (LN-10, LN-11), se consulta con el token que devuelve Flow y nunca
+ * se confía en la URL; ahí también se vacía el carrito cuando el pago se confirma.
+ */
+export async function getPaymentResult(status: PaymentStatus | null): Promise<PaymentResult> {
+  const step = await getPaymentStep();
+  return {
+    view: paymentResultView(status),
+    order: step.ok
+      ? {
+          buyerName: step.details.buyer.name,
+          email: step.details.buyer.email,
+          summary: step.summary,
+        }
+      : null,
+  };
 }
