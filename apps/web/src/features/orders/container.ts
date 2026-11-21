@@ -1,5 +1,6 @@
 // Raíz de composición de "orders": conecta los puertos con sus adaptadores actuales.
 import type { PaymentAttemptRow } from "@/features/payments";
+import type { SaleRecord } from "@/features/reports";
 
 import type { AdminOrderPanel } from "./application/admin-order-panel";
 import type { GuestAccessStore, OrderRepository, ViewerSession } from "./application/ports";
@@ -18,7 +19,7 @@ import {
   parseGuestLookup,
 } from "./domain/guest-lookup";
 import { sortByNewest, type Order } from "./domain/order";
-import { ordersOverview, type AdminOrderRecord } from "./domain/order-workflow";
+import { ordersOverview, paidAttempt, type AdminOrderRecord } from "./domain/order-workflow";
 import { authViewerSession } from "./infrastructure/auth-viewer-session";
 import { cookieGuestAccessStore } from "./infrastructure/cookie-guest-access-store";
 import { demoAdminOrderPanel } from "./infrastructure/demo-admin-order-panel";
@@ -132,4 +133,33 @@ export async function getAdminOrdersOverview(recent = 5) {
       .sort((a, b) => b.order.createdAt.localeCompare(a.order.createdAt))
       .slice(0, recent),
   };
+}
+
+/**
+ * Caso de uso: pedidos con cobro confirmado, para el reporte de ventas (RF-30).
+ * Las líneas van al precio de compra; los reembolsos, solo los procesados.
+ */
+export async function listSalesForReports(): Promise<SaleRecord[]> {
+  return (await adminOrderPanel.list()).flatMap((record) => {
+    const paid = paidAttempt(record);
+    if (!paid) return [];
+    return [
+      {
+        orderId: record.order.id,
+        buyerName: record.order.buyerName,
+        method: "Flow",
+        paidAt: paid.createdAt,
+        charged: paid.amount,
+        lines: record.order.lines.map((line) => ({
+          name: line.name,
+          sku: line.sku,
+          quantity: line.quantity,
+          amount: line.unitPrice * line.quantity,
+        })),
+        refunds: record.refunds
+          .filter((refund) => refund.status === "processed")
+          .map((refund) => ({ date: refund.date, amount: refund.amount })),
+      },
+    ];
+  });
 }
