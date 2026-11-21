@@ -4,7 +4,7 @@ import { OrderTrackingScreen } from "@/features/orders";
 
 export const metadata: Metadata = { title: "Detalle y seguimiento" };
 
-export default async function Page({ params }: PageProps<"/cuenta/pedidos/[id]">) {
+export default async function Page({ params }: PageProps<"/seguimiento/[id]">) {
   const { id } = await params;
   return <OrderTrackingScreen id={id} />;
 }

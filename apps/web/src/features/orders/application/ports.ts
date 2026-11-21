@@ -4,13 +4,7 @@ import type { Order } from "../domain/order";
 export interface OrderRepository {
   /** Todos los pedidos, para el panel (RF-28). */
   listAll(): Promise<Order[]>;
-  listByEmail(email: string): Promise<Order[]>;
   findById(id: string): Promise<Order | null>;
-}
-
-/** Puerto: correo del comprador con sesión iniciada (lo resuelve la feature "auth"). */
-export interface ViewerSession {
-  currentBuyer(): Promise<{ name: string; email: string } | null>;
 }
 
 /** Puerto: pedidos que este navegador consultó como invitado (RF-36). */

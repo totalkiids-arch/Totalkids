@@ -10,7 +10,7 @@ import {
 } from "@/features/themes";
 import { StoreShell } from "@/shared/ui/layout/store-shell";
 
-// Páginas de cuenta: no se indexan.
+// Consulta de pedidos: datos personales, no se indexan.
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 export default async function AccountLayout({ children }: { children: ReactNode }) {

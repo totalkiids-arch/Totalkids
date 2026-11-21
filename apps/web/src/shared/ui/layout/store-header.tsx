@@ -5,15 +5,7 @@ import Link from "next/link";
 import { categoryNav, type CategoryTone } from "@/shared/config/routes";
 import { site } from "@/shared/config/site";
 import { Logo } from "@/shared/ui/brand/logo";
-import {
-  CardIcon,
-  MailIcon,
-  PhoneIcon,
-  SearchIcon,
-  StarIcon,
-  TruckIcon,
-  UserIcon,
-} from "@/shared/ui/icons";
+import { CardIcon, MailIcon, PhoneIcon, SearchIcon, StarIcon, TruckIcon } from "@/shared/ui/icons";
 
 const PILL_TONE: Record<CategoryTone, string> = {
   blue: "bg-brand-blue text-white",
@@ -111,13 +103,13 @@ function HeaderActions({ cartLink }: { cartLink: ReactNode }) {
   return (
     <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:gap-3 lg:order-none lg:ml-0">
       <Link
-        href="/ingresar"
-        aria-label="Mi cuenta"
+        href="/seguimiento"
+        aria-label="Mi pedido"
         className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full px-0 font-extrabold text-text-primary hover:bg-soft-yellow sm:px-3"
       >
-        <UserIcon size={22} className="text-brand-blue" />
+        <TruckIcon size={22} className="text-brand-blue" />
         <span aria-hidden className="hidden sm:inline">
-          Mi cuenta
+          Mi pedido
         </span>
       </Link>
       {cartLink}

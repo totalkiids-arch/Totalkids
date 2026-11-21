@@ -45,7 +45,7 @@ function revalidateOrder(id: string) {
   revalidatePath("/admin/pedidos");
   revalidatePath("/admin/pagos");
   revalidatePath("/admin");
-  revalidatePath(`/cuenta/pedidos/${id}`);
+  revalidatePath(`/seguimiento/${id}`);
 }
 
 /** "$30.000", "30 000" o "30000" → 30000; cualquier otra cosa → NaN (el dominio lo rechaza). */

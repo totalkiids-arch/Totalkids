@@ -25,7 +25,7 @@ describe("paymentResultView", () => {
     const view = paymentResultView("paid");
     expect(view.tone).toBe("success");
     expect(view.retry).toBe("none");
-    expect(view.primary.href).toBe("/cuenta/pedidos");
+    expect(view.primary.href).toBe("/seguimiento");
   });
 
   it("el vencido vuelve al carrito para revalidar precio y stock", () => {

@@ -45,21 +45,13 @@ describe("parseGuestLookup", () => {
 describe("canViewOrder", () => {
   const order = { id: "TK-1048", email: "camila@example.com" };
 
-  it("lo ve el dueño con sesión", () => {
-    expect(canViewOrder(order, { sessionEmail: "camila@example.com", guestOrderIds: [] })).toBe(
-      true,
-    );
+  it("lo ve quien lo consultó con número y correo", () => {
+    expect(canViewOrder(order, { guestOrderIds: ["TK-1048"] })).toBe(true);
   });
 
-  it("lo ve el invitado que lo consultó", () => {
-    expect(canViewOrder(order, { sessionEmail: null, guestOrderIds: ["TK-1048"] })).toBe(true);
-  });
-
-  it("nadie más lo ve (historial propio aislado)", () => {
-    expect(canViewOrder(order, { sessionEmail: "otra@example.com", guestOrderIds: [] })).toBe(
-      false,
-    );
-    expect(canViewOrder(order, { sessionEmail: null, guestOrderIds: ["TK-1055"] })).toBe(false);
+  it("nadie más lo ve: no hay cuentas de comprador", () => {
+    expect(canViewOrder(order, { guestOrderIds: [] })).toBe(false);
+    expect(canViewOrder(order, { guestOrderIds: ["TK-1055"] })).toBe(false);
   });
 });
 

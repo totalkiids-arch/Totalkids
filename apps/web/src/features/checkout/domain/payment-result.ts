@@ -25,7 +25,7 @@ export type ResultTone = "success" | "waiting" | "error";
 
 export interface ResultAction {
   label: string;
-  href: "/" | "/carrito" | "/checkout/pago" | "/cuenta/pedidos" | "/checkout/resultado";
+  href: "/" | "/carrito" | "/checkout/pago" | "/seguimiento" | "/checkout/resultado";
 }
 
 export interface PaymentResultView {
@@ -46,7 +46,7 @@ const VIEWS: Record<PaymentStatus, Omit<PaymentResultView, "status">> = {
     title: "¡Tu compra está confirmada!",
     message: "Recibimos tu pago. Prepararemos tus muebles para su próxima aventura.",
     retry: "none",
-    primary: { label: "Ver mis pedidos", href: "/cuenta/pedidos" },
+    primary: { label: "Consultar mi pedido", href: "/seguimiento" },
     secondary: STORE,
   },
   pending: {
@@ -74,7 +74,7 @@ const VIEWS: Record<PaymentStatus, Omit<PaymentResultView, "status">> = {
       "No podemos descartar un cobro, así que no intentes pagar de nuevo. Conservamos tu pedido en revisión y te escribiremos cuando esté resuelto.",
     retry: "wait",
     primary: STORE,
-    secondary: { label: "Ver mis pedidos", href: "/cuenta/pedidos" },
+    secondary: { label: "Consultar mi pedido", href: "/seguimiento" },
   },
   expired: {
     tone: "error",

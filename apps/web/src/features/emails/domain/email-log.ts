@@ -18,7 +18,6 @@ export const EMAIL_EVENTS = [
   "order_shipped",
   "order_delivered",
   "service_request",
-  "password_recovery",
 ] as const;
 export type EmailEvent = (typeof EMAIL_EVENTS)[number];
 
@@ -30,7 +29,6 @@ export const EMAIL_EVENT_LABEL: Record<EmailEvent, string> = {
   order_shipped: "Pedido despachado",
   order_delivered: "Pedido entregado",
   service_request: "Solicitud de servicio",
-  password_recovery: "Recuperación de contraseña",
 };
 
 export const EMAIL_STATUSES = ["pending", "sent", "failed", "uncertain"] as const;
@@ -72,7 +70,7 @@ export interface EmailRecord {
   id: string;
   event: EmailEvent;
   recipient: string;
-  /** Pedido o solicitud; null en la recuperación de contraseña. */
+  /** Pedido o solicitud; null si el correo no se refiere a ninguno. */
   reference: EmailReference;
   /** Clave única del evento: evita duplicar el correo localmente. */
   eventKey: string;
@@ -283,13 +281,6 @@ export function emailPreview(record: Pick<EmailRecord, "event" | "reference">): 
         heading: "¡Recibimos tu idea!",
         body: `Tu solicitud #${ref} quedó registrada. Te responderemos dentro del plazo informado.`,
         action: null,
-      };
-    case "password_recovery":
-      return {
-        subject: "Restablece tu contraseña de Total Kids",
-        heading: "Recupera tu acceso",
-        body: "Usa el enlace de un solo uso para crear una contraseña nueva. Vence pronto; nunca te enviaremos tu contraseña.",
-        action: "Crear contraseña nueva",
       };
   }
 }

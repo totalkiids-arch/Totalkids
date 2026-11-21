@@ -4,7 +4,7 @@ import type { ActivityArea, ActivityEntry } from "@/features/activity";
 import type { SaleRecord } from "@/features/reports";
 
 import type { AdminOrderPanel } from "./application/admin-order-panel";
-import type { GuestAccessStore, OrderRepository, ViewerSession } from "./application/ports";
+import type { GuestAccessStore, OrderRepository } from "./application/ports";
 import {
   applyAdminOrderQuery,
   filterAdminOrders,
@@ -19,9 +19,8 @@ import {
   normalizeOrderId,
   parseGuestLookup,
 } from "./domain/guest-lookup";
-import { sortByNewest, type Order } from "./domain/order";
+import type { Order } from "./domain/order";
 import { ordersOverview, paidAttempt, type AdminOrderRecord } from "./domain/order-workflow";
-import { authViewerSession } from "./infrastructure/auth-viewer-session";
 import { cookieGuestAccessStore } from "./infrastructure/cookie-guest-access-store";
 import { demoAdminOrderPanel } from "./infrastructure/demo-admin-order-panel";
 
@@ -29,41 +28,20 @@ import { demoAdminOrderPanel } from "./infrastructure/demo-admin-order-panel";
 // sembrado con demo-orders.ts, también responde como OrderRepository para que
 // el listado, el CSV y el seguimiento reflejen los cambios hechos en el panel.
 const orders: OrderRepository = demoAdminOrderPanel;
-const session: ViewerSession = authViewerSession;
 const guestAccess: GuestAccessStore = cookieGuestAccessStore;
 
 /**
- * Caso de uso: historial propio (RF-23). Solo los pedidos del comprador con
- * sesión iniciada; null si no hay sesión (la pantalla lleva a ingresar).
+ * Caso de uso: detalle y seguimiento (RF-36). Los compradores no tienen cuenta:
+ * lo ve quien lo consultó en este navegador con número y correo de la compra.
+ * Si no existe o no le corresponde, la respuesta es la misma (null): no se
+ * revela qué pedidos existen.
  */
-export async function getMyOrders(): Promise<{
-  buyer: { name: string; email: string };
-  orders: Order[];
-} | null> {
-  const buyer = await session.currentBuyer();
-  if (!buyer) return null;
-  return { buyer, orders: sortByNewest(await orders.listByEmail(buyer.email)) };
-}
-
-/**
- * Caso de uso: detalle y seguimiento (RF-23, RF-36). Lo ve el dueño con sesión
- * o quien lo consultó como invitado. Si no existe o no le corresponde, la
- * respuesta es la misma (null): no se revela qué pedidos existen.
- */
-export async function getOrderForViewer(
-  id: string,
-): Promise<{ order: Order; viewer: "owner" | "guest" } | null> {
+export async function getOrderForViewer(id: string): Promise<{ order: Order } | null> {
   const orderId = normalizeOrderId(id);
   if (!orderId) return null;
-  const [order, buyer, guestOrderIds] = await Promise.all([
-    orders.findById(orderId),
-    session.currentBuyer(),
-    guestAccess.read(),
-  ]);
-  if (!order) return null;
-  const sessionEmail = buyer?.email ?? null;
-  if (!canViewOrder(order, { sessionEmail, guestOrderIds })) return null;
-  return { order, viewer: sessionEmail === order.email ? "owner" : "guest" };
+  const [order, guestOrderIds] = await Promise.all([orders.findById(orderId), guestAccess.read()]);
+  if (!order || !canViewOrder(order, { guestOrderIds })) return null;
+  return { order };
 }
 
 export type GuestLookupResult =

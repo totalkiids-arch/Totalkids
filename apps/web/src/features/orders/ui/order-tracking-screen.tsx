@@ -21,21 +21,20 @@ const PANEL =
   "flex flex-col gap-4 rounded-[32px] bg-surface p-5 shadow-[0_2px_0_var(--color-border)] sm:p-7";
 
 /**
- * Cuenta del comprador · Detalle y seguimiento (RF-23, RF-36). Lo ve el dueño
- * con sesión o quien lo consultó como invitado; si no, "no encontrado" (igual
+ * Seguimiento del pedido (RF-36). Los compradores no tienen cuenta: lo ve quien
+ * lo consultó con número y correo de la compra; si no, "no encontrado" (igual
  * que si no existiera).
  */
 export async function OrderTrackingScreen({ id }: { id: string }) {
   const found = await getOrderForViewer(id);
   if (!found) return <OrderNotFound />;
-  const { order, viewer } = found;
-  const back = viewer === "owner" ? "/cuenta/pedidos" : "/ingresar";
+  const { order } = found;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
-      <Link href={back} className="flex items-center gap-1.5 self-start font-extrabold">
+      <Link href="/seguimiento" className="flex items-center gap-1.5 self-start font-extrabold">
         <ArrowLeftIcon size={18} />
-        {viewer === "owner" ? "Mis pedidos" : "Volver"}
+        Consultar otro pedido
       </Link>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -215,11 +214,11 @@ function OrderNotFound() {
       <Tito className="w-24" />
       <h1 className="text-3xl font-extrabold">No encontramos este pedido</h1>
       <p className="text-text-secondary">
-        Inicia sesión con la cuenta de la compra, o consúltalo con el número y el correo del pedido.
+        Consúltalo con el número de pedido y el correo que usaste al comprar.
       </p>
       <div className="flex flex-wrap justify-center gap-3">
-        <ButtonLink href="/ingresar" size="lg">
-          Iniciar sesión o consultar
+        <ButtonLink href="/seguimiento" size="lg">
+          Consultar mi pedido
         </ButtonLink>
       </div>
     </div>

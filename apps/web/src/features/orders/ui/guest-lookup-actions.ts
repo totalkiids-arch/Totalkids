@@ -16,7 +16,7 @@ export async function lookupGuestOrderAction(
 ): Promise<GuestLookupState> {
   const input = Object.fromEntries(formData);
   const result = await lookupGuestOrder(input);
-  if (result.ok) redirect(`/cuenta/pedidos/${result.orderId}`);
+  if (result.ok) redirect(`/seguimiento/${result.orderId}`);
   const text = (v: unknown) => (typeof v === "string" ? v.slice(0, 254) : "");
   return { ...result, values: { pedido: text(input.pedido), correo: text(input.correo) } };
 }

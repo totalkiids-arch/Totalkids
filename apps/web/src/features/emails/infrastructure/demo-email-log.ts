@@ -188,9 +188,9 @@ const ROWS: SeedRow[] = [
   }),
   {
     // Un intento rechazado y el siguiente reintento automático en cola.
-    event: "password_recovery",
+    event: "order_received",
     recipient: "javier@example.com",
-    reference: null,
+    reference: order("TK-1046"),
     at: "2026-11-19T22:10:00-03:00",
     status: "pending",
     attempts: [
@@ -213,7 +213,6 @@ function seed(): DemoState {
       event: row.event,
       recipient: row.recipient,
       reference: row.reference,
-      // La recuperación de contraseña es por solicitud: su clave lleva el id.
       eventKey: row.reference ? key : `${key}:${id}`,
       status: row.status,
       attempts: row.attempts ?? [],

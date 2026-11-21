@@ -65,14 +65,13 @@ export function parseGuestLookup(input: Partial<Record<string, unknown>>): Looku
 }
 
 /**
- * Quién puede ver un pedido: el dueño con sesión iniciada, o quien lo consultó
- * como invitado con número y correo correctos.
+ * Quién puede ver un pedido: los compradores no tienen cuenta, así que solo
+ * quien lo consultó en este navegador con número y correo correctos.
  */
 export function canViewOrder(
   order: { id: string; email: string },
-  viewer: { sessionEmail: string | null; guestOrderIds: readonly string[] },
+  viewer: { guestOrderIds: readonly string[] },
 ): boolean {
-  if (viewer.sessionEmail !== null && viewer.sessionEmail === order.email) return true;
   return viewer.guestOrderIds.includes(order.id);
 }
 

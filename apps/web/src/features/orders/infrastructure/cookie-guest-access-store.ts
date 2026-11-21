@@ -20,7 +20,7 @@ export const cookieGuestAccessStore: GuestAccessStore = {
     const jar = await cookies();
     const ids = grantGuestAccess(parseGuestAccess(jar.get(GUEST_COOKIE)?.value), orderId);
     jar.set(GUEST_COOKIE, serializeGuestAccess(ids), {
-      path: "/cuenta/pedidos",
+      path: "/seguimiento",
       maxAge: GUEST_COOKIE_MAX_AGE,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",

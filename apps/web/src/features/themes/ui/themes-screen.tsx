@@ -34,7 +34,7 @@ export async function ThemesScreen({ searchParams = {} }: { searchParams?: Param
 
       <AdminPanel
         title="Plantillas estacionales"
-        description="Hay una sola plantilla activa. El cambio se refleja en la tienda y en Mi cuenta."
+        description="Hay una sola plantilla activa. El cambio se refleja en la tienda y en la consulta de pedidos."
       >
         <form action={setStoreThemeAction} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {storeThemes.map((theme) => {

@@ -9,7 +9,8 @@ import { LOOKUP_FIELDS as F } from "../domain/guest-lookup";
 import { lookupGuestOrderAction } from "./guest-lookup-actions";
 
 /**
- * "¿Compraste sin cuenta?" (RF-36): número de pedido + correo de la compra.
+ * "Consulta tu pedido" (RF-36): número de pedido + correo de la compra. Los
+ * compradores no tienen cuenta; es la única forma de ver un pedido.
  * Si coinciden, abre el detalle y seguimiento del pedido.
  */
 export function GuestOrderLookup() {
@@ -29,10 +30,10 @@ export function GuestOrderLookup() {
     >
       <div>
         <h2 id="pedido-invitado" className="text-[26px] font-extrabold">
-          ¿Compraste sin cuenta?
+          Consulta tu pedido
         </h2>
         <p className="text-text-body">
-          Consulta el estado de tu pedido con el número y el correo de la compra.
+          Usa el número de pedido y el correo que ingresaste al comprar. No necesitas cuenta.
         </p>
       </div>
       <form ref={formRef} action={action} noValidate className="flex flex-col gap-3">

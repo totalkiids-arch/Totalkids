@@ -50,7 +50,6 @@ describe("eventos y estados", () => {
       "Pedido despachado",
       "Pedido entregado",
       "Solicitud de servicio",
-      "Recuperación de contraseña",
     ]);
   });
 
@@ -185,11 +184,5 @@ describe("emailPreview", () => {
     expect(
       emailPreview({ event: "order_received", reference: { kind: "order", id: "TK-1051" } }).body,
     ).toMatch(/pendiente de pago/);
-  });
-
-  it("la recuperación no incluye la contraseña", () => {
-    expect(emailPreview({ event: "password_recovery", reference: null }).body).toMatch(
-      /nunca te enviaremos tu contraseña/,
-    );
   });
 });

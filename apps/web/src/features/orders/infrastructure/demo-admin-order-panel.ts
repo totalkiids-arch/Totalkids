@@ -190,10 +190,6 @@ export const demoAdminOrderPanel: AdminOrderPanel & OrderRepository = {
     return (await records()).map((r) => clone(r.order));
   },
 
-  async listByEmail(email) {
-    return (await records()).filter((r) => r.order.email === email).map((r) => clone(r.order));
-  },
-
   async findById(id) {
     const record = await find(id);
     return record ? clone(record.order) : null;

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { StoreFooter } from "./store-footer";
 import { StoreHeader } from "./store-header";
 
-/** Estructura común de la tienda y la cuenta del comprador: cabecera, contenido y pie. */
+/** Estructura común de la tienda y la consulta de pedidos: cabecera, contenido y pie. */
 export function StoreShell({
   children,
   cartLink,

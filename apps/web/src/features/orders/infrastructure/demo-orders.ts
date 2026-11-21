@@ -224,9 +224,6 @@ export const demoOrderRepository: OrderRepository = {
   async listAll() {
     return [...DEMO_ORDERS];
   },
-  async listByEmail(email) {
-    return DEMO_ORDERS.filter((o) => o.email === email);
-  },
   async findById(id) {
     return DEMO_ORDERS.find((o) => o.id === id) ?? null;
   },
