@@ -242,10 +242,15 @@ export function CheckoutDetailsForm({
 
           {taxDocument === "boleta" ? (
             <p className="text-text-body">
-              Enviaremos tu boleta electrónica al correo que ingresaste en «Tus datos».
+              Tu comprobante de pago de Flow es tu boleta: te llega al correo que ingresaste en «Tus
+              datos» apenas se confirme el pago.
             </p>
           ) : (
             <>
+              <p className="text-text-body">
+                Total Kids emite la factura y la envía al correo para facturas dentro de{" "}
+                {site.invoiceLeadTime} desde que se confirma el pago.
+              </p>
               <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3.5">
                 <TextField
                   label="RUT empresa"

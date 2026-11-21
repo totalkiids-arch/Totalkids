@@ -9,10 +9,17 @@ import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { AdminMuted, AdminPanel } from "@/shared/ui/admin/panel";
 import { StatusBadge } from "@/shared/ui/admin/status-badge";
+import { Button } from "@/shared/ui/button";
 import { formatPrice } from "@/shared/ui/format-price";
 
 import { getAdminOrder } from "../container";
-import { ORDER_STATUS_LABEL, orderSubtotal, orderTotal } from "../domain/order";
+import {
+  invoicePending,
+  ORDER_STATUS_LABEL,
+  orderSubtotal,
+  orderTotal,
+  type Order,
+} from "../domain/order";
 import {
   availableTransitions,
   blockedByUnresolvedPayment,
@@ -30,7 +37,7 @@ import {
   type AdminOrderRecord,
   type AuditEntry,
 } from "../domain/order-workflow";
-import { resolveRefundAction } from "./admin-order-actions";
+import { registerInvoiceAction, resolveRefundAction } from "./admin-order-actions";
 import { AdminOrderStatusBadge, AdminPaymentBadge } from "./admin/order-badges";
 import { OrderStatusForm } from "./admin/order-status-form";
 import { RefundForm } from "./admin/refund-form";
@@ -48,6 +55,16 @@ const NOTICES: Record<string, { message: string; tone: "success" | "warning" }> 
   "reembolso-resuelto": { message: "Estado del reembolso actualizado.", tone: "success" },
   "reembolso-no-resuelto": {
     message: "No se pudo actualizar el reembolso: ya estaba resuelto o no existe.",
+    tone: "warning",
+  },
+  factura: { message: "Factura registrada. Quedó en el historial del pedido.", tone: "success" },
+  "factura-invalida": {
+    message:
+      "No se registró la factura: revisa el folio (solo números) y que el pago esté confirmado.",
+    tone: "warning",
+  },
+  "factura-sin-permiso": {
+    message: "Tu sesión no puede gestionar pedidos. Vuelve a ingresar al panel.",
     tone: "warning",
   },
   "sin-permiso": {
@@ -177,23 +194,21 @@ export async function AdminOrderDetailScreen({
           </AdminPanel>
 
           <AdminPanel title="Datos de facturación">
-            <p>
-              <strong>{order.document === "factura" ? "Factura" : "Boleta"}</strong>
-              <br />
-              {order.buyerName}
-              <br />
-              <span className="break-all">{order.email}</span>
-            </p>
-            {order.document === "factura" ? (
-              <div className="mt-3">
+            <div id="facturacion" className="flex flex-col gap-3">
+              <p>
+                <strong>{order.document === "factura" ? "Factura" : "Boleta"}</strong>
+                <br />
+                {order.buyerName}
+                <br />
+                <span className="break-all">{order.email}</span>
+              </p>
+              {order.document === "factura" ? (
                 <AdminMuted>
                   RUT, razón social y giro llegan con los datos del checkout en la API de pedidos
                   (LN-09).
                 </AdminMuted>
-              </div>
-            ) : null}
-            <div className="mt-3">
-              <AdminMuted>La emisión del documento tributario es externa.</AdminMuted>
+              ) : null}
+              <InvoiceStatus order={order} />
             </div>
           </AdminPanel>
         </div>
@@ -381,6 +396,7 @@ const KIND_LABEL: Record<AuditEntry["kind"], string> = {
   payment: "Pago",
   refund: "Reembolso",
   restock: "Stock",
+  invoice: "Factura",
   system: "Registro",
 };
 
@@ -412,5 +428,58 @@ function AuditTimeline({ entries }: { entries: readonly AuditEntry[] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/**
+ * Boleta: la cubre el comprobante de Flow. Factura: la emite Total Kids fuera
+ * de la tienda y aquí se registra el folio para que no quede pendiente.
+ */
+function InvoiceStatus({ order }: { order: Order }) {
+  if (order.document === "boleta") {
+    return (
+      <AdminMuted>
+        El comprobante de pago de Flow hace de boleta: no hay que emitir nada.
+      </AdminMuted>
+    );
+  }
+  if (order.invoice) {
+    return (
+      <p className="flex flex-wrap items-center gap-2">
+        <StatusBadge tone="green">Factura emitida</StatusBadge>
+        N° {order.invoice.number} · {order.invoice.issuedBy} ·{" "}
+        {formatDateTime(order.invoice.issuedAt)}
+      </p>
+    );
+  }
+  if (!invoicePending(order)) {
+    return <AdminMuted>La factura se emite cuando el pago esté confirmado.</AdminMuted>;
+  }
+  return (
+    <form action={registerInvoiceAction} className="flex flex-col gap-2.5">
+      <p>
+        <StatusBadge tone="yellow">Factura pendiente de emitir</StatusBadge>
+      </p>
+      <AdminMuted>
+        Emítela en el SII o tu sistema de facturación, envíala al correo para facturas y registra
+        aquí el folio.
+      </AdminMuted>
+      <input type="hidden" name="id" value={order.id} />
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-sm font-bold">
+          Folio de la factura
+          <input
+            name="number"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={10}
+            required
+            autoComplete="off"
+            className="h-11 w-40 rounded-lg border-2 border-border bg-surface px-3 text-base"
+          />
+        </label>
+        <Button type="submit">Registrar factura</Button>
+      </div>
+    </form>
   );
 }

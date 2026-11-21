@@ -14,6 +14,8 @@ export const site = {
   hours: "[HORARIO DE ATENCIÓN]",
   installments: "Paga en cuotas [CONDICIONES]",
   shippingLeadTime: "Plazos: [TUS PLAZOS]",
+  /** Plazo en que Total Kids emite y envía la factura (la boleta es el comprobante de Flow). */
+  invoiceLeadTime: "[N] días hábiles",
   /** Despacho gratis desde este subtotal en CLP (RF-08). null = el cliente aún no lo define. */
   freeShippingThreshold: null as number | null,
   safetyCertification: "Cantos redondeados, pinturas [CERTIFICACIÓN]",

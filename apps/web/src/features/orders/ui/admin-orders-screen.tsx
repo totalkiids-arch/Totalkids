@@ -22,7 +22,13 @@ import {
   type AdminOrderQuery,
   type PaymentStatus,
 } from "../domain/admin-order-query";
-import { ORDER_STATUS_LABEL, orderTone, orderTotal, type OrderTone } from "../domain/order";
+import {
+  invoicePending,
+  ORDER_STATUS_LABEL,
+  orderTone,
+  orderTotal,
+  type OrderTone,
+} from "../domain/order";
 import { formatDateTime } from "./order-format";
 
 const STATUS_TONE: Record<OrderTone, StatusTone> = {
@@ -106,9 +112,14 @@ export async function AdminOrdersScreen({
                 order: <CellTitle title={`#${order.id}`} meta={formatDateTime(order.createdAt)} />,
                 customer: <CellTitle title={order.buyerName} meta={order.email} />,
                 status: (
-                  <StatusBadge tone={STATUS_TONE[orderTone(order.status)]}>
-                    {ORDER_STATUS_LABEL[order.status]}
-                  </StatusBadge>
+                  <span className="inline-flex flex-wrap gap-1.5">
+                    <StatusBadge tone={STATUS_TONE[orderTone(order.status)]}>
+                      {ORDER_STATUS_LABEL[order.status]}
+                    </StatusBadge>
+                    {invoicePending(order) ? (
+                      <StatusBadge tone="yellow">Factura pendiente</StatusBadge>
+                    ) : null}
+                  </span>
                 ),
                 payment: (
                   <StatusBadge tone={PAYMENT_TONE[payment]}>

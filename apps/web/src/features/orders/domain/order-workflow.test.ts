@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Order, OrderStatus } from "./order";
+import { invoicePending, type Order, type OrderStatus } from "./order";
 import {
   applyReconciliation,
   applyRefund,
@@ -13,6 +13,7 @@ import {
   ordersOverview,
   orderPaymentStatus,
   refundableAmount,
+  registerInvoice,
   refundState,
   resolveRefund,
   UNPAID_CONFIRM_MESSAGE,
@@ -423,5 +424,43 @@ describe("resumen del panel", () => {
     expect(overview.paymentsPending).toBe(1);
     expect(overview.byStatus.confirmed).toBe(1);
     expect(overview.byStatus.delivered).toBe(0);
+  });
+});
+
+describe("factura emitida por Total Kids", () => {
+  const withInvoice = (status: OrderStatus) => {
+    const r = record(status);
+    return { ...r, order: { ...r.order, document: "factura" as const } };
+  };
+
+  it("queda pendiente solo si es factura, está pagado y no tiene folio", () => {
+    expect(invoicePending(withInvoice("confirmed").order)).toBe(true);
+    expect(invoicePending(withInvoice("pending_payment").order)).toBe(false);
+    expect(invoicePending(record("confirmed").order)).toBe(false);
+  });
+
+  it("registra el folio con responsable, fecha e historial", () => {
+    const result = registerInvoice(withInvoice("preparing"), { number: " 001234 " }, ctx);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.record.order.invoice).toEqual({
+      number: "1234",
+      issuedAt: ctx.at,
+      issuedBy: "Operador",
+    });
+    expect(invoicePending(result.record.order)).toBe(false);
+    expect(result.record.audit.at(-1)).toMatchObject({ kind: "invoice", actor: "Operador" });
+  });
+
+  it("rechaza boletas, pagos sin confirmar, folios inválidos y duplicados", () => {
+    expect(registerInvoice(record("confirmed"), { number: "1" }, ctx).ok).toBe(false);
+    expect(registerInvoice(withInvoice("pending_payment"), { number: "1" }, ctx).ok).toBe(false);
+    expect(registerInvoice(withInvoice("confirmed"), { number: "F-12" }, ctx)).toEqual({
+      ok: false,
+      errors: { number: "Ingresa el folio de la factura (solo números)." },
+    });
+    const done = registerInvoice(withInvoice("confirmed"), { number: "5" }, ctx);
+    if (!done.ok) throw new Error("esperaba registrar");
+    expect(registerInvoice(done.record, { number: "6" }, ctx).ok).toBe(false);
   });
 });

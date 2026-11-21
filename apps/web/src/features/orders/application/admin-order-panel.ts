@@ -31,6 +31,8 @@ export interface AdminOrderPanel {
     input: { refundId: string; status: string },
     actor: string,
   ): Promise<PanelResult>;
+  /** Registra el folio de la factura emitida por Total Kids. */
+  registerInvoice(id: string, input: { number: string }, actor: string): Promise<PanelResult>;
   /** Consulta el estado del último intento en Flow (hoy, una respuesta simulada). */
   reconcile(
     id: string,

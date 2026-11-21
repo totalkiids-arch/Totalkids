@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+import { site } from "@/shared/config/site";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -112,7 +114,12 @@ function ReviewDetails({ details }: { details: CheckoutDetails }) {
         </Item>
         <Item term="Documento">
           {billing.document === "boleta" ? (
-            "Boleta electrónica"
+            <>
+              Boleta: tu comprobante de pago de Flow
+              <span className="block text-sm text-text-secondary">
+                Te llega al correo apenas se confirme el pago.
+              </span>
+            </>
           ) : (
             <>
               Factura · {billing.businessName}
@@ -125,6 +132,9 @@ function ReviewDetails({ details }: { details: CheckoutDetails }) {
                   Con orden de compra o cotización formal
                 </span>
               ) : null}
+              <span className="block text-sm text-text-secondary">
+                Total Kids la emite y la envía a ese correo dentro de {site.invoiceLeadTime}.
+              </span>
             </>
           )}
         </Item>

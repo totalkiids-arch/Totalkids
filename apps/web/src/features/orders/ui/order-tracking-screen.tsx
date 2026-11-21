@@ -131,7 +131,12 @@ export async function OrderTrackingScreen({ id }: { id: string }) {
               </p>
             ) : null}
             <p className="text-sm text-text-secondary">
-              Documento: {order.document === "boleta" ? "boleta electrónica" : "factura"}.
+              Documento:{" "}
+              {order.document === "boleta"
+                ? "boleta (tu comprobante de pago de Flow)."
+                : order.invoice
+                  ? `factura N° ${order.invoice.number}, enviada al correo para facturas.`
+                  : "factura. Total Kids la emite y la envía al correo para facturas."}
             </p>
           </section>
         </div>

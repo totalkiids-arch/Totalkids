@@ -17,7 +17,13 @@
  */
 import type { PaymentStatus } from "@/features/payments";
 
-import { ORDER_STATUS_LABEL, ORDER_STATUSES, type Order, type OrderStatus } from "./order";
+import {
+  invoicePending,
+  ORDER_STATUS_LABEL,
+  ORDER_STATUSES,
+  type Order,
+  type OrderStatus,
+} from "./order";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -68,7 +74,7 @@ export interface RefundRecord {
   resolvedBy: string | null;
 }
 
-export type AuditKind = "status" | "payment" | "refund" | "restock" | "system";
+export type AuditKind = "status" | "payment" | "refund" | "restock" | "invoice" | "system";
 
 /** Entrada del historial del panel (RF-34): actor, fecha y motivo. */
 export interface AuditEntry {
@@ -660,4 +666,54 @@ export function ordersOverview(records: readonly AdminOrderRecord[]): OrdersOver
     if (payment === "pending") paymentsPending += 1;
   }
   return { charged, refunded, byStatus, paymentsInReview, paymentsPending };
+}
+
+/** Folio de factura electrónica: solo dígitos, hasta 10. */
+const INVOICE_NUMBER = /^\d{1,10}$/;
+
+/**
+ * Registra la factura que Total Kids emitió fuera de la tienda (portal del SII
+ * o su sistema de facturación). Flow solo cubre la boleta, así que los pedidos
+ * con factura quedan "pendientes de emitir" hasta registrar el folio.
+ */
+export function registerInvoice(
+  record: AdminOrderRecord,
+  input: { number: string },
+  ctx: ChangeContext,
+): WorkflowResult {
+  const { order } = record;
+  if (order.document !== "factura") {
+    return {
+      ok: false,
+      errors: { form: "Este pedido es con boleta: el comprobante de Flow la reemplaza." },
+    };
+  }
+  if (order.invoice)
+    return { ok: false, errors: { form: "La factura de este pedido ya está registrada." } };
+  if (!invoicePending(order)) {
+    return { ok: false, errors: { form: "La factura se emite cuando el pago está confirmado." } };
+  }
+  const number = input.number.trim().replace(/^0+(?=\d)/, "");
+  if (!INVOICE_NUMBER.test(number)) {
+    return { ok: false, errors: { number: "Ingresa el folio de la factura (solo números)." } };
+  }
+  return {
+    ok: true,
+    record: {
+      ...record,
+      order: { ...order, invoice: { number, issuedAt: ctx.at, issuedBy: ctx.actor } },
+      audit: [
+        ...record.audit,
+        {
+          at: ctx.at,
+          actor: ctx.actor,
+          kind: "invoice",
+          from: null,
+          to: null,
+          reason: null,
+          detail: `Factura N° ${number} emitida.`,
+        },
+      ],
+    },
+  };
 }

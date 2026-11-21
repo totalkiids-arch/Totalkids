@@ -169,6 +169,7 @@ const AUDIT_AREA: Record<string, ActivityArea> = {
   status: "pedidos",
   payment: "pagos",
   refund: "reembolsos",
+  invoice: "pedidos",
   restock: "inventario",
 };
 

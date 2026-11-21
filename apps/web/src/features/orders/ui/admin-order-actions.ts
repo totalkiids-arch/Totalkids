@@ -162,6 +162,31 @@ export async function resolveRefundAction(formData: FormData) {
   );
 }
 
+// ── Factura emitida por Total Kids ──────────────────────────────────────────
+
+const InvoiceForm = z.object({ id: str(40), number: str(20) });
+
+/**
+ * Registra el folio de la factura que Total Kids emitió (Flow solo cubre la
+ * boleta). Quien gestiona pedidos puede hacerlo; queda en el historial.
+ */
+export async function registerInvoiceAction(formData: FormData) {
+  const parsed = InvoiceForm.safeParse(Object.fromEntries(formData));
+  const id = parsed.success ? normalizeOrderId(parsed.data.id) : null;
+  if (!parsed.success || !id) redirect("/admin/pedidos");
+
+  const session = await sessionFor("pedidos");
+  if (!session) redirect(`/admin/pedidos/${id}?aviso=factura-sin-permiso#facturacion`);
+
+  const result = await adminOrderPanel.registerInvoice(
+    id,
+    { number: parsed.data.number },
+    ADMIN_ROLE_LABEL[session.role],
+  );
+  revalidateOrder(id);
+  redirect(`/admin/pedidos/${id}?aviso=${result.ok ? "factura" : "factura-invalida"}#facturacion`);
+}
+
 // ── Conciliación con Flow (RF-33), la usa la pantalla de Pagos ──────────────
 
 const ReconcileForm = z.object({

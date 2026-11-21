@@ -126,7 +126,13 @@ export async function startDemoPayment(input: CheckoutInput): Promise<StartPayme
 export interface PaymentResult {
   view: PaymentResultView;
   /** Pedido en curso para mostrar en el resultado; null si ya no hay datos o carrito. */
-  order: { buyerName: string; email: string; summary: OrderSummary } | null;
+  order: {
+    buyerName: string;
+    email: string;
+    summary: OrderSummary;
+    /** Boleta = comprobante de Flow; factura = la emite Total Kids. */
+    document: "boleta" | "factura";
+  } | null;
 }
 
 /**
@@ -145,6 +151,7 @@ export async function getPaymentResult(status: PaymentStatus | null): Promise<Pa
           buyerName: step.details.buyer.name,
           email: step.details.buyer.email,
           summary: step.summary,
+          document: step.details.billing.document,
         }
       : null,
   };

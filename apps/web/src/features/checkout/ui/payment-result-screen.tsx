@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { PAYMENT_STATUS_LABEL, PAYMENT_STATUSES, type PaymentStatus } from "@/features/payments";
+import { site } from "@/shared/config/site";
 import { ButtonLink } from "@/shared/ui/button";
 import { CheckoutSteps } from "@/shared/ui/checkout-steps";
 import { formatPrice } from "@/shared/ui/format-price";
@@ -64,6 +65,11 @@ export async function PaymentResultScreen({ status }: { status: PaymentStatus | 
             {order ? (
               <>
                 <Row term="Despacho">{shippingLabel(order.summary.shipping)}</Row>
+                <Row term="Documento">
+                  {order.document === "boleta"
+                    ? "Boleta: el comprobante de pago de Flow que llega a tu correo"
+                    : `Factura: Total Kids la envía al correo para facturas dentro de ${site.invoiceLeadTime}`}
+                </Row>
                 <Row term="Total CLP" strong>
                   {formatPrice(order.summary.total ?? order.summary.subtotal)}
                 </Row>

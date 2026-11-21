@@ -55,6 +55,25 @@ export interface OrderEvent {
   label: string;
 }
 
+export interface IssuedInvoice {
+  /** Folio de la factura electrónica. */
+  number: string;
+  /** Fecha y hora ISO del registro. */
+  issuedAt: string;
+  issuedBy: string;
+}
+
+/** Estados con el pago confirmado: desde aquí corresponde emitir la factura. */
+const PAID: readonly OrderStatus[] = ["confirmed", "preparing", "shipped", "delivered"];
+
+/**
+ * Factura pendiente de emitir: el comprador pidió factura, el pago está
+ * confirmado y todavía no se registra el folio. Flow solo cubre la boleta.
+ */
+export function invoicePending(order: Pick<Order, "document" | "status" | "invoice">): boolean {
+  return order.document === "factura" && !order.invoice && PAID.includes(order.status);
+}
+
 export interface Order {
   /** Número visible ("TK-1048"). */
   id: string;
@@ -67,7 +86,10 @@ export interface Order {
   shipping: number;
   discount: number;
   delivery: { method: "domicilio"; address: string } | { method: "retiro"; address: string };
+  /** Boleta = comprobante de pago de Flow. Factura = la emite Total Kids. */
   document: "boleta" | "factura";
+  /** Factura ya emitida por Total Kids (folio del SII); null o ausente = aún no. */
+  invoice?: IssuedInvoice | null;
   /** Despacho: transportista y código de seguimiento, cuando existen. */
   tracking: { carrier: string; code: string } | null;
   /** Historial, del más antiguo al más reciente. */

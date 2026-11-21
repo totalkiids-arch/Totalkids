@@ -8,6 +8,7 @@ import {
   applyRefund,
   applyStatusChange,
   chileDate,
+  registerInvoice,
   resolveRefund,
   type AdminOrderRecord,
   type PaymentAttempt,
@@ -174,6 +175,10 @@ export const demoAdminOrderPanel: AdminOrderPanel & OrderRepository = {
 
   async resolveRefund(id, input, actor) {
     return commit(id, (record) => resolveRefund(record, input, { actor, at: now() }));
+  },
+
+  async registerInvoice(id, input, actor) {
+    return commit(id, (record) => registerInvoice(record, input, { actor, at: now() }));
   },
 
   async reconcile(id, input, actor) {
