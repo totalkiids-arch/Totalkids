@@ -51,7 +51,7 @@ function TopBar() {
         <ul className="flex shrink-0 gap-4 whitespace-nowrap sm:gap-5">
           <li className="flex items-center gap-1.5">
             <TruckIcon size={16} className="text-brand-yellow" />
-            Despachos a todo Chile
+            Despacho a coordinar o retiro en taller
           </li>
           <li className="flex items-center gap-1.5 max-[430px]:hidden">
             <CardIcon size={16} className="text-brand-yellow" />

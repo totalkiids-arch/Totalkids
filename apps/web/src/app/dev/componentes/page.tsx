@@ -107,12 +107,12 @@ export default function ComponentsPage() {
           options={[
             {
               value: "despacho",
-              label: "Despacho a domicilio",
+              label: "Despacho a coordinar",
               description: "Llega en [TUS PLAZOS].",
             },
             {
               value: "retiro",
-              label: "Retiro en tienda",
+              label: "Retiro en taller",
               description: "Sin costo. Te avisamos cuando esté listo.",
             },
           ]}

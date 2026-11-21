@@ -164,10 +164,10 @@ export function CheckoutDetailsForm({
             options={[
               {
                 value: "domicilio",
-                label: "Despacho a domicilio",
-                description: `Llega a tu casa. ${site.shippingLeadTime}`,
+                label: "Despacho a coordinar",
+                description: `Coordinamos contigo la fecha de entrega. ${site.shippingLeadTime}`,
               },
-              { value: "retiro", label: "Retiro en tienda", description: "Sin costo" },
+              { value: "retiro", label: "Retiro en taller", description: "Sin costo" },
             ]}
           />
 

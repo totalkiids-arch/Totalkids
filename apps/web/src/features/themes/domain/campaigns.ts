@@ -28,7 +28,7 @@ const CAMPAIGNS: Record<CampaignThemeId, StoreCampaign> = {
     heroTitle: "Regalos que se quedan",
     heroHighlight: "para crecer",
     heroBody:
-      "Muebles de madera hechos para jugar, ordenar y soñar mucho después de abrir el regalo. Elige con tiempo y recíbelo antes de Nochebuena.",
+      "Muebles de madera hechos para jugar, ordenar y soñar mucho después de abrir el regalo. Elige con tiempo y coordinamos el despacho o el retiro en el taller.",
     bubble: "¡Jo, jo! Este librero va bajo el árbol.",
     sceneLabel: "Un animalito con gorro navideño junto a un árbol de Navidad y regalos",
     cta: { href: "/catalogo", label: "Ver regalos" },
@@ -67,7 +67,7 @@ const CAMPAIGNS: Record<CampaignThemeId, StoreCampaign> = {
     heroTitle: "¡A celebrar el",
     heroHighlight: "dieciocho!",
     heroBody:
-      "Muebles chilenos de madera para jugar en familia estas fiestas. Despachamos a todo Chile para que lleguen antes de la ramada.",
+      "Muebles chilenos de madera para jugar en familia estas fiestas. Coordina el despacho o retíralos en nuestro taller.",
     bubble: "¡Viva Chile, po!",
     sceneLabel: "Un animalito con manta y sombrero huaso entre banderas chilenas",
     cta: { href: "/catalogo", label: "Ver catálogo" },

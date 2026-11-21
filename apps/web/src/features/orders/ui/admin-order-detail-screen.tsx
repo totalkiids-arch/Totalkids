@@ -160,7 +160,7 @@ export async function AdminOrderDetailScreen({
 
           <AdminPanel title="Entrega">
             <p className="font-bold">
-              {order.delivery.method === "domicilio" ? "Despacho a domicilio" : "Retiro en tienda"}
+              {order.delivery.method === "domicilio" ? "Despacho a coordinar" : "Retiro en taller"}
             </p>
             <p className="mt-1">{order.delivery.address}</p>
             {order.tracking ? (

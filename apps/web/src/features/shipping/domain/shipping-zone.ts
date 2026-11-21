@@ -21,7 +21,7 @@ export interface ShippingZone {
 export type ZoneDraft = Omit<ShippingZone, "id">;
 
 export interface ShippingSettings {
-  /** Dirección y horario de retiro en tienda (el retiro es gratis). */
+  /** Dirección y horario de retiro en taller (el retiro es gratis). */
   pickup: string;
   /** Despacho gratis desde este subtotal en CLP; null = no hay umbral. */
   freeShippingThreshold: number | null;

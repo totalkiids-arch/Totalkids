@@ -3,8 +3,8 @@ import type { DeliveryMethod } from "./checkout-details";
 /**
  * Costo de entrega (RF-08, RF-11). Dominio puro.
  *
- * - Retiro en tienda: sin costo.
- * - Despacho a domicilio: gratis desde el umbral configurado. Bajo el umbral,
+ * - Retiro en taller: sin costo.
+ * - Despacho a coordinar: gratis desde el umbral configurado. Bajo el umbral,
  *   la tarifa depende de la zona y la define el cliente en el panel
  *   (admin/despacho); mientras no exista, el costo es null ("por confirmar")
  *   y no se suma al total.

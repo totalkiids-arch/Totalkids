@@ -100,7 +100,7 @@ describe("parseCheckoutDetails · entrega", () => {
     expect(!result.ok && result.errors.region).toBe("Elige una región.");
   });
 
-  it("el retiro en tienda ignora los campos de dirección", () => {
+  it("el retiro en taller ignora los campos de dirección", () => {
     const result = parse({ ...address, entrega: "retiro", region: "XX" });
     expect(result.ok && result.details.delivery).toEqual({ method: "retiro" });
   });

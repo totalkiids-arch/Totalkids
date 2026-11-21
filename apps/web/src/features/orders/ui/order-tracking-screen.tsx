@@ -118,7 +118,7 @@ export async function OrderTrackingScreen({ id }: { id: string }) {
             </h2>
             <p>
               <strong>
-                {order.delivery.method === "retiro" ? "Retiro en tienda" : "Despacho a domicilio"}
+                {order.delivery.method === "retiro" ? "Retiro en taller" : "Despacho a coordinar"}
               </strong>
               <br />
               {order.delivery.address}

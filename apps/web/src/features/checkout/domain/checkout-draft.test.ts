@@ -28,7 +28,7 @@ describe("borrador del checkout", () => {
 });
 
 describe("quoteShipping", () => {
-  it("el retiro en tienda es gratis", () => {
+  it("el retiro en taller es gratis", () => {
     expect(quoteShipping("retiro", 10_000, null)).toEqual({
       kind: "free",
       cost: 0,

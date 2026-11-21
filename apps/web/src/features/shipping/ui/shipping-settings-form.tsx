@@ -17,7 +17,7 @@ import { saveSettingsAction, type SettingsFormState } from "./shipping-actions";
 
 const fieldId = (name: string) => `condicion-${name}`;
 
-/** Retiro en tienda, umbral de despacho gratis y duración de la reserva de stock. */
+/** Retiro en taller, umbral de despacho gratis y duración de la reserva de stock. */
 export function ShippingSettingsForm({ settings }: { settings: ShippingSettings }) {
   const [state, action, pending] = useActionState<SettingsFormState, FormData>(saveSettingsAction, {
     values: {
@@ -71,7 +71,7 @@ export function ShippingSettingsForm({ settings }: { settings: ShippingSettings 
         </div>
       </div>
       <AdminMuted>
-        El retiro en tienda es gratis. El umbral aplica solo a las zonas activas.
+        El retiro en taller es gratis. El umbral aplica solo a las zonas activas.
       </AdminMuted>
       <Button type="submit" disabled={pending} className="self-start">
         {pending ? "Guardando…" : "Guardar condiciones"}

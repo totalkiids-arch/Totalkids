@@ -7,8 +7,8 @@ const ITEMS: { icon: ReactNode; tint: string; title: string; text: string }[] = 
   {
     icon: <TruckIcon size={26} className="text-brand-blue" />,
     tint: "bg-soft-blue",
-    title: "Despacho a todo Chile",
-    text: site.shippingLeadTime,
+    title: "Despacho o retiro en taller",
+    text: "Coordinamos la entrega contigo",
   },
   {
     icon: <LeafIcon size={26} className="text-brand-green" />,

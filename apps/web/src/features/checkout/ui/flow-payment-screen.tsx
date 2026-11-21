@@ -95,10 +95,10 @@ function ReviewDetails({ details }: { details: CheckoutDetails }) {
         </Item>
         <Item term="Entrega">
           {delivery.method === "retiro" ? (
-            "Retiro en tienda"
+            "Retiro en taller"
           ) : (
             <>
-              Despacho a domicilio
+              Despacho a coordinar
               <br />
               {delivery.street}
               {delivery.unit ? `, ${delivery.unit}` : ""}
