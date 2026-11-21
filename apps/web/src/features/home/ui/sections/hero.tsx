@@ -7,7 +7,7 @@ import { ArrowRightIcon } from "@/shared/ui/icons";
 
 import { BearScene, ElephantScene, GiraffeScene, LionScene, MonkeyScene } from "../animal-scenes";
 
-interface HeroSlideData {
+export interface HeroSlideData {
   id: string;
   animal: string;
   background: string;
@@ -145,9 +145,11 @@ function HeroSlide({ slide }: { slide: HeroSlideData }) {
   );
 }
 
-/** Banner principal: carrusel con los animales del logo armando muebles. */
-export function Hero() {
-  const slides: CarouselSlide[] = SLIDES.map((slide) => ({
+/** Banner principal: carrusel con los animales del logo armando muebles.
+ * Con una plantilla de campaña activa, su diapositiva abre el carrusel. */
+export function Hero({ campaignSlide }: { campaignSlide?: HeroSlideData }) {
+  const all = campaignSlide ? [campaignSlide, ...SLIDES] : SLIDES;
+  const slides: CarouselSlide[] = all.map((slide) => ({
     id: slide.id,
     label: `${slide.eyebrow}: ${slide.title} ${slide.highlight}`,
     className: slide.background,

@@ -29,7 +29,7 @@ const PILL_TONE: Record<CategoryTone, string> = {
 /** Franja arcoíris superior con los colores del logo. */
 function RainbowStripe() {
   return (
-    <div aria-hidden className="flex h-2">
+    <div aria-hidden className="store-stripe flex h-2">
       {[
         "bg-brand-red",
         "bg-logo-orange",

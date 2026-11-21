@@ -18,7 +18,7 @@ export function isAdminRole(value: unknown): value is AdminRole {
   return typeof value === "string" && (ADMIN_ROLES as readonly string[]).includes(value);
 }
 
-/** Las 15 secciones del panel, en el orden del menú de la maqueta. */
+/** Las secciones del panel, en el orden del menú de la maqueta. */
 export const ADMIN_SECTIONS = [
   "resumen",
   "pedidos",
@@ -35,6 +35,7 @@ export const ADMIN_SECTIONS = [
   "reportes",
   "usuarios",
   "actividad",
+  "apariencia",
 ] as const;
 
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];

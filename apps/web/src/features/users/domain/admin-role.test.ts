@@ -29,8 +29,8 @@ describe("AdminRole", () => {
 });
 
 describe("canAccessSection", () => {
-  it("el administrador ve las 15 secciones", () => {
-    expect(ADMIN_SECTIONS).toHaveLength(15);
+  it("el administrador ve todas las 16 secciones", () => {
+    expect(ADMIN_SECTIONS).toHaveLength(16);
     expect(visibleFor("admin")).toEqual([...ADMIN_SECTIONS]);
   });
 

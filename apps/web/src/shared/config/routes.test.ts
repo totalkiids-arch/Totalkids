@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { ADMIN_NAV_GROUPS, adminNav, isActiveAdminHref } from "./routes";
 
 describe("adminNav", () => {
-  it("tiene las 15 secciones agrupadas en el orden de la maqueta", () => {
-    expect(adminNav).toHaveLength(15);
+  it("tiene las 16 secciones agrupadas en el orden de la maqueta", () => {
+    expect(adminNav).toHaveLength(16);
     const groups = [...new Set(adminNav.map((item) => item.group))];
     expect(groups).toEqual([...ADMIN_NAV_GROUPS]);
   });

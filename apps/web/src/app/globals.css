@@ -249,6 +249,641 @@
   background-size: 30px 30px;
 }
 
+/* Plantillas públicas elegidas desde Administración → Apariencia de la tienda.
+   Los componentes usan los tokens de Tailwind; al redefinirlos aquí toda la
+   tienda adopta la campaña sin que cada pantalla tenga que conocerla. */
+.store-theme--navidad {
+  --color-background: #fff7ec;
+  --color-surface: #ffffff;
+  --color-brand-navy: #163d35;
+  --color-brand-blue: #b3262d;
+  --color-brand-blue-deep: #7b1820;
+  --color-brand-red: #b3262d;
+  --color-brand-red-deep: #7b1820;
+  --color-brand-green: #23734d;
+  --color-brand-yellow: #dcae38;
+  --color-soft-yellow: #fff0c4;
+  --color-soft-blue: #e2f1e9;
+  --color-soft-green: #e5f3e8;
+  --color-soft-red: #fde5df;
+  --color-border: #ead7bc;
+  --color-dots: #e6c68e;
+}
+
+.store-theme--pascua {
+  --color-background: #fffaf1;
+  --color-brand-navy: #51406d;
+  --color-brand-blue: #8f65b9;
+  --color-brand-blue-deep: #68478a;
+  --color-brand-red: #ce6c78;
+  --color-brand-green: #659d78;
+  --color-brand-yellow: #efc85c;
+  --color-soft-blue: #eee7fa;
+  --color-soft-green: #e8f4df;
+  --color-soft-red: #ffe7e4;
+  --color-soft-purple: #eee4f8;
+  --color-border: #e6d7c3;
+  --color-dots: #dfc6ab;
+}
+
+.store-theme--ano-nuevo {
+  --color-background: #f9f7ff;
+  --color-brand-navy: #202346;
+  --color-brand-blue: #5a479e;
+  --color-brand-blue-deep: #372a70;
+  --color-brand-red: #b03561;
+  --color-brand-green: #26726c;
+  --color-brand-yellow: #dfb642;
+  --color-soft-blue: #e7e8ff;
+  --color-soft-purple: #eee8ff;
+  --color-soft-yellow: #fff3cf;
+  --color-border: #ded9ef;
+  --color-dots: #c9c2e8;
+}
+
+.store-theme--fiestas-patrias {
+  --color-background: #f7fbff;
+  --color-brand-navy: #173b6e;
+  --color-brand-blue: #1d4f91;
+  --color-brand-blue-deep: #133765;
+  --color-brand-red: #c8323a;
+  --color-brand-red-deep: #8f2028;
+  --color-brand-green: #39734c;
+  --color-brand-yellow: #e5b83f;
+  --color-soft-blue: #e5f0fb;
+  --color-soft-red: #fce8e9;
+  --color-soft-green: #e8f2e7;
+  --color-border: #d5e2f0;
+  --color-dots: #bdd2e9;
+}
+
+.store-theme--invierno {
+  --color-background: #f4f9ff;
+  --color-brand-navy: #193d61;
+  --color-brand-blue: #2876aa;
+  --color-brand-blue-deep: #185277;
+  --color-brand-red: #be5e68;
+  --color-brand-green: #3e7e78;
+  --color-brand-yellow: #dfba52;
+  --color-soft-blue: #e0f0fc;
+  --color-soft-green: #e1f0ed;
+  --color-soft-red: #f9e7e8;
+  --color-border: #d3e4f1;
+  --color-dots: #b7d5ea;
+}
+
+.store-theme--primavera {
+  --color-background: #fffdf3;
+  --color-brand-navy: #31534d;
+  --color-brand-blue: #328b78;
+  --color-brand-blue-deep: #216555;
+  --color-brand-red: #dc6b68;
+  --color-brand-green: #63a64d;
+  --color-brand-yellow: #f0c842;
+  --color-soft-blue: #e2f5ef;
+  --color-soft-green: #e8f5d7;
+  --color-soft-red: #ffe8e3;
+  --color-border: #dfebc7;
+  --color-dots: #cfdfa7;
+}
+
+.theme-preview--clasica {
+  background: linear-gradient(145deg, #fff3cc 0 47%, #e6f0ff 47% 70%, #f4eafa 70%);
+  color: #1f2a44;
+}
+
+.theme-preview--navidad {
+  background: linear-gradient(145deg, #e5f3e8 0 48%, #fff0c4 48% 70%, #fde5df 70%);
+  color: #163d35;
+}
+
+.theme-preview--pascua {
+  background: linear-gradient(145deg, #eee4f8 0 48%, #e8f4df 48% 70%, #ffe7e4 70%);
+  color: #51406d;
+}
+
+.theme-preview--ano-nuevo {
+  background: linear-gradient(145deg, #e7e8ff 0 48%, #fff3cf 48% 70%, #eee8ff 70%);
+  color: #202346;
+}
+
+.theme-preview--fiestas-patrias {
+  background: linear-gradient(145deg, #e5f0fb 0 48%, #fffdf3 48% 70%, #fce8e9 70%);
+  color: #173b6e;
+}
+
+.theme-preview--invierno {
+  background: linear-gradient(145deg, #e0f0fc 0 48%, #e1f0ed 48% 70%, #f9e7e8 70%);
+  color: #193d61;
+}
+
+.theme-preview--primavera {
+  background: linear-gradient(145deg, #e8f5d7 0 48%, #ffe8e3 48% 70%, #e2f5ef 70%);
+  color: #31534d;
+}
+
+/* Franja de campaña: hace visible la época sin interrumpir la navegación.
+   Se oculta el texto secundario y la decoración sobrante en móvil. */
+.store-theme {
+  --season-bg: var(--color-soft-blue);
+  --season-ink: var(--color-brand-navy);
+  --season-accent: var(--color-brand-blue);
+  --season-accent-alt: var(--color-brand-yellow);
+  --season-trim: #ffffff;
+  --season-fur: var(--color-brand-yellow);
+  --season-fur-dark: var(--color-brand-navy);
+}
+
+.seasonal-ribbon {
+  background: var(--season-bg);
+  border-bottom: 1px solid color-mix(in srgb, var(--season-ink) 16%, transparent);
+  color: var(--season-ink);
+}
+
+.seasonal-ribbon__inner {
+  display: flex;
+  min-height: 58px;
+  max-width: 80rem;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.seasonal-ribbon__animal {
+  width: 78px;
+  height: 54px;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.seasonal-ribbon p {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+}
+
+.seasonal-ribbon strong {
+  font-family: var(--font-baloo), "Baloo 2", ui-rounded, sans-serif;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.seasonal-ribbon p span {
+  opacity: 0.8;
+}
+
+.seasonal-animal__fur {
+  fill: var(--season-fur);
+}
+
+.seasonal-animal__eye {
+  fill: var(--season-fur-dark);
+}
+
+.seasonal-animal__smile {
+  fill: none;
+  stroke: var(--season-fur-dark);
+  stroke-linecap: round;
+  stroke-width: 2.5;
+}
+
+.seasonal-costume__manta,
+.seasonal-costume__hat {
+  fill: var(--season-accent);
+}
+
+.seasonal-costume__accent {
+  fill: var(--season-accent-alt);
+}
+
+.seasonal-ribbon__details {
+  display: block;
+  width: 86px;
+  height: 28px;
+  border-radius: 999px;
+  background: repeating-linear-gradient(90deg, var(--season-accent) 0 8px, transparent 8px 16px);
+  opacity: 0.75;
+}
+
+.seasonal-ribbon__flags {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.seasonal-ribbon__flag {
+  width: 42px;
+  height: 28px;
+  filter: drop-shadow(0 2px 2px color-mix(in srgb, var(--season-ink) 22%, transparent));
+}
+
+.flag-white {
+  fill: #ffffff;
+}
+.flag-red {
+  fill: #d52b38;
+}
+.flag-blue {
+  fill: #0039a6;
+}
+.flag-star {
+  fill: #ffffff;
+}
+
+.store-theme--navidad {
+  --season-bg: #e5f3e8;
+  --season-ink: #163d35;
+  --season-accent: #b3262d;
+  --season-accent-alt: #dcae38;
+  --season-fur: #d99a43;
+  --season-fur-dark: #163d35;
+}
+
+.store-theme--pascua {
+  --season-bg: #eee4f8;
+  --season-ink: #51406d;
+  --season-accent: #8f65b9;
+  --season-accent-alt: #efc85c;
+  --season-fur: #659d78;
+  --season-fur-dark: #51406d;
+}
+
+.store-theme--ano-nuevo {
+  --season-bg: #e7e8ff;
+  --season-ink: #202346;
+  --season-accent: #5a479e;
+  --season-accent-alt: #dfb642;
+  --season-fur: #b03561;
+  --season-fur-dark: #202346;
+}
+
+.store-theme--fiestas-patrias {
+  --season-bg: #e5f0fb;
+  --season-ink: #173b6e;
+  --season-accent: #c8323a;
+  --season-accent-alt: #ffffff;
+  --season-fur: #b78252;
+  --season-fur-dark: #173b6e;
+}
+
+.store-theme--fiestas-patrias .seasonal-costume__manta {
+  fill: #c8323a;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.store-theme--fiestas-patrias .seasonal-costume__hat {
+  fill: #242321;
+}
+
+.store-theme--invierno {
+  --season-bg: #e0f0fc;
+  --season-ink: #193d61;
+  --season-accent: #2876aa;
+  --season-accent-alt: #dfba52;
+  --season-fur: #7b9bbb;
+  --season-fur-dark: #193d61;
+}
+
+.store-theme--primavera {
+  --season-bg: #e8f5d7;
+  --season-ink: #31534d;
+  --season-accent: #328b78;
+  --season-accent-alt: #dc6b68;
+  --season-fur: #e2a852;
+  --season-fur-dark: #31534d;
+}
+
+@media (max-width: 520px) {
+  .seasonal-ribbon__inner {
+    min-height: 52px;
+  }
+  .seasonal-ribbon__animal {
+    width: 65px;
+    height: 48px;
+  }
+  .seasonal-ribbon p span,
+  .seasonal-ribbon__details,
+  .seasonal-ribbon__flags {
+    display: none;
+  }
+}
+
+/* Ambientación completa de campaña (features/themes/ui/seasonal-decor.tsx).
+   Todo es decorativo: aria-hidden, sin eventos y sin movimiento con
+   prefers-reduced-motion. Los SVG van como data URI con colores fijos. */
+.store-theme:not(.store-theme--clasica) .store-stripe {
+  height: 0.6rem;
+}
+.store-theme:not(.store-theme--clasica) .store-stripe > span {
+  display: none;
+}
+.seasonal-garland {
+  height: 32px;
+  background-repeat: repeat-x;
+  background-position: center top;
+  pointer-events: none;
+}
+.seasonal-garland--footer {
+  margin-top: 2.5rem;
+}
+.seasonal-hero {
+  background: var(--season-bg);
+}
+.seasonal-scene__halo {
+  fill: var(--color-surface);
+  opacity: 0.7;
+}
+.seasonal-scene__rug {
+  fill: color-mix(in srgb, var(--season-ink) 12%, transparent);
+}
+.seasonal-scene__line {
+  fill: none;
+  stroke: var(--season-ink);
+  stroke-width: 3;
+}
+.seasonal-scene__pennant {
+  stroke: color-mix(in srgb, var(--season-ink) 20%, transparent);
+  stroke-width: 1.5;
+}
+.seasonal-scene__pole {
+  fill: #8a5a33;
+}
+.seasonal-scene__tree {
+  fill: var(--color-brand-green);
+}
+.seasonal-scene__gold {
+  fill: var(--color-brand-yellow);
+}
+.seasonal-scene__accent {
+  fill: var(--season-accent);
+}
+.seasonal-scene__gift {
+  fill: var(--color-brand-red);
+}
+.seasonal-scene__trim {
+  fill: var(--season-trim);
+}
+.seasonal-scene__stripe {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.seasonal-scene__ray {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.seasonal-scene__gold-stroke {
+  stroke: var(--color-brand-yellow);
+}
+.seasonal-scene__accent-stroke {
+  stroke: var(--season-accent);
+}
+.seasonal-scene__gift-stroke {
+  stroke: var(--color-brand-red);
+}
+.seasonal-scene__flake {
+  stroke: var(--season-accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.seasonal-scene__snow {
+  fill: #ffffff;
+}
+.seasonal-scene__stem {
+  fill: none;
+  stroke: var(--color-brand-green);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.seasonal-costume__trim {
+  fill: var(--season-trim);
+}
+.seasonal-costume__stem {
+  fill: none;
+  stroke: var(--color-brand-green);
+  stroke-width: 2.5;
+}
+.seasonal-animal__blush {
+  fill: #ff9e8a;
+  opacity: 0.6;
+}
+.store-theme--pascua {
+  --season-trim: #f4a7b9;
+}
+.store-theme--pascua .seasonal-costume__hat {
+  fill: #ffffff;
+}
+.store-theme--primavera {
+  --season-trim: #f0c842;
+}
+.store-theme--ano-nuevo .seasonal-costume__accent {
+  stroke: var(--season-accent-alt);
+}
+
+/* Partículas: solo sobre la primera pantalla, para no distraer al comprar. */
+.seasonal-particles {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 30;
+  height: 100vh;
+  overflow: hidden;
+  pointer-events: none;
+}
+.seasonal-particle {
+  position: absolute;
+  top: -24px;
+  left: var(--x);
+  width: var(--s);
+  height: var(--s);
+  opacity: 0.85;
+  animation: season-fall var(--d) linear var(--w) infinite both;
+}
+.seasonal-particle:nth-child(3n) {
+  animation-name: season-fall-sway;
+}
+@keyframes season-fall {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(40px, 105vh, 0) rotate(360deg);
+  }
+}
+@keyframes season-fall-sway {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(-40px, 52vh, 0) rotate(180deg);
+  }
+  to {
+    transform: translate3d(20px, 105vh, 0) rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seasonal-particles {
+    display: none;
+  }
+}
+@media (max-width: 640px) {
+  .seasonal-particle:nth-child(n + 9) {
+    display: none;
+  }
+  .seasonal-garland--footer {
+    margin-top: 1.5rem;
+  }
+}
+
+.store-theme--navidad.pattern-dots {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%27120%27 viewBox=%270 0 120 120%27%3E%3Cg stroke=%27%23e6c68e%27 stroke-width=%272.5%27 stroke-linecap=%27round%27%3E%3Cpath d=%27M30 20V40%27/%3E%3Cpath d=%27M30 20V40%27 transform=%27rotate(60 30 30)%27/%3E%3Cpath d=%27M30 20V40%27 transform=%27rotate(120 30 30)%27/%3E%3C/g%3E%3Cpath fill=%27%23efcf8f%27 transform=%27translate(90 88) scale(0.8)%27 d=%27m0-10 2.9 6 6.6.9-4.8 4.6 1.2 6.5L0 4.9l-5.9 3.1 1.2-6.5L-9.5-3.1l6.6-.9z%27/%3E%3Ccircle cx=%2790%27 cy=%2728%27 r=%272.5%27 fill=%27%23e6c68e%27/%3E%3Ccircle cx=%2728%27 cy=%2792%27 r=%272.5%27 fill=%27%23e6c68e%27/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+}
+.store-theme--navidad .store-stripe {
+  background: repeating-linear-gradient(
+    135deg,
+    #b3262d 0 12px,
+    #ffffff 12px 18px,
+    #23734d 18px 30px,
+    #ffffff 30px 36px
+  );
+}
+.store-theme--navidad .seasonal-garland {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%2732%27 viewBox=%270 0 120 32%27%3E%3Cpath d=%27M0 4Q30 20 60 4T120 4%27 stroke=%27%23163d35%27 stroke-width=%272%27 fill=%27none%27/%3E%3Crect x=%2713%27 y=%276%27 width=%274%27 height=%275%27 fill=%27%23163d35%27/%3E%3Cellipse cx=%2715%27 cy=%2716%27 rx=%275.5%27 ry=%278%27 fill=%27%23b3262d%27/%3E%3Crect x=%2743%27 y=%276%27 width=%274%27 height=%275%27 fill=%27%23163d35%27/%3E%3Cellipse cx=%2745%27 cy=%2716%27 rx=%275.5%27 ry=%278%27 fill=%27%23dcae38%27/%3E%3Crect x=%2773%27 y=%276%27 width=%274%27 height=%275%27 fill=%27%23163d35%27/%3E%3Cellipse cx=%2775%27 cy=%2716%27 rx=%275.5%27 ry=%278%27 fill=%27%2323734d%27/%3E%3Crect x=%27103%27 y=%276%27 width=%274%27 height=%275%27 fill=%27%23163d35%27/%3E%3Cellipse cx=%27105%27 cy=%2716%27 rx=%275.5%27 ry=%278%27 fill=%27%23b3262d%27/%3E%3C/svg%3E");
+}
+.store-theme--navidad .seasonal-particle {
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #d9c7a4;
+}
+.store-theme--navidad .seasonal-particle:nth-child(even) {
+  background: #dcae38;
+}
+
+.store-theme--pascua.pattern-dots {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%27120%27 viewBox=%270 0 120 120%27%3E%3Cellipse cx=%2730%27 cy=%2732%27 rx=%278%27 ry=%2710.5%27 fill=%27%23e6cfee%27/%3E%3Cpath d=%27M22 32q4-3 8 0t8 0%27 stroke=%27%23fffaf1%27 stroke-width=%272%27 fill=%27none%27/%3E%3Cellipse cx=%2790%27 cy=%2788%27 rx=%278%27 ry=%2710.5%27 fill=%27%23d9ecd0%27/%3E%3Cpath d=%27M82 88q4-3 8 0t8 0%27 stroke=%27%23fffaf1%27 stroke-width=%272%27 fill=%27none%27/%3E%3Ccircle cx=%2790%27 cy=%2728%27 r=%272.5%27 fill=%27%23dfc6ab%27/%3E%3Ccircle cx=%2728%27 cy=%2792%27 r=%273%27 fill=%27%23ffd4cf%27/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+}
+.store-theme--pascua .store-stripe {
+  background: linear-gradient(90deg, #c9aee8 0 25%, #bfe2b8 25% 50%, #f6e09a 50% 75%, #ffd0c9 75%);
+}
+.store-theme--pascua .seasonal-garland {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27160%27 height=%2732%27 viewBox=%270 0 160 32%27%3E%3Cpath d=%27M0 3H160%27 stroke=%27%238f65b9%27 stroke-width=%272%27/%3E%3Cpath d=%27M4 3h32l-16.0 24z%27 fill=%27%23c9aee8%27/%3E%3Cpath d=%27M44 3h32l-16.0 24z%27 fill=%27%23bfe2b8%27/%3E%3Cpath d=%27M84 3h32l-16.0 24z%27 fill=%27%23ffd0c9%27/%3E%3Cpath d=%27M124 3h32l-16.0 24z%27 fill=%27%23f6e09a%27/%3E%3C/svg%3E");
+}
+.store-theme--pascua .seasonal-particle {
+  background: #c9aee8;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+.store-theme--pascua .seasonal-particle:nth-child(even) {
+  background: #f6c6bf;
+}
+
+.store-theme--ano-nuevo.pattern-dots {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%27120%27 viewBox=%270 0 120 120%27%3E%3Cpath fill=%27%23cfc6ef%27 transform=%27translate(30 30) scale(1)%27 d=%27M0-10Q1-1 10 0Q1 1 0 10Q-1 1-10 0Q-1-1 0-10z%27/%3E%3Cpath fill=%27%23ecd790%27 transform=%27translate(90 90) scale(0.7)%27 d=%27M0-10Q1-1 10 0Q1 1 0 10Q-1 1-10 0Q-1-1 0-10z%27/%3E%3Ccircle cx=%2790%27 cy=%2726%27 r=%272.5%27 fill=%27%23c9c2e8%27/%3E%3Ccircle cx=%2726%27 cy=%2792%27 r=%272.5%27 fill=%27%23ecd790%27/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+}
+.store-theme--ano-nuevo .store-stripe {
+  background: repeating-linear-gradient(
+    90deg,
+    #202346 0 30px,
+    #dfb642 30px 60px,
+    #5a479e 60px 90px
+  );
+}
+.store-theme--ano-nuevo .seasonal-garland {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27160%27 height=%2732%27 viewBox=%270 0 160 32%27%3E%3Cpath d=%27M0 3H160%27 stroke=%27%23202346%27 stroke-width=%272%27/%3E%3Cpath d=%27M4 3h32l-16.0 24z%27 fill=%27%23dfb642%27/%3E%3Cpath d=%27M44 3h32l-16.0 24z%27 fill=%27%235a479e%27/%3E%3Cpath d=%27M84 3h32l-16.0 24z%27 fill=%27%23b03561%27/%3E%3Cpath d=%27M124 3h32l-16.0 24z%27 fill=%27%2326726c%27/%3E%3C/svg%3E");
+}
+.store-theme--ano-nuevo .seasonal-particle {
+  background: #dfb642;
+  border-radius: 2px;
+}
+.store-theme--ano-nuevo .seasonal-particle:nth-child(even) {
+  background: #5a479e;
+}
+
+.store-theme--fiestas-patrias.pattern-dots {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%27120%27 viewBox=%270 0 120 120%27%3E%3Cpath fill=%27%23bdd2e9%27 transform=%27translate(30 30) scale(0.9)%27 d=%27m0-10 2.9 6 6.6.9-4.8 4.6 1.2 6.5L0 4.9l-5.9 3.1 1.2-6.5L-9.5-3.1l6.6-.9z%27/%3E%3Cpath fill=%27%23f1c4c7%27 transform=%27translate(90 90) scale(0.7)%27 d=%27m0-10 2.9 6 6.6.9-4.8 4.6 1.2 6.5L0 4.9l-5.9 3.1 1.2-6.5L-9.5-3.1l6.6-.9z%27/%3E%3Ccircle cx=%2790%27 cy=%2728%27 r=%272.5%27 fill=%27%23bdd2e9%27/%3E%3Ccircle cx=%2728%27 cy=%2792%27 r=%272.5%27 fill=%27%23f1c4c7%27/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+}
+.store-theme--fiestas-patrias .store-stripe {
+  background: linear-gradient(90deg, #0039a6 0 33.3%, #ffffff 33.3% 66.6%, #d52b38 66.6%);
+}
+.store-theme--fiestas-patrias .seasonal-garland {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%2732%27 viewBox=%270 0 120 32%27%3E%3Cpath d=%27M0 3H120%27 stroke=%27%23173b6e%27 stroke-width=%272%27/%3E%3Cpath d=%27M4 3h32l-16.0 24z%27 fill=%27%230039a6%27/%3E%3Cpath d=%27M44 3h32l-16.0 24z%27 fill=%27%23ffffff%27 stroke=%27%23d5e2f0%27 stroke-width=%271.5%27/%3E%3Cpath d=%27M84 3h32l-16.0 24z%27 fill=%27%23d52b38%27/%3E%3C/svg%3E");
+}
+.store-theme--fiestas-patrias .seasonal-particle {
+  background: #d52b38;
+  border-radius: 2px;
+}
+.store-theme--fiestas-patrias .seasonal-particle:nth-child(even) {
+  background: #0039a6;
+}
+
+.store-theme--invierno.pattern-dots {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%27120%27 viewBox=%270 0 120 120%27%3E%3Cg stroke=%27%23b7d5ea%27 stroke-width=%272.5%27 stroke-linecap=%27round%27%3E%3Cpath d=%27M30 19V41%27/%3E%3Cpath d=%27M30 19V41%27 transform=%27rotate(60 30 30)%27/%3E%3Cpath d=%27M30 19V41%27 transform=%27rotate(120 30 30)%27/%3E%3C/g%3E%3Cg stroke=%27%23c9e0f0%27 stroke-width=%272.5%27 stroke-linecap=%27round%27%3E%3Cpath d=%27M90 83V97%27/%3E%3Cpath d=%27M90 83V97%27 transform=%27rotate(60 90 90)%27/%3E%3Cpath d=%27M90 83V97%27 transform=%27rotate(120 90 90)%27/%3E%3C/g%3E%3Ccircle cx=%2790%27 cy=%2728%27 r=%272.5%27 fill=%27%23b7d5ea%27/%3E%3Ccircle cx=%2728%27 cy=%2792%27 r=%272.5%27 fill=%27%23b7d5ea%27/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+}
+.store-theme--invierno .store-stripe {
+  background: repeating-linear-gradient(90deg, #2876aa 0 24px, #e0f0fc 24px 48px);
+}
+.store-theme--invierno .seasonal-garland {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2760%27 height=%2732%27 viewBox=%270 0 60 32%27%3E%3Cpath d=%27M0 0H60V6H0z%27 fill=%27%23ffffff%27/%3E%3Cpath d=%27M4 5l5 22 5-22zM20 5l4 13 4-13zM34 5l5 26 5-26zM50 5l3 10 3-10z%27 fill=%27%23cfe6f6%27/%3E%3C/svg%3E");
+}
+.store-theme--invierno .seasonal-particle {
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #b7d5ea;
+}
+.store-theme--invierno .seasonal-particle:nth-child(even) {
+  background: #9cc6e6;
+}
+
+.store-theme--primavera.pattern-dots {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%27120%27 viewBox=%270 0 120 120%27%3E%3Ccircle cx=%2730%27 cy=%2726%27 r=%274.5%27 fill=%27%23f6c6bf%27 transform=%27rotate(0 30 32)%27/%3E%3Ccircle cx=%2730%27 cy=%2726%27 r=%274.5%27 fill=%27%23f6c6bf%27 transform=%27rotate(72 30 32)%27/%3E%3Ccircle cx=%2730%27 cy=%2726%27 r=%274.5%27 fill=%27%23f6c6bf%27 transform=%27rotate(144 30 32)%27/%3E%3Ccircle cx=%2730%27 cy=%2726%27 r=%274.5%27 fill=%27%23f6c6bf%27 transform=%27rotate(216 30 32)%27/%3E%3Ccircle cx=%2730%27 cy=%2726%27 r=%274.5%27 fill=%27%23f6c6bf%27 transform=%27rotate(288 30 32)%27/%3E%3Ccircle cx=%2730%27 cy=%2732%27 r=%273%27 fill=%27%23f0c842%27/%3E%3Ccircle cx=%2790%27 cy=%2784%27 r=%274.5%27 fill=%27%23cfe3b0%27 transform=%27rotate(0 90 90)%27/%3E%3Ccircle cx=%2790%27 cy=%2784%27 r=%274.5%27 fill=%27%23cfe3b0%27 transform=%27rotate(72 90 90)%27/%3E%3Ccircle cx=%2790%27 cy=%2784%27 r=%274.5%27 fill=%27%23cfe3b0%27 transform=%27rotate(144 90 90)%27/%3E%3Ccircle cx=%2790%27 cy=%2784%27 r=%274.5%27 fill=%27%23cfe3b0%27 transform=%27rotate(216 90 90)%27/%3E%3Ccircle cx=%2790%27 cy=%2784%27 r=%274.5%27 fill=%27%23cfe3b0%27 transform=%27rotate(288 90 90)%27/%3E%3Ccircle cx=%2790%27 cy=%2790%27 r=%273%27 fill=%27%23f0c842%27/%3E%3Ccircle cx=%2790%27 cy=%2728%27 r=%272.5%27 fill=%27%23cfdfa7%27/%3E%3Ccircle cx=%2728%27 cy=%2792%27 r=%272.5%27 fill=%27%23f6c6bf%27/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+}
+.store-theme--primavera .store-stripe {
+  background: linear-gradient(90deg, #63a64d 0 33.3%, #f0c842 33.3% 66.6%, #dc6b68 66.6%);
+}
+.store-theme--primavera .seasonal-garland {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2780%27 height=%2732%27 viewBox=%270 0 80 32%27%3E%3Cpath d=%27M0 6Q20 16 40 6T80 6%27 stroke=%27%2363a64d%27 stroke-width=%272.5%27 fill=%27none%27/%3E%3Ccircle cx=%2720%27 cy=%2710%27 r=%274.5%27 fill=%27%23dc6b68%27 transform=%27rotate(0 20 16)%27/%3E%3Ccircle cx=%2720%27 cy=%2710%27 r=%274.5%27 fill=%27%23dc6b68%27 transform=%27rotate(72 20 16)%27/%3E%3Ccircle cx=%2720%27 cy=%2710%27 r=%274.5%27 fill=%27%23dc6b68%27 transform=%27rotate(144 20 16)%27/%3E%3Ccircle cx=%2720%27 cy=%2710%27 r=%274.5%27 fill=%27%23dc6b68%27 transform=%27rotate(216 20 16)%27/%3E%3Ccircle cx=%2720%27 cy=%2710%27 r=%274.5%27 fill=%27%23dc6b68%27 transform=%27rotate(288 20 16)%27/%3E%3Ccircle cx=%2720%27 cy=%2716%27 r=%273%27 fill=%27%23f0c842%27/%3E%3Ccircle cx=%2760%27 cy=%278%27 r=%274.5%27 fill=%27%23f4a7b9%27 transform=%27rotate(0 60 14)%27/%3E%3Ccircle cx=%2760%27 cy=%278%27 r=%274.5%27 fill=%27%23f4a7b9%27 transform=%27rotate(72 60 14)%27/%3E%3Ccircle cx=%2760%27 cy=%278%27 r=%274.5%27 fill=%27%23f4a7b9%27 transform=%27rotate(144 60 14)%27/%3E%3Ccircle cx=%2760%27 cy=%278%27 r=%274.5%27 fill=%27%23f4a7b9%27 transform=%27rotate(216 60 14)%27/%3E%3Ccircle cx=%2760%27 cy=%278%27 r=%274.5%27 fill=%27%23f4a7b9%27 transform=%27rotate(288 60 14)%27/%3E%3Ccircle cx=%2760%27 cy=%2714%27 r=%273%27 fill=%27%23f0c842%27/%3E%3Cellipse cx=%2740%27 cy=%279%27 rx=%276%27 ry=%273%27 fill=%27%2363a64d%27 transform=%27rotate(-25 40 9)%27/%3E%3C/svg%3E");
+}
+.store-theme--primavera .seasonal-particle {
+  background: #f4a7b9;
+  border-radius: 80% 0;
+}
+.store-theme--primavera .seasonal-particle:nth-child(even) {
+  background: #dc6b68;
+}
+
+.store-theme--ano-nuevo .seasonal-particle,
+.store-theme--fiestas-patrias .seasonal-particle {
+  height: calc(var(--s) * 0.55);
+}
+.store-theme--fiestas-patrias .seasonal-particle:nth-child(3n) {
+  background: #ffffff;
+  box-shadow: 0 0 0 1px #bdd2e9;
+}
+
+/* Vista previa en miniatura del panel de Apariencia. */
+.theme-mini .seasonal-garland {
+  height: 14px;
+  background-size: auto 14px;
+}
+.theme-mini.pattern-dots {
+  background-size: 60px 60px;
+}
+.store-theme--clasica.theme-mini.pattern-dots {
+  background-size: 18px 18px;
+}
+
 /* Barras de desplazamiento horizontal sin scrollbar visible (píldoras en móvil). */
 @utility scrollbar-none {
   scrollbar-width: none;

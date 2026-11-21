@@ -160,6 +160,13 @@ export const adminNav = [
     icon: "clock",
     section: "actividad",
   },
+  {
+    href: "/admin/apariencia",
+    label: "Apariencia de la tienda",
+    group: "Administración",
+    icon: "image",
+    section: "apariencia",
+  },
 ] as const satisfies readonly AdminNavItem[];
 
 /**
