@@ -5,8 +5,8 @@ export type AddResult = { ok: true; input: CartLineInput } | { ok: false; error:
 
 /**
  * Valida en el servidor lo que llega desde la ficha (RF-04, RF-06): el producto y
- * la variante existen, hay stock suficiente contando lo que ya está en el carrito,
- * los extras se ofrecen y los textos personalizados cumplen sus límites.
+ * la variante existen, la cantidad está dentro del máximo por línea (todo se
+ * fabrica a pedido: el stock no limita la compra), los extras se ofrecen y los textos personalizados cumplen sus límites.
  */
 export function validateAdd(
   product: CartProduct | null,
@@ -14,7 +14,6 @@ export function validateAdd(
   inCart: readonly CartLine[],
 ): AddResult {
   if (!product) return { ok: false, error: "Este producto ya no está disponible." };
-  if (product.available <= 0) return { ok: false, error: "Este producto está agotado." };
 
   const quantity = Math.trunc(request.quantity);
   if (!Number.isFinite(quantity) || quantity < 1 || quantity > MAX_QUANTITY_PER_LINE) {
@@ -23,13 +22,13 @@ export function validateAdd(
   const alreadyInCart = inCart
     .filter((l) => l.sku === product.sku)
     .reduce((sum, l) => sum + l.quantity, 0);
-  const left = product.available - alreadyInCart;
+  const left = MAX_QUANTITY_PER_LINE - alreadyInCart;
   if (quantity > left) {
     return {
       ok: false,
       error:
         left <= 0
-          ? "Ya tienes en el carrito todas las unidades disponibles."
+          ? `Ya tienes ${MAX_QUANTITY_PER_LINE} unidades en el carrito. Para más, escríbenos y lo cotizamos.`
           : `Solo puedes agregar ${left} ${left === 1 ? "unidad más" : "unidades más"}.`,
     };
   }

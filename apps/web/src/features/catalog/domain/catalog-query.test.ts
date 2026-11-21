@@ -28,6 +28,7 @@ function product(overrides: Partial<ProductSummary> & { slug: string }): Product
     popularity: 0,
     publishedAt: "2026-01-01",
     featured: false,
+    inStock: false,
     image: null,
     ...overrides,
   };

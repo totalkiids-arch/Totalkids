@@ -103,7 +103,7 @@ export async function DashboardScreen() {
             value={lowStock}
             note={
               <Link href="/admin/inventario" className="font-bold text-brand-blue underline">
-                Variantes con pocas unidades o agotadas
+                Variantes con pocas unidades terminadas
               </Link>
             }
           />

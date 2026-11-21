@@ -29,7 +29,7 @@ export async function InventoryScreen({ searchParams = {} }: { searchParams?: Ad
   const requested = normalizeSku(param(searchParams, "sku"));
   const preselected = rows.find((r) => normalizeSku(r.sku) === requested)?.sku ?? "";
   const saved = param(searchParams, "aviso") === "ajuste";
-  const low = rows.filter((r) => inventoryStatus(r) !== "ok").length;
+  const low = rows.filter((r) => inventoryStatus(r) === "low").length;
 
   return (
     <>
@@ -39,14 +39,15 @@ export async function InventoryScreen({ searchParams = {} }: { searchParams?: Ad
       />
       {saved ? <LiveNotice message="Ajuste registrado con responsable, fecha y motivo." /> : null}
       <InfoNote>
-        {DEMO_STORE_NOTE} El stock físico y reservado de partida es ficticio: el sitio del cliente
-        no informa unidades.
+        {DEMO_STORE_NOTE} Todo se fabrica a pedido: el stock parte en 0. Registra aquí las unidades
+        terminadas; con al menos 1 disponible la tienda muestra el producto “En stock” y, si no, “A
+        pedido”, y se vende como reserva.
       </InfoNote>
 
       <AdminPanel
         flush
         title="Stock por variante"
-        description={`${low} variante${low === 1 ? "" : "s"} con stock bajo o agotada${low === 1 ? "" : "s"}.`}
+        description={`${low} variante${low === 1 ? "" : "s"} con pocas unidades terminadas. Sin stock = a pedido.`}
       >
         <DataTable
           caption="Stock por variante"
@@ -72,7 +73,7 @@ export async function InventoryScreen({ searchParams = {} }: { searchParams?: Ad
                 reserved: row.reserved,
                 available: (
                   <span className="inline-flex items-center gap-2">
-                    {status === "out" ? <StatusBadge tone="red">Agotado</StatusBadge> : null}
+                    {status === "out" ? <StatusBadge tone="blue">A pedido</StatusBadge> : null}
                     {status === "low" ? <StatusBadge tone="yellow">Stock bajo</StatusBadge> : null}
                     {units(availableStock(row))}
                   </span>

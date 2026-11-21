@@ -52,6 +52,15 @@ export function CartLineItem({ item }: { item: PricedLine }) {
           </Link>
         </h2>
         {meta.length > 0 ? <p className="text-sm text-text-secondary">{meta.join(" · ")}</p> : null}
+        <p
+          className={`text-[13px] font-extrabold ${item.madeToOrder ? "text-brand-blue" : "text-brand-green"}`}
+        >
+          {item.madeToOrder
+            ? product.available > 0
+              ? `Reserva: ${product.available} en stock, el resto a pedido`
+              : "Reserva a pedido: se fabrica al confirmar"
+            : "En stock"}
+        </p>
         <p className="mt-1 text-lg font-extrabold">
           <span className="sr-only">Total de la línea: </span>
           {unavailable ? (

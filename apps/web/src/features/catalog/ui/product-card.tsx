@@ -52,6 +52,15 @@ export function ProductCard({ product }: { product: ProductSummary }) {
           </Link>
         </h3>
         <p className="line-clamp-3 text-sm text-text-secondary">{product.summary}</p>
+        <p
+          className={`flex items-center gap-1.5 text-[13px] font-extrabold ${product.inStock ? "text-brand-green" : "text-brand-blue"}`}
+        >
+          <span
+            aria-hidden
+            className={`size-2 rounded-full ${product.inStock ? "bg-brand-green" : "bg-brand-blue"}`}
+          />
+          {product.inStock ? "En stock" : "A pedido · se reserva"}
+        </p>
       </div>
 
       <div className="mt-auto flex items-center justify-between gap-2 px-1 pt-1">

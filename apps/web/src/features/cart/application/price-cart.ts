@@ -13,6 +13,8 @@ export interface PricedLine {
   /** (Precio de la variante + extras con precio) × cantidad; null si la variante no tiene precio. */
   total: number | null;
   status: "ok" | "adjusted" | "unavailable";
+  /** Se pide más de lo que hay terminado: la línea es una reserva a pedido. */
+  madeToOrder: boolean;
   /** Qué se ajustó, para informarlo (RF-05, RF-06). */
   note: string | null;
 }
@@ -36,8 +38,8 @@ export interface PricedCart {
 
 /**
  * Revalida el carrito contra el catálogo vigente (RF-06): quita productos que ya
- * no se venden, descarta extras que dejaron de ofrecerse, ajusta cantidades al
- * stock y marca como agotadas las líneas sin disponibilidad. Función pura.
+ * no se venden, descarta extras que dejaron de ofrecerse, limita la cantidad al
+ * máximo por línea y marca como reserva a pedido lo que supera el stock. Función pura.
  */
 export function priceCart(
   lines: readonly CartLine[],
@@ -65,14 +67,14 @@ export function priceCart(
       return [{ id, label: extra.label, price: extra.price, text: line.texts[id] ?? null }];
     });
 
-    const maxQuantity = Math.max(0, Math.min(product.available, MAX_QUANTITY_PER_LINE));
-    const unavailable = maxQuantity === 0;
-    const quantity = unavailable ? line.quantity : Math.min(line.quantity, maxQuantity);
-    if (!unavailable && quantity < line.quantity) {
-      notes.push(
-        `Ajustamos la cantidad a ${quantity}: ${quantity === 1 ? "es la unidad disponible" : "son las unidades disponibles"}.`,
-      );
+    // Todo se fabrica a pedido: el stock no limita, solo define si es reserva.
+    const maxQuantity = MAX_QUANTITY_PER_LINE;
+    const unavailable = false;
+    const quantity = Math.min(line.quantity, maxQuantity);
+    if (quantity < line.quantity) {
+      notes.push(`Ajustamos la cantidad a ${quantity}, el máximo por producto.`);
     }
+    const madeToOrder = product.available < quantity;
 
     if (!unavailable) {
       if (product.price === null) unpriced.add(product.name);
@@ -88,6 +90,7 @@ export function priceCart(
       product,
       quantity,
       maxQuantity,
+      madeToOrder,
       extras,
       total: unit === null ? null : unit * quantity,
       status: unavailable ? "unavailable" : notes.length > 0 ? "adjusted" : "ok",

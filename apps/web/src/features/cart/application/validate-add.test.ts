@@ -41,13 +41,13 @@ describe("validateAdd", () => {
     });
   });
 
-  it("rechaza productos inexistentes o agotados", () => {
+  it("rechaza productos inexistentes y acepta los que no tienen stock (a pedido)", () => {
     expect(validateAdd(null, request(), []).ok).toBe(false);
-    expect(validateAdd({ ...product, available: 0 }, request(), []).ok).toBe(false);
+    expect(validateAdd({ ...product, available: 0 }, request(), []).ok).toBe(true);
   });
 
-  it("cuenta lo que ya está en el carrito contra el stock", () => {
-    const inCart = addLine([], { slug: "baul", sku: "TK-9", quantity: 2, extras: [], texts: {} });
+  it("cuenta lo que ya está en el carrito contra el máximo por línea", () => {
+    const inCart = addLine([], { slug: "baul", sku: "TK-9", quantity: 8, extras: [], texts: {} });
     expect(validateAdd(product, request({ quantity: 2 }), inCart)).toEqual({
       ok: false,
       error: "Solo puedes agregar 1 unidad más.",

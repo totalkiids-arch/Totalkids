@@ -13,6 +13,7 @@ export type AdminResult<T> = { ok: true; value: T } | { ok: false; errors: Field
 export interface InventoryRow {
   productId: string;
   productName: string;
+  productSlug: string;
   variantId: string;
   sku: string;
   option: string | null;

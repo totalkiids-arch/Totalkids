@@ -5,6 +5,7 @@ import {
   discountPercent,
   findVariant,
   initialOption,
+  isMadeToOrder,
   lineTotal,
   maxQuantity,
   stockStatus,
@@ -46,22 +47,22 @@ describe("selección de variante", () => {
 });
 
 describe("stock y cantidad", () => {
-  it("clasifica la disponibilidad", () => {
-    expect(stockStatus({ available: 0 })).toEqual({ kind: "out-of-stock" });
+  it("sin unidades terminadas el producto es a pedido", () => {
+    expect(stockStatus({ available: 0 })).toEqual({ kind: "made-to-order" });
     expect(stockStatus({ available: 3 })).toEqual({ kind: "low", units: 3 });
     expect(stockStatus({ available: 4 })).toEqual({ kind: "in-stock" });
   });
 
-  it("limita la cantidad al stock y al máximo por línea", () => {
-    expect(maxQuantity({ available: 2 })).toBe(2);
-    expect(maxQuantity({ available: 40 })).toBe(9);
-    expect(clampQuantity(5, { available: 2 })).toBe(2);
-    expect(clampQuantity(0, { available: 2 })).toBe(1);
+  it("lo que supera el stock se fabrica a pedido", () => {
+    expect(isMadeToOrder({ available: 0 })).toBe(true);
+    expect(isMadeToOrder({ available: 2 }, 2)).toBe(false);
+    expect(isMadeToOrder({ available: 2 }, 3)).toBe(true);
   });
 
-  it("una variante agotada no permite cantidad", () => {
-    expect(maxQuantity({ available: 0 })).toBe(0);
-    expect(clampQuantity(1, { available: 0 })).toBe(0);
+  it("siempre se puede pedir hasta el máximo por línea", () => {
+    expect(maxQuantity()).toBe(9);
+    expect(clampQuantity(40)).toBe(9);
+    expect(clampQuantity(0)).toBe(1);
   });
 });
 

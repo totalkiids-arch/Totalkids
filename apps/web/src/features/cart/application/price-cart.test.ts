@@ -61,20 +61,24 @@ describe("priceCart", () => {
     expect(cart.normalized).toHaveLength(1);
   });
 
-  it("ajusta la cantidad al stock e informa", () => {
+  it("lo que supera el stock queda como reserva a pedido, sin bloquear", () => {
     const cart = price([line({ quantity: 5 })], [product({ available: 2 })]);
-    expect(cart.lines[0]).toMatchObject({ quantity: 2, maxQuantity: 2, status: "adjusted" });
-    expect(cart.lines[0]?.note).toContain("Ajustamos la cantidad a 2");
-    expect(cart.normalized[0]?.quantity).toBe(2);
+    expect(cart.lines[0]).toMatchObject({
+      quantity: 5,
+      maxQuantity: 9,
+      status: "ok",
+      madeToOrder: true,
+    });
+    expect(cart.blocked).toBe(false);
   });
 
-  it("una línea agotada bloquea el pago y no suma", () => {
+  it("sin stock la línea es una reserva y suma al total", () => {
     const cart = price(
       [line(), line({ sku: "TK-2" })],
       [product(), product({ sku: "TK-2", available: 0 })],
     );
-    expect(cart.lines[1]?.status).toBe("unavailable");
-    expect([cart.subtotal, cart.units, cart.blocked]).toEqual([100000, 1, true]);
+    expect(cart.lines.map((l) => l.madeToOrder)).toEqual([false, true]);
+    expect([cart.subtotal, cart.units, cart.blocked]).toEqual([200000, 2, false]);
   });
 
   it("descarta extras que dejaron de ofrecerse", () => {

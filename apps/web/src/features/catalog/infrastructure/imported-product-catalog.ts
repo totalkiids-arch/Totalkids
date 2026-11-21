@@ -12,9 +12,6 @@ import type { CatalogRecord } from "./totalmuebles/transform";
  */
 const CATALOG = records as CatalogRecord[];
 
-/** El sitio no informa unidades: con stock sin cantidad se permite hasta el máximo por línea. */
-const UNTRACKED_STOCK = 99;
-
 /** Plazo que el cliente publica para todo su catálogo ("Tiempo de fabricación 3 a 5 días hábiles"). */
 const LEAD_TIME = "3 a 5 días hábiles";
 
@@ -112,6 +109,7 @@ function toSummary(r: CatalogRecord): ProductSummary {
     popularity: r.popularity,
     publishedAt: r.publishedAt,
     featured: r.featured,
+    inStock: false,
     image: r.images[0] ?? null,
   };
 }
@@ -135,7 +133,9 @@ function toDetail(r: CatalogRecord): ProductDetail {
         option: null,
         price: r.price,
         compareAtPrice: r.compareAtPrice,
-        available: r.inStock ? (r.available ?? UNTRACKED_STOCK) : 0,
+        // Todo se fabrica a pedido: las unidades terminadas las informa el
+        // inventario del panel (ver container.ts), no el sitio importado.
+        available: 0,
       },
     ],
     extras: [{ id: "armado", label: "Armado a domicilio", price: null, personalization: null }],

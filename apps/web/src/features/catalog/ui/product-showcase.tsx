@@ -12,6 +12,7 @@ import { BagPlusIcon, ChildIcon, StarIcon, TruckIcon } from "@/shared/ui/icons";
 import { formatClp, isOnSale, levelsLabel } from "../domain/product";
 import {
   clampQuantity,
+  isMadeToOrder,
   discountPercent,
   findVariant,
   initialOption,
@@ -35,7 +36,8 @@ export type AddToCart = (request: {
 
 /**
  * Galería + información y compra de la ficha (RF-03, RF-04). La variante elegida
- * define precio, SKU y stock; una variante agotada no se puede comprar.
+ * define precio, SKU y stock. Todo se fabrica a pedido: sin unidades terminadas
+ * (o si se piden más de las que hay) la compra queda como reserva.
  */
 export function ProductShowcase({
   product,
@@ -56,16 +58,15 @@ export function ProductShowcase({
   const textRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const variant = findVariant(product, option) as ProductVariant;
-  const stock = stockStatus(variant);
-  const purchasable = stock.kind !== "out-of-stock";
+  const madeToOrder = isMadeToOrder(variant, quantity);
   const extras = product.extras.filter((e) => chosenExtras.has(e.id));
-  const total = purchasable ? lineTotal(variant, extras, quantity) : null;
+  const total = lineTotal(variant, extras, quantity);
   const eyebrow = [product.category, levelsLabel(product.levels)].filter(Boolean).join(" · ");
 
   function selectOption(next: string | null) {
     setOption(next);
     const nextVariant = findVariant(product, next);
-    if (nextVariant) setQuantity((q) => clampQuantity(q, nextVariant) || 1);
+    if (nextVariant) setQuantity((q) => clampQuantity(q));
     setAdded(null);
   }
 
@@ -81,7 +82,6 @@ export function ProductShowcase({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!purchasable) return;
 
     const found: Record<string, string> = {};
     for (const extra of extras) {
@@ -117,7 +117,9 @@ export function ProductShowcase({
         return;
       }
       const detail = variant.option ? ` (${variant.option})` : "";
-      setAdded(`Agregaste ${quantity} × ${product.name}${detail} al carrito.`);
+      setAdded(
+        `Agregaste ${quantity} × ${product.name}${detail} al carrito${madeToOrder ? " como reserva a pedido" : ""}.`,
+      );
     });
   }
 
@@ -142,7 +144,7 @@ export function ProductShowcase({
             <legend className="mb-2.5 font-extrabold">{product.optionName}</legend>
             <div className="flex flex-wrap gap-2.5">
               {product.variants.map((v) => {
-                const available = v.available > 0;
+                const onOrder = v.available <= 0;
                 return (
                   <label key={v.sku} className="cursor-pointer">
                     <input
@@ -154,10 +156,10 @@ export function ProductShowcase({
                       className="peer sr-only"
                     />
                     <span
-                      className={`flex min-h-12 items-center rounded-2xl border-2 border-chip-border bg-surface px-5 text-[15px] font-extrabold peer-checked:border-brand-navy peer-checked:bg-brand-navy peer-checked:text-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-blue ${available ? "" : "text-text-secondary line-through peer-checked:text-on-dark"}`}
+                      className={`flex min-h-12 items-center rounded-2xl border-2 border-chip-border bg-surface px-5 text-[15px] font-extrabold peer-checked:border-brand-navy peer-checked:bg-brand-navy peer-checked:text-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-blue`}
                     >
                       {v.option}
-                      {available ? null : <span className="sr-only"> (agotado)</span>}
+                      {onOrder ? <span className="sr-only"> (a pedido)</span> : null}
                     </span>
                   </label>
                 );
@@ -214,35 +216,40 @@ export function ProductShowcase({
           </fieldset>
         ) : null}
 
-        {purchasable ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <QuantityStepper
-              value={quantity}
-              max={maxQuantity(variant)}
-              onChange={(q) => {
-                setQuantity(q);
-                setAdded(null);
-              }}
-            />
-            <Button
-              type="submit"
-              name="intencion"
-              value="agregar"
-              disabled={pending}
-              size="lg"
-              className="min-h-13.5 flex-[1_1_200px]"
-            >
-              <BagPlusIcon size={22} />
-              Agregar al carrito
-            </Button>
-          </div>
-        ) : (
-          <p className="rounded-[20px] bg-soft-red px-4 py-3 font-bold text-brand-red-deep">
-            {product.variants.length > 1
-              ? "Esta opción está agotada. Elige otra."
-              : "Producto agotado por ahora. Escríbenos y te avisamos cuando vuelva."}
+        <div className="flex flex-wrap items-center gap-3">
+          <QuantityStepper
+            value={quantity}
+            max={maxQuantity()}
+            onChange={(q) => {
+              setQuantity(q);
+              setAdded(null);
+            }}
+          />
+          <Button
+            type="submit"
+            name="intencion"
+            value="agregar"
+            disabled={pending}
+            size="lg"
+            className="min-h-13.5 flex-[1_1_200px]"
+          >
+            <BagPlusIcon size={22} />
+            {madeToOrder ? "Reservar a pedido" : "Agregar al carrito"}
+          </Button>
+        </div>
+
+        {madeToOrder ? (
+          <p className="rounded-[20px] bg-soft-blue px-4 py-3 text-[15px] text-text-body">
+            <strong className="text-text-primary">
+              {variant.available > 0
+                ? `Tenemos ${variant.available} ${variant.available === 1 ? "unidad terminada" : "unidades terminadas"}; el resto se fabrica a pedido.`
+                : "Se fabrica a pedido."}
+            </strong>{" "}
+            Reservas ahora y lo fabricamos
+            {product.leadTime ? ` en ${product.leadTime}` : ""}. Luego coordinamos contigo el
+            despacho o el retiro en el taller.
           </p>
-        )}
+        ) : null}
 
         {total !== null && quantity > 1 ? (
           <p aria-live="polite" className="text-right font-extrabold">
@@ -256,10 +263,10 @@ export function ProductShowcase({
           value="comprar"
           variant="accent"
           size="lg"
-          disabled={!purchasable || pending}
+          disabled={pending}
           className="min-h-13.5"
         >
-          Comprar ahora
+          {madeToOrder ? "Reservar ahora" : "Comprar ahora"}
         </Button>
 
         <div role="status" className="empty:hidden">
@@ -325,17 +332,17 @@ function PriceBox({ product, variant }: { product: ProductDetail; variant: Produ
       </p>
       <p
         aria-live="polite"
-        className={`flex items-center gap-2 text-sm font-extrabold ${stock.kind === "in-stock" ? "text-brand-green" : "text-brand-red-deep"}`}
+        className={`flex items-center gap-2 text-sm font-extrabold ${stock.kind === "made-to-order" ? "text-brand-blue" : "text-brand-green"}`}
       >
         <span
           aria-hidden
-          className={`size-2.5 rounded-full ${stock.kind === "in-stock" ? "bg-brand-green" : "bg-brand-red"}`}
+          className={`size-2.5 rounded-full ${stock.kind === "made-to-order" ? "bg-brand-blue" : "bg-brand-green"}`}
         />
         {stock.kind === "in-stock"
-          ? "Disponible"
+          ? "En stock: listo para entregar"
           : stock.kind === "low"
-            ? `¡Quedan solo ${stock.units} ${stock.units === 1 ? "unidad" : "unidades"}!`
-            : "Agotado"}
+            ? `En stock: ${stock.units} ${stock.units === 1 ? "unidad terminada" : "unidades terminadas"}`
+            : "A pedido: se fabrica al reservar"}
       </p>
     </div>
   );

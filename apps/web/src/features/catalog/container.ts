@@ -1,13 +1,12 @@
 // Raíz de composición de "catalog": conecta el puerto con su adaptador actual.
 import type { ActivityEntry } from "@/features/activity";
 import type { AdminCatalog } from "./application/admin-catalog";
+import { withInventoryStock } from "./application/inventory-stock";
 import type { ProductCatalog } from "./application/product-catalog";
 import { inventoryStatus } from "./domain/admin-product";
 import type { CatalogQuery } from "./domain/catalog-query";
 import { demoAdminCatalog } from "./infrastructure/demo-admin-catalog";
 import { importedProductCatalog } from "./infrastructure/imported-product-catalog";
-
-export const productCatalog: ProductCatalog = importedProductCatalog;
 
 /** Caso de uso: productos destacados de la portada. */
 export function listFeaturedProducts() {
@@ -38,12 +37,19 @@ export function listProductSlugs() {
 // DEMO (ver infrastructure/demo-admin-catalog.ts). En LN-12 se cambia solo esta línea.
 export const adminCatalog: AdminCatalog = demoAdminCatalog;
 
+/** Fichas y precios publicados + unidades terminadas del inventario del panel. */
+export const productCatalog: ProductCatalog = withInventoryStock(importedProductCatalog, () =>
+  adminCatalog.listInventory(),
+);
+
 /**
- * Caso de uso (resumen del panel): variantes con stock bajo o agotadas, con el
- * mismo criterio que la pantalla de inventario.
+ * Caso de uso (resumen del panel): variantes con pocas unidades terminadas, con
+ * el mismo criterio que la pantalla de inventario.
  */
 export async function countLowStockVariants(): Promise<number> {
-  return (await adminCatalog.listInventory()).filter((row) => inventoryStatus(row) !== "ok").length;
+  // Sin stock no es alerta: el producto se vende a pedido.
+  return (await adminCatalog.listInventory()).filter((row) => inventoryStatus(row) === "low")
+    .length;
 }
 
 /** Caso de uso: ajustes de stock con responsable y motivo, para el historial (RF-34). */

@@ -27,11 +27,10 @@ import type { CatalogRecord } from "./totalmuebles/transform";
  *    ProductPhoto) y ese import rompería el bundle.
  *  - Se siembra con los productos reales importados de totalmuebles.cl
  *    (catalogo.json). El sitio no informa variantes ni unidades: cada producto
- *    tiene una variante (SKU TK-<id del sitio>) y el stock físico y reservado
- *    son números de DEMOSTRACIÓN, deterministas (salen del id), no reales.
- *  - Es solo del panel: la tienda pública sigue leyendo catalogo.json con
- *    imported-product-catalog.ts, así que los cambios hechos aquí no se ven en
- *    /catalogo ni en las fichas.
+ *    tiene una variante (SKU TK-<id del sitio>) y parte sin stock (a pedido).
+ *  - La tienda pública lee fichas y precios de catalogo.json, pero el stock de
+ *    cada SKU lo toma de aquí (container.ts): lo que se ajusta en Inventario se
+ *    ve en /catalogo y en las fichas.
  *  - Las imágenes nuevas no se suben (el almacenamiento se define en PR-05/LN-12).
  *  - LN-12 lo reemplaza por un adaptador que llama a la API (misma interfaz
  *    AdminCatalog); la API aplica las mismas reglas y la autorización real.
@@ -45,12 +44,12 @@ interface DemoState {
   sequence: number;
 }
 
-/** Stock de demostración determinista: físico 2–24, reservado 0–3 (sin pasar el físico). */
-function demoStock(record: CatalogRecord) {
-  const reserved = record.sourceId % 4;
-  if (!record.inStock) return { physical: reserved, reserved };
-  if (record.available !== null) return { physical: reserved + record.available, reserved };
-  return { physical: Math.max(reserved, 2 + ((record.sourceId * 7) % 23)), reserved };
+/**
+ * Todo se fabrica a pedido: el stock parte en 0 y solo el panel (Inventario)
+ * registra unidades terminadas. Con 0 la tienda ofrece el producto "a pedido".
+ */
+function demoStock() {
+  return { physical: 0, reserved: 0 };
 }
 
 function seedProduct(record: CatalogRecord): AdminProduct {
@@ -74,7 +73,7 @@ function seedProduct(record: CatalogRecord): AdminProduct {
         option: null,
         price: record.price,
         compareAtPrice: record.compareAtPrice,
-        ...demoStock(record),
+        ...demoStock(),
       },
     ],
     assemblyPrice: 0,
@@ -228,6 +227,7 @@ export const demoAdminCatalog: AdminCatalog = {
       p.variants.map((v): InventoryRow => ({
         productId: p.id,
         productName: p.name,
+        productSlug: p.slug,
         variantId: v.id,
         sku: v.sku,
         option: v.option,

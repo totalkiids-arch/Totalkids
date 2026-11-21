@@ -2,7 +2,14 @@
 import type { CartCatalog, CartStore } from "./application/ports";
 import { priceCart } from "./application/price-cart";
 import { validateAdd, type AddResult } from "./application/validate-add";
-import { addLine, CartFullError, removeLine, setQuantity, type CartLine } from "./domain/cart";
+import {
+  addLine,
+  CartFullError,
+  MAX_QUANTITY_PER_LINE,
+  removeLine,
+  setQuantity,
+  type CartLine,
+} from "./domain/cart";
 import { catalogCartCatalog } from "./infrastructure/catalog-cart-catalog";
 import { cookieCartStore } from "./infrastructure/cookie-cart-store";
 
@@ -46,7 +53,8 @@ export async function changeQuantity(id: string, quantity: number) {
   const product = lines.find((l) => l.id === id);
   if (!product) return;
   const variant = await catalog.findVariant(product.slug, product.sku);
-  const max = Math.max(0, variant?.available ?? 0);
+  // Sin variante vigente no se cambia; el stock no limita (todo se fabrica a pedido).
+  const max = variant ? MAX_QUANTITY_PER_LINE : 0;
   await store.write(setQuantity(lines, id, Math.min(quantity, max)));
 }
 

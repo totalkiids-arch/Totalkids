@@ -328,5 +328,7 @@ export async function adjustStockAction(
 
   revalidatePath("/admin/inventario");
   revalidatePath("/admin/productos");
+  // El stock decide si la tienda muestra "En stock" o "A pedido".
+  revalidatePath("/", "layout");
   redirect(`/admin/inventario?aviso=ajuste&sku=${encodeURIComponent(result.value.sku)}#ajustes`);
 }

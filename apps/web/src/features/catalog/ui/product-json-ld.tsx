@@ -15,7 +15,7 @@ export function ProductJsonLd({ product }: { product: ProductDetail }) {
       price: v.price,
       priceCurrency: "CLP",
       availability:
-        v.available > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+        v.available > 0 ? "https://schema.org/InStock" : "https://schema.org/MadeToOrder",
     }));
 
   const data = {

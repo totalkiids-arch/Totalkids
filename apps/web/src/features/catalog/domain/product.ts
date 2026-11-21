@@ -60,6 +60,11 @@ export interface ProductSummary {
   /** Fecha ISO de publicación. Ordena "Novedades". */
   publishedAt: string;
   featured: boolean;
+  /**
+   * Hay unidades terminadas de alguna variante (stock cargado en el panel).
+   * false = se fabrica a pedido: se compra como reserva.
+   */
+  inStock: boolean;
   /** Foto principal; null si el producto aún no tiene fotos. */
   image: ProductImage | null;
 }

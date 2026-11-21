@@ -80,24 +80,31 @@ export function initialOption(detail: Pick<ProductDetail, "variants">): string |
   return first.option;
 }
 
+/**
+ * Disponibilidad para mostrar. Todo se fabrica a pedido: sin unidades
+ * terminadas el producto igual se puede comprar, como reserva.
+ */
 export type StockStatus =
-  { kind: "in-stock" } | { kind: "low"; units: number } | { kind: "out-of-stock" };
+  { kind: "in-stock" } | { kind: "low"; units: number } | { kind: "made-to-order" };
 
 export function stockStatus(variant: Pick<ProductVariant, "available">): StockStatus {
-  if (variant.available <= 0) return { kind: "out-of-stock" };
+  if (variant.available <= 0) return { kind: "made-to-order" };
   if (variant.available <= LOW_STOCK_THRESHOLD) return { kind: "low", units: variant.available };
   return { kind: "in-stock" };
 }
 
-/** Tope del selector de cantidad: el stock disponible, sin pasar el máximo por línea. */
-export function maxQuantity(variant: Pick<ProductVariant, "available">): number {
-  return Math.max(0, Math.min(variant.available, MAX_QUANTITY_PER_LINE));
+/** La cantidad pedida supera las unidades terminadas: se fabrica a pedido. */
+export function isMadeToOrder(variant: Pick<ProductVariant, "available">, quantity = 1): boolean {
+  return variant.available < quantity;
 }
 
-export function clampQuantity(quantity: number, variant: Pick<ProductVariant, "available">) {
-  const max = maxQuantity(variant);
-  if (max === 0) return 0;
-  return Math.min(Math.max(Math.trunc(quantity) || 1, 1), max);
+/** Tope del selector de cantidad. Lo que falte en stock se fabrica a pedido. */
+export function maxQuantity(): number {
+  return MAX_QUANTITY_PER_LINE;
+}
+
+export function clampQuantity(quantity: number): number {
+  return Math.min(Math.max(Math.trunc(quantity) || 1, 1), MAX_QUANTITY_PER_LINE);
 }
 
 /** Porcentaje de descuento redondeado; null si falta alguno de los precios. */
