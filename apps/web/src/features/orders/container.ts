@@ -1,5 +1,6 @@
 // Raíz de composición de "orders": conecta los puertos con sus adaptadores actuales.
 import type { PaymentAttemptRow } from "@/features/payments";
+import type { ActivityArea, ActivityEntry } from "@/features/activity";
 import type { SaleRecord } from "@/features/reports";
 
 import type { AdminOrderPanel } from "./application/admin-order-panel";
@@ -162,4 +163,36 @@ export async function listSalesForReports(): Promise<SaleRecord[]> {
       },
     ];
   });
+}
+
+const AUDIT_AREA: Record<string, ActivityArea> = {
+  status: "pedidos",
+  payment: "pagos",
+  refund: "reembolsos",
+  restock: "inventario",
+};
+
+/**
+ * Caso de uso: cambios del equipo en los pedidos, para el historial de
+ * actividad (RF-27, RF-34). Los eventos automáticos ("system") se ven en el
+ * detalle de cada pedido.
+ */
+export async function listActivity(): Promise<ActivityEntry[]> {
+  return (await adminOrderPanel.list()).flatMap((record) =>
+    record.audit.flatMap((entry, index) => {
+      const area = AUDIT_AREA[entry.kind];
+      if (!area) return [];
+      return [
+        {
+          id: `pedido-${record.order.id}-${index}`,
+          at: entry.at,
+          actor: entry.actor,
+          area,
+          action: entry.detail,
+          reason: entry.reason,
+          reference: { label: `#${record.order.id}`, href: `/admin/pedidos/${record.order.id}` },
+        },
+      ];
+    }),
+  );
 }

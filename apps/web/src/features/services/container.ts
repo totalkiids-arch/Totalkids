@@ -1,4 +1,5 @@
 // Raíz de composición de "services": conecta los puertos con sus adaptadores actuales.
+import type { ActivityEntry } from "@/features/activity";
 import { chileDateTimeForCsv } from "@/shared/lib/chile-time";
 import { toCsv } from "@/shared/lib/csv";
 
@@ -12,6 +13,7 @@ import {
 import {
   filterRequests,
   parseRequestQuery,
+  REQUESTER_ACTOR,
   requestsCsvTable,
 } from "./domain/service-request-admin";
 import { demoServiceRequestDesk } from "./infrastructure/demo-service-request-desk";
@@ -58,4 +60,31 @@ export async function exportServiceRequestsCsv(
   const rows = filterRequests(await serviceRequestAdmin.list(), parseRequestQuery(params));
   const table = requestsCsvTable(rows, chileDateTimeForCsv);
   return toCsv(table.header, table.rows);
+}
+
+/**
+ * Caso de uso: seguimiento de solicitudes hecho por el equipo, para el
+ * historial (RF-34). Lo que registra el solicitante no se lista aquí.
+ */
+export async function listActivity(): Promise<ActivityEntry[]> {
+  return (await serviceRequestAdmin.list()).flatMap((request) =>
+    request.history.flatMap((entry, index) =>
+      entry.actor === REQUESTER_ACTOR
+        ? []
+        : [
+            {
+              id: `solicitud-${request.id}-${index}`,
+              at: entry.at,
+              actor: entry.actor,
+              area: "solicitudes" as const,
+              action: entry.change,
+              reason: null,
+              reference: {
+                label: request.id,
+                href: `/admin/solicitudes?id=${encodeURIComponent(request.id)}#detalle`,
+              },
+            },
+          ],
+    ),
+  );
 }

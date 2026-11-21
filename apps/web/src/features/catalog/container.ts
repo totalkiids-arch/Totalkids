@@ -1,4 +1,5 @@
 // Raíz de composición de "catalog": conecta el puerto con su adaptador actual.
+import type { ActivityEntry } from "@/features/activity";
 import type { AdminCatalog } from "./application/admin-catalog";
 import type { ProductCatalog } from "./application/product-catalog";
 import { inventoryStatus } from "./domain/admin-product";
@@ -43,4 +44,17 @@ export const adminCatalog: AdminCatalog = demoAdminCatalog;
  */
 export async function countLowStockVariants(): Promise<number> {
   return (await adminCatalog.listInventory()).filter((row) => inventoryStatus(row) !== "ok").length;
+}
+
+/** Caso de uso: ajustes de stock con responsable y motivo, para el historial (RF-34). */
+export async function listActivity(): Promise<ActivityEntry[]> {
+  return (await adminCatalog.listAdjustments(500)).map((a) => ({
+    id: `stock-${a.id}`,
+    at: a.at,
+    actor: a.actor,
+    area: "inventario" as const,
+    action: `Stock de ${a.productName}: ${a.before} → ${a.after} unidades.`,
+    reason: a.reason,
+    reference: { label: a.sku, href: `/admin/inventario?sku=${encodeURIComponent(a.sku)}#ajuste` },
+  }));
 }

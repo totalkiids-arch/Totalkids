@@ -11,6 +11,9 @@ export { getAdminOrdersOverview, listPaymentAttempts } from "./container";
 
 // Panel: reportes de ventas (lo compone la página de /admin/reportes).
 export { listSalesForReports } from "./container";
+
+// Panel: historial de actividad (lo compone la página de /admin/actividad).
+export { listActivity as listOrderActivity } from "./container";
 export { reconcilePaymentAction } from "./ui/admin-order-actions";
 export { ORDER_STATUS_LABEL, ORDER_STATUSES, orderTotal, type OrderStatus } from "./domain/order";
 export { AdminOrderStatusBadge, AdminPaymentBadge } from "./ui/admin/order-badges";

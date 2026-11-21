@@ -20,3 +20,6 @@ export { CategoriesScreen } from "./ui/categories-screen";
 export { InventoryScreen } from "./ui/inventory-screen";
 export { FeaturedProducts } from "./ui/featured-products";
 export { ProductCard } from "./ui/product-card";
+
+// Panel: historial de actividad (lo compone la página de /admin/actividad).
+export { listActivity as listInventoryActivity } from "./container";
