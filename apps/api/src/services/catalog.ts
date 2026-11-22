@@ -80,6 +80,10 @@ export interface ExtraDto {
 export interface ProductDetailDto extends ProductSummaryDto {
   description: string;
   dimensions: string | null;
+  /** Qué se elige entre variantes ("Tamaño", "Color"); null con una sola variante. */
+  optionName: string | null;
+  /** Plazo de fabricación a pedido; null = plazo general de la tienda. */
+  leadTime: string | null;
   specs: unknown;
   images: (ImageDto & { variantSku: string | null })[];
   variants: VariantDto[];
@@ -116,7 +120,14 @@ function fromWhere(filters: CatalogFilters): Prisma.Sql {
     Prisma.sql`p."published_at" <= now()`,
     Prisma.sql`c."active"`,
   ];
-  if (filters.category) conditions.push(Prisma.sql`c."slug" = ${filters.category}`);
+  if (filters.category) {
+    // La categoría principal, o una adicional activa (p. ej. "Línea JUNJI").
+    conditions.push(Prisma.sql`(c."slug" = ${filters.category} OR EXISTS (
+        SELECT 1 FROM "product_categories" pc
+        JOIN "categories" ac ON ac."id" = pc."category_id"
+        WHERE pc."product_id" = p."id" AND ac."slug" = ${filters.category} AND ac."active"
+      ))`);
+  }
   if (filters.ageGroups?.length) {
     conditions.push(Prisma.sql`p."age_groups" && ${filters.ageGroups}::text[]`);
   }
@@ -276,6 +287,8 @@ export async function getProduct(db: Db, slug: string): Promise<ProductDetailDto
     ...toSummary({ ...product, images: product.images.slice(0, 1) }),
     description: product.description,
     dimensions: product.dimensions,
+    optionName: product.optionName,
+    leadTime: product.leadTime,
     specs: product.specs,
     images: product.images.map((image) => ({
       ...toImage(image),
@@ -291,12 +304,16 @@ export async function getProduct(db: Db, slug: string): Promise<ProductDetailDto
       available: available(v),
       availability: available(v) > 0 ? "en_stock" : "a_pedido",
     })),
-    extras: product.extras.map(({ extra }) => ({
+    // Precio y largo del texto propios del producto; si no tiene, los del extra.
+    extras: product.extras.map(({ extra, price, textMaxLength }) => ({
       code: extra.code,
       name: extra.name,
-      price: extra.price,
+      price: price ?? extra.price,
       personalization: extra.requiresText
-        ? { label: extra.textLabel ?? "Texto", maxLength: extra.textMaxLength ?? 40 }
+        ? {
+            label: extra.textLabel ?? "Texto",
+            maxLength: textMaxLength ?? extra.textMaxLength ?? 40,
+          }
         : null,
     })),
   };
@@ -307,14 +324,22 @@ export async function listCategories(db: Db): Promise<CategoryDto[]> {
   const categories = await db.category.findMany({
     where: { active: true },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    include: {
-      _count: { select: { products: { where: visibleProduct() } } },
-    },
   });
-  return categories.map((c) => ({
+  // Cuenta cada producto una vez, sea su categoría principal o una adicional.
+  const counts = await Promise.all(
+    categories.map((c) =>
+      db.product.count({
+        where: {
+          ...visibleProduct(),
+          OR: [{ categoryId: c.id }, { additionalCategories: { some: { categoryId: c.id } } }],
+        },
+      }),
+    ),
+  );
+  return categories.map((c, i) => ({
     slug: c.slug,
     name: c.name,
     description: c.description,
-    productCount: c._count.products,
+    productCount: counts[i] ?? 0,
   }));
 }

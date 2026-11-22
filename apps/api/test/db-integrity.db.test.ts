@@ -516,4 +516,58 @@ describe.skipIf(!url)("integridad del modelo de datos (PostgreSQL real)", () => 
       tx.setting.create({ data: { id: 2, pickupDetails: "Otra tienda" } }),
     );
   });
+
+  // ── Revisión de LN-01: lo que la aplicación ya usa ─────────────────────────
+
+  it("settings: solo plantillas que existen en la tienda (UI-13)", async () => {
+    await expectViolation("settings_active_theme_known", (tx) =>
+      tx.setting.create({ data: { id: 1, pickupDetails: "Taller", activeTheme: "halloween" } }),
+    );
+    await inRollback(async (tx) => {
+      const row = await tx.setting.create({ data: { id: 1, pickupDetails: "Taller" } });
+      expect(row.activeTheme).toBe("clasica");
+    });
+  });
+
+  it("product_extras: precio por producto no negativo y largo del texto de 1 a 200", async () => {
+    const link = async (tx: Tx, data: { price?: number; textMaxLength?: number }) => {
+      const v = await variant(tx);
+      const extra = await tx.extra.create({ data: { code: `x-${unique()}`, name: "Armado" } });
+      await tx.productExtra.create({
+        data: { productId: v.productId, extraId: extra.id, ...data },
+      });
+    };
+    await expectViolation("product_extras_price_non_negative", (tx) => link(tx, { price: -1 }));
+    await expectViolation("product_extras_text_max_length_range", (tx) =>
+      link(tx, { textMaxLength: 0 }),
+    );
+    await inRollback((tx) => link(tx, { price: 15_000, textMaxLength: 20 }));
+  });
+
+  it("product_categories: categorías adicionales sin borrar la categoría en uso", async () => {
+    let categoryId = "";
+    await expectViolation(
+      "product_categories_category_id_fkey",
+      (tx) => tx.category.delete({ where: { id: categoryId } }),
+      async (tx) => {
+        const v = await variant(tx);
+        const junji = await tx.category.create({
+          data: { name: "Línea JUNJI", slug: `junji-${unique()}` },
+        });
+        categoryId = junji.id;
+        await tx.productCategory.create({ data: { productId: v.productId, categoryId } });
+      },
+    );
+  });
+
+  it("products: nombre de la opción y plazo, si vienen, no están en blanco", async () => {
+    await expectViolation("products_lead_time_present", async (tx) => {
+      const v = await variant(tx);
+      await tx.product.update({ where: { id: v.productId }, data: { leadTime: "  " } });
+    });
+    await expectViolation("products_option_name_present", async (tx) => {
+      const v = await variant(tx);
+      await tx.product.update({ where: { id: v.productId }, data: { optionName: "" } });
+    });
+  });
 });

@@ -18,10 +18,22 @@ export const SEED_CATEGORIES = [
 ] as const;
 
 /**
- * Unidades provisionales cuando el sitio de origen solo dice "con stock" sin
- * cantidad (85 de 88 productos). El cliente las corrige en el panel (inventario).
+ * Stock inicial de cada SKU. Todo se fabrica a pedido (UI-11): el stock de
+ * unidades terminadas lo carga el equipo en el inventario del panel, así que
+ * parte en 0. El "con stock" del sitio de origen no se usa como inventario.
  */
-export const DEFAULT_STOCK_WHEN_UNKNOWN = 10;
+export const INITIAL_STOCK = 0;
+
+/** Plazo de fabricación a pedido mientras el cliente no defina uno por producto. */
+export const DEFAULT_LEAD_TIME = "3 a 5 días hábiles";
+
+/**
+ * Extras que ofrece cada producto. "Armado a domicilio" queda con precio por
+ * confirmar (null): no suma al total hasta que el cliente lo defina en el panel.
+ */
+export const SEED_EXTRAS = [
+  { code: "armado", name: "Armado a domicilio", price: null, requiresText: false },
+] as const;
 
 const LabelValue = z.object({ label: z.string(), value: z.string() });
 
@@ -30,6 +42,8 @@ export const ImportedProduct = z.object({
   slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
   name: z.string().min(1).max(160),
   category: z.string(),
+  /** Todas las categorías del producto en el origen (incluye la principal). */
+  categories: z.array(z.string()),
   levels: z.array(z.string()),
   materials: z.array(z.string()),
   summary: z.string().nullable(),
@@ -57,6 +71,9 @@ export type ImportedProduct = z.infer<typeof ImportedProduct>;
 export interface SeedProduct {
   slug: string;
   categorySlug: string;
+  /** Categorías adicionales de la tienda (p. ej. "junji"), sin repetir la principal. */
+  additionalCategorySlugs: string[];
+  leadTime: string;
   name: string;
   summary: string | null;
   description: string;
@@ -85,15 +102,21 @@ export function formatDimensions(dimensions: readonly { label: string; value: st
   return clip(dimensions.map((d) => `${d.label}: ${d.value}`).join(" · "), MAX.dimensions);
 }
 
-/** Stock físico inicial: la cantidad informada, o una provisional si solo hay "con stock". */
-export function initialStock(product: Pick<ImportedProduct, "available" | "inStock">): number {
-  if (!product.inStock) return 0;
-  return product.available ?? DEFAULT_STOCK_WHEN_UNKNOWN;
+const isStoreCategory = (slug: string) => SEED_CATEGORIES.some((c) => c.slug === slug);
+
+/**
+ * Categorías adicionales: las del origen que la tienda tiene, sin la principal
+ * ni repetidas. Las del origen que la tienda no usa se ignoran.
+ */
+export function additionalCategories(product: Pick<ImportedProduct, "category" | "categories">) {
+  return [...new Set(product.categories)].filter(
+    (slug) => slug !== product.category && isStoreCategory(slug),
+  );
 }
 
 /** Convierte un producto importado en las filas que se guardan. */
 export function toSeedProduct(product: ImportedProduct): SeedProduct {
-  if (!SEED_CATEGORIES.some((c) => c.slug === product.category)) {
+  if (!isStoreCategory(product.category)) {
     throw new Error(`Categoría desconocida «${product.category}» en ${product.slug}`);
   }
   const compareAtPrice =
@@ -105,6 +128,8 @@ export function toSeedProduct(product: ImportedProduct): SeedProduct {
   return {
     slug: product.slug,
     categorySlug: product.category,
+    additionalCategorySlugs: additionalCategories(product),
+    leadTime: DEFAULT_LEAD_TIME,
     name: product.name,
     summary: product.summary ? clip(product.summary, MAX.summary) : null,
     description: product.description.join("\n\n"),
@@ -119,7 +144,7 @@ export function toSeedProduct(product: ImportedProduct): SeedProduct {
       sku: `TK-${product.sourceId}`,
       price: product.price,
       compareAtPrice,
-      stockPhysical: initialStock(product),
+      stockPhysical: INITIAL_STOCK,
     },
     images: product.images.map((image, index) => ({
       url: image.src,

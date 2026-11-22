@@ -132,7 +132,8 @@ model Category {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  products Product[]
+  products           Product[]
+  additionalProducts ProductCategory[]
 
   @@map("categories")
 }
@@ -159,6 +160,11 @@ model Product {
   dimensions  String?       @db.VarChar(200)
   /// Ficha técnica: pares etiqueta–valor.
   specs       Json          @default("[]")
+  /// Qué se elige entre variantes ("Tamaño", "Color"); null con una sola variante.
+  optionName  String?       @map("option_name") @db.VarChar(40)
+  /// Plazo de fabricación a pedido ("3 a 5 días hábiles"); null = plazo general de la tienda.
+  /// Se copia en order_items.lead_time al comprar una línea a pedido.
+  leadTime    String?       @map("lead_time") @db.VarChar(60)
   status      ProductStatus @default(draft)
   featured    Boolean       @default(false)
   /// Fecha de publicación; null mientras no se publica.
@@ -166,10 +172,11 @@ model Product {
   createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  category Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  variants ProductVariant[]
-  images   ProductImage[]
-  extras   ProductExtra[]
+  category             Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  additionalCategories ProductCategory[]
+  variants             ProductVariant[]
+  images               ProductImage[]
+  extras               ProductExtra[]
 
   @@index([categoryId, status])
   @@index([status, publishedAt])
@@ -247,11 +254,30 @@ model Extra {
   @@map("extras")
 }
 
-/// Compatibilidad producto–extra: qué extras ofrece cada producto.
+/// Categorías adicionales de un producto (p. ej. un mueble de la "Línea JUNJI"
+/// que además está en "Mesas"). La principal sigue en products.category_id.
+model ProductCategory {
+  productId  String @map("product_id") @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@id([productId, categoryId])
+  @@index([categoryId])
+  @@map("product_categories")
+}
+
+/// Compatibilidad producto–extra: qué extras ofrece cada producto, con su
+/// precio y largo de texto propios (el panel los define por producto).
 model ProductExtra {
-  productId String @map("product_id") @db.Uuid
-  extraId   String @map("extra_id") @db.Uuid
-  sortOrder Int    @default(0) @map("sort_order")
+  productId     String @map("product_id") @db.Uuid
+  extraId       String @map("extra_id") @db.Uuid
+  sortOrder     Int    @default(0) @map("sort_order")
+  /// Precio en CLP para este producto; null = usa el del extra (o por confirmar si ambos son null).
+  price         Int?
+  /// Largo máximo del texto de personalización para este producto; null = el del extra.
+  textMaxLength Int?   @map("text_max_length")
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   extra   Extra   @relation(fields: [extraId], references: [id], onDelete: Restrict)
@@ -389,6 +415,8 @@ model Setting {
   freeShippingThreshold Int?     @map("free_shipping_threshold")
   /// Minutos que el stock queda reservado mientras se paga (RN-04).
   reservationMinutes    Int      @default(30) @map("reservation_minutes")
+  /// Plantilla visual activa de la tienda (UI-13): "clasica", "navidad"…
+  activeTheme           String   @default("clasica") @map("active_theme") @db.VarChar(30)
   updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("settings")

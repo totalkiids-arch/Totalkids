@@ -2,13 +2,15 @@
 // totalmuebles.cl y la fila única de configuración.
 //
 // Idempotente: se puede correr varias veces. Al repetirse actualiza nombres,
-// textos, precios e imágenes, pero NO pisa el stock ni la configuración que el
-// equipo ya haya editado en el panel. No crea usuarios ni contraseñas.
+// textos, precios, categorías e imágenes, pero NO pisa el stock, el plazo, los
+// precios de extras ni la configuración que el equipo ya haya editado en el
+// panel. El stock parte en 0: todo se fabrica a pedido (UI-11). No crea
+// usuarios ni contraseñas (para eso: pnpm --filter @totalkids/api users:create).
 import "dotenv/config";
 
 import { readFileSync } from "node:fs";
 
-import { parseCatalog, SEED_CATEGORIES } from "../src/db/seed/catalog-seed.js";
+import { parseCatalog, SEED_CATEGORIES, SEED_EXTRAS } from "../src/db/seed/catalog-seed.js";
 import { createPrismaClient } from "../src/lib/prisma.js";
 
 const CATALOG_URL = new URL(
@@ -34,9 +36,30 @@ async function main() {
     categoryIds.set(category.slug, row.id);
   }
 
+  // Extras: se crean si faltan; su precio lo administra el panel.
+  const extraIds: string[] = [];
+  for (const extra of SEED_EXTRAS) {
+    const row = await prisma.extra.upsert({
+      where: { code: extra.code },
+      create: {
+        code: extra.code,
+        name: extra.name,
+        price: extra.price,
+        requiresText: extra.requiresText,
+      },
+      update: { name: extra.name },
+    });
+    extraIds.push(row.id);
+  }
+
   for (const p of products) {
     const categoryId = categoryIds.get(p.categorySlug);
     if (!categoryId) throw new Error(`Sin categoría para ${p.slug}`);
+    const additionalIds = p.additionalCategorySlugs.map((slug) => {
+      const id = categoryIds.get(slug);
+      if (!id) throw new Error(`Sin categoría ${slug} para ${p.slug}`);
+      return id;
+    });
 
     await prisma.$transaction(async (tx) => {
       const fields = {
@@ -54,8 +77,21 @@ async function main() {
       };
       const product = await tx.product.upsert({
         where: { slug: p.slug },
-        create: { slug: p.slug, ...fields },
+        // El plazo se define una vez; después lo edita el panel.
+        create: { slug: p.slug, leadTime: p.leadTime, ...fields },
         update: fields,
+      });
+
+      // Categorías adicionales (p. ej. "Línea JUNJI"): se reemplazan por las del catálogo.
+      await tx.productCategory.deleteMany({ where: { productId: product.id } });
+      await tx.productCategory.createMany({
+        data: additionalIds.map((id) => ({ productId: product.id, categoryId: id })),
+      });
+
+      // Extras ofrecidos: se agregan si faltan, sin pisar precios por producto.
+      await tx.productExtra.createMany({
+        data: extraIds.map((extraId, sortOrder) => ({ productId: product.id, extraId, sortOrder })),
+        skipDuplicates: true,
       });
 
       const prices = { price: p.variant.price, compareAtPrice: p.variant.compareAtPrice };
@@ -92,8 +128,11 @@ async function main() {
     update: {},
   });
 
+  const withAdditional = products.filter((p) => p.additionalCategorySlugs.length > 0).length;
   console.log(
-    `Semilla lista: ${SEED_CATEGORIES.length} categorías, ${products.length} productos y configuración.`,
+    `Semilla lista: ${SEED_CATEGORIES.length} categorías, ${products.length} productos ` +
+      `(${withAdditional} con categorías adicionales, stock inicial 0), ` +
+      `${SEED_EXTRAS.length} extra(s) y configuración.`,
   );
 }
 

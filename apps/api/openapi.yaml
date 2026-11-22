@@ -1364,10 +1364,16 @@ components:
       allOf:
         - $ref: "#/components/schemas/ProductSummary"
         - type: object
-          required: [description, dimensions, specs, images, variants, extras]
+          required: [description, dimensions, optionName, leadTime, specs, images, variants, extras]
           properties:
             description: { type: string }
             dimensions: { type: [string, "null"] }
+            optionName:
+              type: [string, "null"]
+              description: Qué se elige entre variantes ("Tamaño", "Color"); null con una sola variante.
+            leadTime:
+              type: [string, "null"]
+              description: Plazo de fabricación a pedido; null = plazo general de la tienda.
             specs:
               type: array
               items:

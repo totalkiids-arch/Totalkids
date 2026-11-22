@@ -3,11 +3,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
-  DEFAULT_STOCK_WHEN_UNKNOWN,
+  additionalCategories,
+  DEFAULT_LEAD_TIME,
   formatDimensions,
-  initialStock,
+  INITIAL_STOCK,
   parseCatalog,
   SEED_CATEGORIES,
+  SEED_EXTRAS,
   toSeedProduct,
   type ImportedProduct,
 } from "../src/db/seed/catalog-seed.js";
@@ -17,6 +19,7 @@ const product = (overrides: Partial<ImportedProduct> = {}): ImportedProduct => (
   slug: "arrimo-bajo-junji-4-espacios",
   name: "Arrimo bajo JUNJI 4 espacios",
   category: "almacenamiento",
+  categories: ["almacenamiento", "junji"],
   levels: ["sala-cuna"],
   materials: ["madera"],
   summary: "Materias primas con calidad certificada.",
@@ -70,11 +73,40 @@ describe("toSeedProduct", () => {
   });
 });
 
-describe("initialStock", () => {
-  it("usa la cantidad informada, una provisional o cero sin stock", () => {
-    expect(initialStock({ available: 3, inStock: true })).toBe(3);
-    expect(initialStock({ available: null, inStock: true })).toBe(DEFAULT_STOCK_WHEN_UNKNOWN);
-    expect(initialStock({ available: 5, inStock: false })).toBe(0);
+describe("stock y plazo (UI-11: todo se fabrica a pedido)", () => {
+  it("el stock parte en 0 aunque el origen diga que hay stock", () => {
+    expect(INITIAL_STOCK).toBe(0);
+    for (const overrides of [{ available: 3 }, { available: null }, { inStock: false }]) {
+      expect(toSeedProduct(product(overrides)).variant.stockPhysical).toBe(0);
+    }
+  });
+
+  it("usa el plazo general de fabricación a pedido", () => {
+    expect(toSeedProduct(product()).leadTime).toBe(DEFAULT_LEAD_TIME);
+  });
+});
+
+describe("additionalCategories", () => {
+  it("toma las categorías del origen que la tienda tiene, sin la principal ni repetidas", () => {
+    expect(
+      additionalCategories({
+        category: "mesas",
+        categories: ["mesas", "junji", "junji", "infantil"],
+      }),
+    ).toEqual(["junji"]);
+    expect(additionalCategories({ category: "mesas", categories: ["mesas"] })).toEqual([]);
+  });
+
+  it("queda en el producto convertido", () => {
+    expect(toSeedProduct(product()).additionalCategorySlugs).toEqual(["junji"]);
+  });
+});
+
+describe("SEED_EXTRAS", () => {
+  it("ofrece el armado a domicilio con precio por confirmar", () => {
+    expect(SEED_EXTRAS).toEqual([
+      { code: "armado", name: "Armado a domicilio", price: null, requiresText: false },
+    ]);
   });
 });
 
@@ -103,13 +135,22 @@ describe("catálogo real de la web", () => {
     expect(new Set(seeds.map((s) => s.variant.sku)).size).toBe(seeds.length);
     for (const s of seeds) {
       expect(categories.has(s.categorySlug), s.slug).toBe(true);
-      expect(s.variant.stockPhysical, s.slug).toBeGreaterThanOrEqual(0);
+      for (const slug of s.additionalCategorySlugs) {
+        expect(categories.has(slug), `${s.slug}: ${slug}`).toBe(true);
+        expect(slug, s.slug).not.toBe(s.categorySlug);
+      }
+      expect(s.variant.stockPhysical, s.slug).toBe(0);
       if (s.variant.compareAtPrice !== null) {
         expect(s.variant.compareAtPrice, s.slug).toBeGreaterThan(s.variant.price ?? Infinity);
       }
       expect(s.name.length, s.slug).toBeLessThanOrEqual(160);
       expect((s.dimensions ?? "").length, s.slug).toBeLessThanOrEqual(200);
     }
+  });
+
+  it("la Línea JUNJI queda con productos (como categoría adicional)", () => {
+    const junji = parseCatalog(raw).filter((s) => s.additionalCategorySlugs.includes("junji"));
+    expect(junji.length).toBeGreaterThan(0);
   });
 
   it("rechaza productos repetidos", () => {
