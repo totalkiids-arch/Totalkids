@@ -12,8 +12,18 @@ const spec = parse(readFileSync(new URL("../openapi.yaml", import.meta.url), "ut
 const paths = spec.paths as Record<string, Json>;
 const HTTP_METHODS = ["get", "post", "put", "patch", "delete"] as const;
 const MUTATING = new Set(["post", "put", "patch", "delete"]);
-/** Paths ya implementados en LN-02; todo lo demás debe estar marcado como pendiente. */
-const IMPLEMENTED = new Set(["/health", "/csrf"]);
+/** Paths ya implementados; todo lo demás debe estar marcado como pendiente. */
+const IMPLEMENTED = new Set([
+  // LN-02
+  "/health",
+  "/csrf",
+  // LN-04
+  "/auth/login",
+  "/auth/logout",
+  "/auth/session",
+  "/auth/password-reset/request",
+  "/auth/password-reset/confirm",
+]);
 
 function operations() {
   return Object.entries(paths).flatMap(([path, item]) =>

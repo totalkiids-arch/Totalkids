@@ -1,3 +1,14 @@
-// pino-http ya declara req.id y req.log; este archivo queda como punto para
-// extensiones futuras del Request de Express.
+import type { PanelSession } from "../services/auth.js";
+
+// pino-http ya declara req.id y req.log. Aquí se agregan los datos que dejan
+// los middlewares propios.
+declare global {
+  namespace Express {
+    interface Request {
+      /** Sesión del panel cargada por requirePanel (LN-04). */
+      panel?: PanelSession;
+    }
+  }
+}
+
 export {};

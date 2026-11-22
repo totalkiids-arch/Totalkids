@@ -10,8 +10,10 @@ import type { PrismaClient } from "./lib/prisma.js";
 import { bodyParsers, isFlowCallbackPath, requireContentType } from "./middleware/body.js";
 import { csrfProtection, type CsrfSessionKey } from "./middleware/csrf.js";
 import { createErrorHandler, notFound } from "./middleware/error-handler.js";
+import { panelCsrfSessionKey, requirePanel } from "./middleware/panel-auth.js";
 import { globalLimiter } from "./middleware/rate-limit.js";
 import { requestId } from "./middleware/request-id.js";
+import { authRouter } from "./routes/auth.js";
 import { csrfRouter } from "./routes/csrf.js";
 import { docsRouter } from "./routes/docs.js";
 import { healthRouter } from "./routes/health.js";
@@ -28,15 +30,15 @@ export interface AppDeps {
     | "API_DOCS"
   >;
   logger: Logger;
-  prisma: Pick<PrismaClient, "$queryRaw">;
+  prisma: PrismaClient;
   /**
    * Punto de composición: monta routers adicionales bajo /api/v1, después de
    * todos los middlewares comunes. Lo usan los tests para rutas de prueba.
    */
   registerRoutes?: (v1: Router) => void;
   /**
-   * Clave de la sesión actual a la que se ata el token CSRF. Hoy no hay sesiones
-   * (devuelve ""); LN-04 (panel) y LN-06 (carrito) la conectan con su cookie opaca.
+   * Clave de la sesión actual a la que se ata el token CSRF. Por defecto, el hash
+   * de la cookie del panel (LN-04); LN-06 le suma la del carrito.
    */
   csrfSessionKey?: CsrfSessionKey;
 }
@@ -54,10 +56,11 @@ export function createApp({
   logger,
   prisma,
   registerRoutes,
-  csrfSessionKey = () => "",
+  csrfSessionKey,
 }: AppDeps): Express {
   const app = express();
   const isProduction = env.NODE_ENV === "production";
+  const sessionKey = csrfSessionKey ?? panelCsrfSessionKey(isProduction);
   const csrfSecret = resolveCsrfSecret(env, logger);
 
   // La API recibe tráfico a través de Next.js: confiar en X-Forwarded-For del proxy
@@ -84,12 +87,16 @@ export function createApp({
       secret: csrfSecret,
       isProduction,
       allowedOrigins: env.CORS_ORIGINS,
-      sessionKey: csrfSessionKey,
+      sessionKey,
       isExempt: isFlowCallbackPath,
     }),
   );
   v1.use(healthRouter(prisma));
-  v1.use(csrfRouter({ secret: csrfSecret, isProduction, sessionKey: csrfSessionKey }));
+  v1.use(csrfRouter({ secret: csrfSecret, isProduction, sessionKey }));
+  v1.use(authRouter({ prisma, isProduction }));
+  // Panel: todo /admin exige sesión del equipo (denegar por defecto, RF-31). Cada
+  // ruta agrega el rol que necesita con requireRole.
+  v1.use("/admin", requirePanel(prisma, isProduction));
   registerRoutes?.(v1);
   app.use("/api/v1", v1);
 

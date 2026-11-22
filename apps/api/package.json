@@ -16,6 +16,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:test": "prisma migrate deploy --config prisma.test.config.ts",
     "db:seed": "prisma db seed",
+    "users:create": "tsx src/scripts/create-user.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

@@ -7,6 +7,9 @@ import type { PrismaClient } from "../src/lib/prisma.js";
 
 type QueryRaw = Pick<PrismaClient, "$queryRaw">;
 
+/** Cliente para createApp: los tests sin base solo implementan $queryRaw. */
+const asClient = (prisma: QueryRaw | PrismaClient) => prisma as PrismaClient;
+
 export const testEnv: AppDeps["env"] = {
   NODE_ENV: "test",
   CORS_ORIGINS: ["http://localhost:3000"],
@@ -27,17 +30,21 @@ export function csrfHeaders(sessionKey = ""): Record<string, string> {
   return { cookie: `${CSRF_COOKIE_DEV}=${token}`, "x-csrf-token": token };
 }
 
-/** Prisma falso: $queryRaw resuelve (la base "responde"). */
-export function fakePrisma(): QueryRaw {
-  return { $queryRaw: vi.fn().mockResolvedValue([]) } as unknown as QueryRaw;
+/**
+ * Prisma falso: solo $queryRaw, que resuelve (la base "responde"). Sirve para las
+ * rutas que no tocan modelos; las que sí, se prueban contra la base real (*.db.test.ts).
+ */
+export function fakePrisma(): PrismaClient {
+  return { $queryRaw: vi.fn().mockResolvedValue([]) } as unknown as PrismaClient;
 }
 
-export interface TestAppOptions extends Partial<Omit<AppDeps, "env">> {
+export interface TestAppOptions extends Partial<Omit<AppDeps, "env" | "prisma">> {
   env?: Partial<AppDeps["env"]>;
+  prisma?: QueryRaw | PrismaClient;
 }
 
 /** App de pruebas con logs silenciosos; acepta overrides de env y rutas extra. */
-export function buildTestApp(prismaOrOptions?: QueryRaw | TestAppOptions) {
+export function buildTestApp(prismaOrOptions?: QueryRaw | PrismaClient | TestAppOptions) {
   const options: TestAppOptions =
     prismaOrOptions && "$queryRaw" in prismaOrOptions
       ? { prisma: prismaOrOptions }
@@ -45,7 +52,7 @@ export function buildTestApp(prismaOrOptions?: QueryRaw | TestAppOptions) {
   return createApp({
     ...options,
     logger: options.logger ?? createLogger("silent", false),
-    prisma: options.prisma ?? fakePrisma(),
+    prisma: asClient(options.prisma ?? fakePrisma()),
     env: { ...testEnv, ...options.env },
   });
 }

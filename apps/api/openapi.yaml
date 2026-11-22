@@ -22,8 +22,10 @@ info:
     y boleta con el comprobante de Flow.
 
     Las operaciones marcadas `[Pendiente LN-xx]` (extensión `x-pending-task`) son el
-    contrato previsto: aún no existen y responden 404. Sus cuerpos se definen en la
-    tarea indicada. `x-roles` indica los roles del panel que pueden usarlas.
+    contrato previsto: aún no existen y responden 404 (las de `/admin`, 401 sin
+    sesión del panel, porque todo `/admin` exige sesión). Sus cuerpos se definen en
+    la tarea indicada. `x-roles` indica los roles del panel que pueden usarlas: sin
+    el rol, 403.
 
     Códigos de error: BAD_REQUEST (400), UNAUTHORIZED (401), FORBIDDEN (403),
     CSRF_FAILED (403), NOT_FOUND (404), METHOD_NOT_ALLOWED (405), CONFLICT (409),
@@ -406,16 +408,23 @@ paths:
             Location: { schema: { type: string } }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
-  # ───────────────────────── Sesión del panel (LN-04) ─────────────────────────
+  # ───────────────────────── Sesión del panel (LN-04, implementado) ─────────────────────────
   /auth/login:
     post:
       operationId: panelLogin
-      summary: "[Pendiente LN-04] Ingreso al panel (Administrador u Operador)"
+      summary: Ingreso al panel (Administrador u Operador)
       description: |
-        Solo para el equipo del taller: no hay cuentas de comprador. Límites: 5
-        fallos por cuenta cada 15 min y 20 intentos por IP cada 15 min (RNF-04).
-        Cookie de sesión HttpOnly, Secure y SameSite (RNF-01).
-      x-pending-task: LN-04
+        Solo para el equipo del taller: no hay cuentas de comprador. Correo
+        inexistente, contraseña errónea y cuenta inactiva responden igual (401).
+        Abre siempre una sesión nueva y revoca la que traiga la cookie.
+
+        Cookie `tk_panel` (`__Host-tk_panel` en producción): HttpOnly, SameSite=Lax,
+        Secure en producción. Vence a las 12 h o tras 2 h sin uso (RNF-01). Como
+        el token CSRF está atado a la sesión, después de ingresar hay que pedir
+        `GET /csrf` de nuevo.
+
+        Límites (RNF-04): 5 fallos por cuenta cada 15 min (aunque después acierte)
+        y 20 intentos por IP cada 15 min.
       tags: [Panel - Sesión]
       security: [{ csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
@@ -427,36 +436,122 @@ paths:
               type: object
               required: [email, password]
               properties:
-                email: { type: string, format: email }
-                password: { type: string, format: password }
+                email: { type: string, format: email, maxLength: 254 }
+                password: { type: string, format: password, minLength: 1, maxLength: 1024 }
+            example: { email: admin@totalkids.cl, password: "••••••••••••" }
       responses:
-        "204": { description: Sesión iniciada (Set-Cookie de la sesión del panel) }
-        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204":
+          description: Sesión iniciada
+          headers:
+            Set-Cookie:
+              description: "`tk_panel=<token>; Max-Age=43200; Path=/; HttpOnly; SameSite=Lax` (+ Secure)"
+              schema: { type: string }
+        "401":
+          description: Credenciales inválidas (mismo mensaje en todos los casos)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+              example:
+                {
+                  code: UNAUTHORIZED,
+                  message: Correo o contraseña incorrectos,
+                  details: null,
+                  requestId: 3f0a9c1e,
+                }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /auth/logout:
     post:
       operationId: panelLogout
-      summary: "[Pendiente LN-04] Cerrar sesión del panel"
-      x-pending-task: LN-04
+      summary: Cerrar sesión del panel
+      description: Revoca la sesión en la base y borra la cookie. Idempotente (204 aunque no haya sesión).
       tags: [Panel - Sesión]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
       responses:
-        "204": { description: Sesión revocada }
+        "204": { description: Sesión revocada y cookie borrada }
         "403": { $ref: "#/components/responses/Forbidden" }
   /auth/session:
     get:
       operationId: getPanelSession
-      summary: "[Pendiente LN-04] Usuario y rol de la sesión del panel"
-      x-pending-task: LN-04
+      summary: Usuario y rol de la sesión del panel
+      description: |
+        El rol y el estado de la cuenta se leen en cada petición: un cambio de rol
+        o una desactivación rigen de inmediato.
       x-roles: [admin, operator]
       tags: [Panel - Sesión]
       security: [{ panelSession: [] }]
       responses:
-        "200": { description: Usuario interno y rol (esquema en LN-04) }
+        "200":
+          description: Sesión vigente
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PanelSession" }
+              example:
+                user:
+                  {
+                    id: 01a204a0-3284-71e8-a591-c7d2602639e9,
+                    email: admin@totalkids.cl,
+                    name: Ana,
+                    role: admin,
+                  }
+                expiresAt: "2026-12-04T22:00:00.000Z"
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/password-reset/request:
+    post:
+      operationId: requestPanelPasswordReset
+      summary: Pedir un enlace para restablecer la contraseña (equipo del panel)
+      description: |
+        Responde 202 exista o no la cuenta (no revela qué correos existen). Si es
+        una cuenta activa, encola el correo en outbox; el worker de LN-14 emite el
+        token de un solo uso (30 min) al enviarlo. El token no se guarda en claro.
+        Límites: 5 pedidos por IP cada 15 min y 3 por cuenta cada hora.
+      tags: [Panel - Sesión]
+      security: [{ csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+            example: { email: admin@totalkids.cl }
+      responses:
+        "202": { description: Pedido recibido }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /auth/password-reset/confirm:
+    post:
+      operationId: confirmPanelPasswordReset
+      summary: Restablecer la contraseña con el token del enlace
+      description: |
+        El token es de un solo uso, vence a los 30 minutos y solo vale el último
+        enviado. Al usarlo se revocan todas las sesiones de la cuenta (RNF-01).
+        Un token inválido, usado o vencido responde 422 con el issue en `token`.
+        Límite: 10 intentos por IP cada 15 min.
+      tags: [Panel - Sesión]
+      security: [{ csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string, pattern: "^[A-Za-z0-9_-]{43}$" }
+                password: { type: string, format: password, minLength: 12, maxLength: 128 }
+      responses:
+        "204": { description: Contraseña cambiada y sesiones revocadas }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   # ───────────────────────── Formularios públicos (LN-08) ─────────────────────────
   /service-requests:
@@ -1127,6 +1222,23 @@ components:
           type: string
           description: Ruta con puntos ("items.0.quantity"); vacía si es el objeto entero.
         message: { type: string, description: Mensaje en español }
+    PanelUser:
+      type: object
+      required: [id, email, name, role]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { type: string, enum: [admin, operator] }
+    PanelSession:
+      type: object
+      required: [user, expiresAt]
+      properties:
+        user: { $ref: "#/components/schemas/PanelUser" }
+        expiresAt:
+          type: string
+          format: date-time
+          description: Vencimiento absoluto; antes vence si pasan 2 h sin uso.
     PageMeta:
       type: object
       required: [page, pageSize, total, totalPages]
@@ -1360,8 +1472,10 @@ components:
       in: cookie
       name: tk_panel
       description: |
-        Sesión opaca del panel (Administrador u Operador), HttpOnly, Secure y
-        SameSite (RNF-01). Nombre provisional: lo fija LN-04.
+        Sesión opaca del panel (Administrador u Operador): `tk_panel`, o
+        `__Host-tk_panel` en producción. HttpOnly, SameSite=Lax y Secure en
+        producción (RNF-01). En la base solo se guarda su hash. Vence a las 12 h
+        o tras 2 h sin uso; se revoca al cerrar sesión o restablecer la contraseña.
     cartSession:
       type: apiKey
       in: cookie

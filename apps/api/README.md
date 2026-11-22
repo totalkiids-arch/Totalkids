@@ -126,10 +126,36 @@ Las cookies del navegador viven en el dominio de Next.js. Next se las reenvía a
    - `X-CSRF-Token`: el valor del campo oculto.
    - `X-Forwarded-For` y `X-Request-Id`, como ya hace `apiFetch`.
 4. **Verificación.** En POST/PUT/PATCH/DELETE, la cabecera y la cookie deben ser iguales y la firma debe valer para la sesión actual. Si no, responde 403 `CSRF_FAILED`. Una petición con `Origin` fuera de `CORS_ORIGINS` también se rechaza.
-5. **Sesión.** El token está atado a la clave de sesión que entrega `csrfSessionKey(req)` en `createApp`. Hoy devuelve `""`. **LN-04** (cookie del panel) y **LN-06** (cookie opaca del carrito) deben conectarla. Después de iniciar o cerrar sesión, Next vuelve a pedir `/csrf`.
+5. **Sesión.** El token está atado a la clave de sesión que entrega `csrfSessionKey(req)` en `createApp`. Por defecto es el hash de la cookie del panel (`panelCsrfSessionKey`, LN-04), o `""` sin sesión. **LN-06** le suma la cookie opaca del carrito. Después de iniciar o cerrar sesión, Next vuelve a pedir `/csrf`.
 6. **Exenciones**, declaradas en un solo lugar (`FLOW_CALLBACK_PATHS` en `middleware/body.ts`): `POST /payments/flow/confirm` y `POST /payments/flow/return`. Flow no tiene sesión ni token. **Estas rutas no tienen autoridad para acreditar pagos** (RNF-04): solo reciben `token` y la API consulta el estado real a Flow (`getStatus`) antes de confirmar nada (RF-16).
 
 No hace falta hacer nada por endpoint: la protección cubre todo `/api/v1`. En el contrato, agrega `CsrfTokenHeader` a cada operación que modifique (un test lo comprueba).
+
+## Sesión del panel y permisos (LN-04)
+
+Solo el equipo del taller (Administrador y Operador) tiene cuenta: los compradores compran como invitados (UI-09).
+
+- **Ingreso:** `POST /auth/login` abre una sesión nueva y fija la cookie `tk_panel` (`__Host-tk_panel` en producción), HttpOnly y SameSite=Lax. En la base (`sessions`) solo queda el hash SHA-256 del token. Correo inexistente, contraseña errónea y cuenta inactiva responden igual (401).
+- **Vencimiento:** 12 h de vida máxima y 2 h sin uso (`SESSION_TTL_MS`, `SESSION_IDLE_MS` en `services/auth.ts`). Se revoca al cerrar sesión (`POST /auth/logout`), al ingresar de nuevo desde el mismo navegador y al restablecer la contraseña. Una cuenta desactivada deja de valer de inmediato.
+- **Permisos en backend (RF-31):** todo `/admin` exige sesión (`requirePanel`, montado en `createApp`: denegar por defecto). Cada ruta declara su rol con `requireRole`. El rol se lee de la base en cada petición, así que un cambio de rol rige sin volver a ingresar:
+
+  ```ts
+  router.get("/admin/reports/sales", requireRole("admin"), handler); // 401 sin sesión, 403 si es operador
+  ```
+
+  Fuera de `/admin`, usa `requirePanel(prisma, isProduction, ...roles)`. La sesión queda en `req.panel` (`user.id`, `user.role`, `user.name`).
+
+- **Recuperación:** `POST /auth/password-reset/request` responde 202 siempre y, si la cuenta existe y está activa, encola `email.password_recovery` en `outbox_jobs` con `{ userId }`. El worker de correos (LN-14) llama a `issuePasswordResetToken(prisma, userId)` al enviar: así el token en claro nunca queda guardado. El token es de un solo uso, vence a los 30 min y solo vale el último. `POST /auth/password-reset/confirm` lo consume, cambia la contraseña y revoca todas las sesiones.
+- **Contraseñas:** argon2id (OWASP: 19 MiB, t=2), mínimo 12 y máximo 128 caracteres (`passwordSchema`). Al ingresar se rehace el hash si los parámetros cambiaron.
+- **Alta de cuentas:** el CRUD de usuarios del panel llega en LN-16. Mientras tanto:
+
+  ```bash
+  pnpm --filter @totalkids/api users:create --email ana@totalkids.cl --name "Ana" --role admin
+  ```
+
+  Pide la contraseña sin mostrarla (o la lee de stdin). Nunca la pases como argumento.
+
+- **Auditoría:** el ingreso (`auth.login`) y el restablecimiento (`auth.password_reset`) quedan en `audit_log`.
 
 ## Crear un endpoint nuevo (ejemplo completo)
 
@@ -171,13 +197,13 @@ Checklist:
 
 1. **Router** en `src/routes/`, con sus dependencias inyectadas para poder probarlo con mocks. Móntalo en `createApp` (`v1.use(newsletterRouter(...))`).
 2. **`validated`** para todo lo que entra: params, query y body. Nada de `req.body` sin validar.
-3. **Autorización** en la API: sesión (401) y rol (403) antes de tocar datos (RF-31). La sesión llega con LN-04.
+3. **Autorización** en la API: sesión (401) y rol (403) antes de tocar datos (RF-31). En `/admin` la sesión ya se exige; agrega `requireRole(...)`.
 4. **Límites**: `publicFormLimiter` en formularios públicos. El límite global ya está.
 5. **CSRF**: automático. Desde Next, envía `Cookie` y `X-CSRF-Token`.
 6. **Errores** con `errors.*`. Nunca `res.status(4xx).json(...)` a mano.
 7. **`methodNotAllowed`** al final de cada `router.route(...)`.
 8. **Contrato**: actualiza la operación en `openapi.yaml` (cuerpos, respuestas con `$ref` a `components/responses`, `security`, `x-roles`), quita `[Pendiente …]` y `x-pending-task`, y agrega el path a `IMPLEMENTED` en `test/openapi.test.ts`.
-9. **Tests** con supertest y `buildTestApp({ registerRoutes, csrfSessionKey })` de `test/helpers.ts`. `csrfHeaders()` da un par CSRF válido para los POST.
+9. **Tests** con supertest y `buildTestApp({ registerRoutes, csrfSessionKey })` de `test/helpers.ts`. `csrfHeaders()` da un par CSRF válido para los POST. Las rutas que tocan modelos se prueban contra la base real en `*.db.test.ts`: `test/global-setup.ts` vacía `totalkids_test` antes de cada corrida.
 10. **Logs**: no registres cuerpos. Si un campo sensible nuevo pudiera llegar a un log, súmalo a `REDACT_PATHS` en `lib/logger.ts`.
 
 ## Variables de entorno
