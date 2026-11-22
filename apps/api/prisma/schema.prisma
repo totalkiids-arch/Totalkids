@@ -32,9 +32,9 @@ model Healthcheck {
 
 // ─── Cuentas (RF-22, RF-31, RNF-01) ─────────────────────────────────────────
 
-/// Comprador con cuenta o integrante del equipo (Administrador / Operador).
+/// Integrante del equipo del taller. Los compradores no tienen cuenta: compran
+/// como invitados y consultan su pedido con número y correo (UI-09).
 enum UserRole {
-  customer
   admin
   operator
 
@@ -55,7 +55,9 @@ model User {
   /// Hash argon2id. Nunca la contraseña ni el hash en logs o respuestas.
   passwordHash    String     @map("password_hash")
   name            String     @db.VarChar(120)
-  role            UserRole   @default(customer)
+  /// Sin valor por defecto: el rol se indica siempre al crear la cuenta, para
+  /// que un olvido no dé acceso al panel.
+  role            UserRole
   status          UserStatus @default(active)
   emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(3)
   lastLoginAt     DateTime?  @map("last_login_at") @db.Timestamptz(3)
@@ -63,9 +65,8 @@ model User {
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   authTokens         AuthToken[]
-  carts              Cart[]
   sessions           Session[]
-  orders             Order[]
+  invoicesIssued     Order[]              @relation("InvoiceIssuedBy")
   statusChanges      OrderStatusHistory[]
   inventoryMovements InventoryMovement[]
   refundsRegistered  RefundRecord[]       @relation("RefundRegisteredBy")
@@ -262,25 +263,22 @@ model ProductExtra {
 
 // ─── Carrito (RF-05, RF-06) ─────────────────────────────────────────────────
 
-/// Carrito de un usuario o de una sesión invitada (cookie opaca; se guarda solo
-/// el hash). Agregar al carrito NO reserva stock (RN-04): se revalida al pagar.
+/// Carrito de una sesión invitada (cookie opaca; se guarda solo el hash). Los
+/// compradores no tienen cuenta (UI-09). Agregar al carrito NO reserva stock
+/// (RN-04): se revalida al pagar.
 model Cart {
   id             String   @id @default(uuid(7)) @db.Uuid
-  /// Dueño con cuenta; null en un carrito invitado.
-  userId         String?  @map("user_id") @db.Uuid
   /// Hash del identificador opaco de la cookie del invitado.
-  guestTokenHash String?  @unique @map("guest_token_hash") @db.VarChar(128)
+  guestTokenHash String   @unique @map("guest_token_hash") @db.VarChar(128)
   /// Cupón aplicado (se valida otra vez al crear el pedido).
   couponId       String?  @map("coupon_id") @db.Uuid
   expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user   User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   coupon Coupon?    @relation(fields: [couponId], references: [id], onDelete: SetNull)
   items  CartItem[]
 
-  @@index([userId])
   @@index([expiresAt])
   @@map("carts")
 }
@@ -358,14 +356,15 @@ model Coupon {
 
 // ─── Despacho y configuración (RF-08, RF-11, RF-28) ─────────────────────────
 
-/// Comuna habilitada para despacho, con su tarifa y plazo.
+/// Comuna habilitada para despacho, con su tarifa y plazo. El despacho se
+/// coordina con el cliente (UI-13): la tarifa puede quedar por confirmar.
 model ShippingZone {
   id                   String   @id @default(uuid(7)) @db.Uuid
   /// Código de región de Chile ("RM", "AR"…).
   region               String   @db.VarChar(4)
   commune              String   @db.VarChar(80)
-  /// Tarifa en CLP; 0 = despacho sin costo en esa comuna.
-  price                Int
+  /// Tarifa en CLP; 0 = sin costo; null = por confirmar con el cliente.
+  price                Int?
   /// Plazo que ve el comprador ("3 a 5 días hábiles").
   leadTime             String   @map("lead_time") @db.VarChar(60)
   /// Si cuenta para el despacho gratis desde el umbral.
@@ -448,10 +447,9 @@ enum TaxDocument {
 /// (RN-02). Total = subtotal − descuento + despacho (RN-01).
 model Order {
   id             String      @id @default(uuid(7)) @db.Uuid
-  /// Número visible "TK-<number>"; correlativo único.
+  /// Número visible "TK-<number>"; correlativo único. Con el correo del
+  /// comprador permite consultar el pedido (compras solo como invitado, UI-09).
   number         Int         @unique @default(autoincrement())
-  /// Comprador con cuenta; null si compró como invitado.
-  userId         String?     @map("user_id") @db.Uuid
   status         OrderStatus @default(pending_payment)
   currency       String      @default("CLP") @db.Char(3)
   /// Clave idempotente de creación (RF-13): repetir la petición no crea otro pedido.
@@ -484,10 +482,19 @@ model Order {
   invoiceCommune        String?     @map("invoice_commune") @db.VarChar(60)
   purchaseOrderRequired Boolean     @default(false) @map("purchase_order_required")
 
+  // Factura emitida por Total Kids (UI-12). Flow solo cubre la boleta (su
+  // comprobante la reemplaza). "Factura pendiente" = factura + pagado + sin folio.
+  invoiceFolio          String?   @map("invoice_folio") @db.VarChar(20)
+  invoiceIssuedAt       DateTime? @map("invoice_issued_at") @db.Timestamptz(3)
+  invoiceIssuedByUserId String?   @map("invoice_issued_by_user_id") @db.Uuid
+  invoiceIssuedByLabel  String?   @map("invoice_issued_by_label") @db.VarChar(120)
+
   // Importes en CLP (RN-01).
   subtotal     Int
   discount     Int     @default(0)
-  shippingCost Int     @map("shipping_cost")
+  /// Despacho a coordinar (UI-13): null = por confirmar, no suma al total ni se
+  /// cobra en Flow. El retiro en taller siempre es 0.
+  shippingCost Int?    @map("shipping_cost")
   total        Int
   couponId     String? @map("coupon_id") @db.Uuid
   couponCode   String? @map("coupon_code") @db.VarChar(40)
@@ -508,19 +515,18 @@ model Order {
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user          User?                @relation(fields: [userId], references: [id], onDelete: Restrict)
-  shippingZone  ShippingZone?        @relation(fields: [shippingZoneId], references: [id], onDelete: SetNull)
-  coupon        Coupon?              @relation(fields: [couponId], references: [id], onDelete: Restrict)
-  items         OrderItem[]
-  payments      Payment[]
-  reservations  StockReservation[]
-  movements     InventoryMovement[]
-  statusHistory OrderStatusHistory[]
-  refunds       RefundRecord[]
-  redemption    CouponRedemption?
-  emails        EmailLog[]
+  invoiceIssuedBy User?                @relation("InvoiceIssuedBy", fields: [invoiceIssuedByUserId], references: [id], onDelete: Restrict)
+  shippingZone    ShippingZone?        @relation(fields: [shippingZoneId], references: [id], onDelete: SetNull)
+  coupon          Coupon?              @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  items           OrderItem[]
+  payments        Payment[]
+  reservations    StockReservation[]
+  movements       InventoryMovement[]
+  statusHistory   OrderStatusHistory[]
+  refunds         RefundRecord[]
+  redemption      CouponRedemption?
+  emails          EmailLog[]
 
-  @@index([userId, createdAt])
   @@index([buyerEmail])
   @@index([status, createdAt])
   @@index([status, paymentDueAt])
@@ -543,6 +549,11 @@ model OrderItem {
   extrasUnitPrice Int      @default(0) @map("extras_unit_price")
   /// (unit_price + extras_unit_price) × quantity.
   lineTotal       Int      @map("line_total")
+  /// Todo se fabrica a pedido (UI-11): true si al comprar no había stock para
+  /// la cantidad completa. Esas líneas no reservan ni descuentan stock.
+  madeToOrder     Boolean  @default(false) @map("made_to_order")
+  /// Plazo de fabricación o entrega que vio el comprador ("15 a 20 días hábiles").
+  leadTime        String?  @map("lead_time") @db.VarChar(60)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   order   Order            @relation(fields: [orderId], references: [id], onDelete: Restrict)

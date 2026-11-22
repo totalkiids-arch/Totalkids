@@ -44,10 +44,12 @@ describe.skipIf(!url)("integridad del modelo de datos (PostgreSQL real)", () => 
 
   /**
    * Prepara datos con `setup` y espera que `act` falle por la restricción
-   * `constraint` (nombre del CHECK, índice o mensaje del trigger).
+   * `constraint` (nombre del CHECK, índice o mensaje del trigger). Con una
+   * lista, basta con que falle por cualquiera: sirve cuando un dato viola
+   * varias reglas a la vez y Postgres informa solo la primera que evalúa.
    */
   async function expectViolation(
-    constraint: string,
+    constraint: string | string[],
     act: (tx: Tx) => Promise<unknown>,
     setup: (tx: Tx) => Promise<void> = async () => {},
   ) {
@@ -61,11 +63,15 @@ describe.skipIf(!url)("integridad del modelo de datos (PostgreSQL real)", () => 
     } catch (error) {
       caught = error;
     }
-    expect(caught, `se esperaba que «${constraint}» rechazara la operación`).not.toBeInstanceOf(
-      Rollback,
-    );
+    const expected = Array.isArray(constraint) ? constraint : [constraint];
+    const label = expected.map((name) => `«${name}»`).join(" o ");
+    expect(caught, `se esperaba que ${label} rechazara la operación`).not.toBeInstanceOf(Rollback);
     expect(caught).not.toBeNull();
-    expect(errorText(caught)).toContain(constraint);
+    const text = errorText(caught);
+    expect(
+      expected.some((name) => text.includes(name)),
+      `se esperaba ${label}, llegó: ${text}`,
+    ).toBe(true);
   }
 
   // ── Datos de apoyo ─────────────────────────────────────────────────────────
@@ -125,24 +131,61 @@ describe.skipIf(!url)("integridad del modelo de datos (PostgreSQL real)", () => 
 
   // ── Cuentas ────────────────────────────────────────────────────────────────
 
+  const STAFF = { passwordHash: "x", role: "operator" as const };
+
   it("users: el correo se guarda en minúsculas y es único", async () => {
     await expectViolation("users_email_lowercase", (tx) =>
-      tx.user.create({ data: { email: "Ana@Correo.cl", passwordHash: "x", name: "Ana" } }),
+      tx.user.create({ data: { ...STAFF, email: "Ana@Correo.cl", name: "Ana" } }),
     );
     await expectViolation(
       "email",
-      (tx) => tx.user.create({ data: { email: "ana@correo.cl", passwordHash: "x", name: "Otra" } }),
+      (tx) => tx.user.create({ data: { ...STAFF, email: "ana@correo.cl", name: "Otra" } }),
       async (tx) => {
-        await tx.user.create({ data: { email: "ana@correo.cl", passwordHash: "x", name: "Ana" } });
+        await tx.user.create({ data: { ...STAFF, email: "ana@correo.cl", name: "Ana" } });
       },
+    );
+  });
+
+  it("users: solo roles del equipo y siempre explícitos (UI-09)", async () => {
+    // Sin rol: Prisma lo rechaza antes de llegar a la base.
+    await expectViolation("role", (tx) =>
+      tx.user.create({
+        data: { email: "sinrol@correo.cl", passwordHash: "x", name: "Sin rol" },
+      } as unknown as Prisma.UserCreateArgs),
+    );
+    // Sin default en la base: un INSERT directo sin rol también falla.
+    await expectViolation(
+      "role",
+      (tx) =>
+        tx.$executeRaw`INSERT INTO "users" ("id", "email", "password_hash", "name", "updated_at")
+          VALUES (gen_random_uuid(), 'raw@correo.cl', 'x', 'Raw', now())`,
+    );
+    await expectViolation(
+      "user_role",
+      (tx) =>
+        tx.$executeRaw`INSERT INTO "users" ("id", "email", "password_hash", "name", "role", "updated_at")
+          VALUES (gen_random_uuid(), 'cliente@correo.cl', 'x', 'Cliente', 'customer', now())`,
+    );
+  });
+
+  // ── Carrito (UI-09) ────────────────────────────────────────────────────────
+
+  it("carts: siempre de un invitado (cookie opaca)", async () => {
+    await expectViolation(
+      "guest_token_hash",
+      (tx) =>
+        tx.$executeRaw`INSERT INTO "carts" ("id", "expires_at", "updated_at")
+          VALUES (gen_random_uuid(), now() + interval '1 day', now())`,
     );
   });
 
   // ── Catálogo e inventario (RN-01, RN-03) ───────────────────────────────────
 
   it("product_variants: stock nunca negativo y reservado ≤ físico", async () => {
-    await expectViolation("product_variants_stock_physical_non_negative", (tx) =>
-      variant(tx, { stockPhysical: -1 }),
+    // Un físico negativo siempre viola también reservado ≤ físico (reservado ≥ 0).
+    await expectViolation(
+      ["product_variants_stock_physical_non_negative", "product_variants_reserved_within_physical"],
+      (tx) => variant(tx, { stockPhysical: -1 }),
     );
     await expectViolation("product_variants_reserved_within_physical", (tx) =>
       variant(tx, { stockPhysical: 2, stockReserved: 3 }),
@@ -240,6 +283,115 @@ describe.skipIf(!url)("integridad del modelo de datos (PostgreSQL real)", () => 
         }),
       }),
     );
+  });
+
+  // ── Despacho a coordinar (UI-13) ───────────────────────────────────────────
+
+  const SHIPPING = {
+    deliveryMethod: "shipping" as const,
+    pickupDetails: null,
+    shippingRegion: "AR",
+    shippingCommune: "Temuco",
+    shippingStreet: "Av. Alemania 0123",
+  };
+
+  it("orders: despacho por confirmar no suma al total; el retiro siempre cuesta 0", async () => {
+    await inRollback(async (tx) => {
+      const order = await tx.order.create({ data: orderData({ ...SHIPPING, shippingCost: null }) });
+      expect(order.shippingCost).toBeNull();
+      expect(order.total).toBe(20_000);
+    });
+    await expectViolation("orders_total_formula", (tx) =>
+      tx.order.create({ data: orderData({ ...SHIPPING, shippingCost: 5_000 }) }),
+    );
+    await expectViolation("orders_pickup_details", (tx) =>
+      tx.order.create({ data: orderData({ shippingCost: null }) }),
+    );
+  });
+
+  it("shipping_zones: la tarifa puede quedar por confirmar, pero nunca negativa", async () => {
+    await inRollback(async (tx) => {
+      const zone = await tx.shippingZone.create({
+        data: { region: "AR", commune: "Temuco", price: null, leadTime: "A coordinar" },
+      });
+      expect(zone.price).toBeNull();
+    });
+    await expectViolation("shipping_zones_price_non_negative", (tx) =>
+      tx.shippingZone.create({
+        data: { region: "AR", commune: "Padre Las Casas", price: -1, leadTime: "A coordinar" },
+      }),
+    );
+  });
+
+  // ── Factura con folio (UI-12) ──────────────────────────────────────────────
+
+  const INVOICE = {
+    taxDocument: "factura" as const,
+    invoiceRut: "76.123.456-7",
+    invoiceBusinessName: "Jardín Los Peques SpA",
+    invoiceActivity: "Educación parvularia",
+    invoiceEmail: "pagos@lospeques.cl",
+    invoiceAddress: "Av. Siempre Viva 742",
+    invoiceCommune: "Temuco",
+  };
+  const ISSUED = {
+    invoiceFolio: "4521",
+    invoiceIssuedAt: new Date(),
+    invoiceIssuedByLabel: "Administrador",
+  };
+
+  it("orders: folio solo en facturas pagadas, con fecha y actor, y sin repetirse", async () => {
+    await expectViolation("orders_invoice_folio_rules", (tx) =>
+      tx.order.create({ data: orderData({ ...ISSUED, status: "confirmed", paidAt: new Date() }) }),
+    );
+    await expectViolation("orders_invoice_folio_rules", (tx) =>
+      tx.order.create({ data: orderData({ ...INVOICE, ...ISSUED }) }),
+    );
+    await expectViolation("orders_invoice_folio_rules", (tx) =>
+      tx.order.create({
+        data: orderData({
+          ...INVOICE,
+          invoiceFolio: "4521",
+          status: "confirmed",
+          paidAt: new Date(),
+        }),
+      }),
+    );
+    const paidInvoice = () =>
+      orderData({ ...INVOICE, ...ISSUED, status: "confirmed", paidAt: new Date() });
+    await expectViolation(
+      "orders_invoice_folio_key",
+      (tx) => tx.order.create({ data: paidInvoice() }),
+      async (tx) => {
+        await tx.order.create({ data: paidInvoice() });
+      },
+    );
+  });
+
+  // ── Productos a pedido (UI-11) ─────────────────────────────────────────────
+
+  // Que la línea a pedido no reserve stock lo decide la aplicación (LN de
+  // pedidos); aquí solo se comprueba que el modelo la admite con stock 0.
+  it("order_items: una línea a pedido se acepta aunque la variante no tenga stock", async () => {
+    await inRollback(async (tx) => {
+      const v = await variant(tx, { stockPhysical: 0 });
+      const order = await tx.order.create({ data: orderData() });
+      const item = await tx.orderItem.create({
+        data: {
+          orderId: order.id,
+          variantId: v.id,
+          productName: "Cuna",
+          sku: v.sku,
+          quantity: 2,
+          unitPrice: 10_000,
+          lineTotal: 20_000,
+          madeToOrder: true,
+          leadTime: "15 a 20 días hábiles",
+        },
+      });
+      expect(item.madeToOrder).toBe(true);
+      expect(item.leadTime).toBe("15 a 20 días hábiles");
+    });
   });
 
   it("order_items: total de línea = (precio + extras) × cantidad", async () => {
