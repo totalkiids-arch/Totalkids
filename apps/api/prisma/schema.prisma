@@ -1,12 +1,21 @@
-// Schema Prisma de Total Kids.
-// Por ahora solo contiene la tabla técnica "healthcheck"; los modelos de negocio
-// se agregan en iteraciones posteriores.
+// Schema Prisma de Total Kids (SRS v1.1, sección 4.5: modelo de datos e integridad).
+//
+// Convenciones:
+// - Tablas y columnas en snake_case (@@map/@map); modelos y campos en camelCase.
+// - Identificadores UUID v7 (ordenables por fecha de creación).
+// - Fechas en UTC (timestamptz); la interfaz muestra America/Santiago.
+// - Importes en CLP como enteros no negativos (RN-01). Las restricciones CHECK
+//   (importes, stock, rangos) se agregan a mano en el SQL de cada migración,
+//   porque Prisma no las expresa.
+// - No se borra en cascada el historial comercial: el catálogo usa Restrict y
+//   se desactiva en vez de eliminarse. Solo cascadean datos que dependen por
+//   completo de su padre (imágenes, vínculos producto–extra).
 
 generator client {
-  provider               = "prisma-client"
-  output                 = "../src/generated/prisma"
-  moduleFormat           = "esm"
-  importFileExtension    = "js"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {
@@ -19,4 +28,221 @@ model Healthcheck {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("healthcheck")
+}
+
+// ─── Cuentas (RF-22, RF-31, RNF-01) ─────────────────────────────────────────
+
+/// Comprador con cuenta o integrante del equipo (Administrador / Operador).
+enum UserRole {
+  customer
+  admin
+  operator
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  active
+  inactive
+
+  @@map("user_status")
+}
+
+model User {
+  id              String     @id @default(uuid(7)) @db.Uuid
+  /// En minúsculas; único (índice sobre lower(email) en la migración).
+  email           String     @unique @db.VarChar(254)
+  /// Hash argon2id. Nunca la contraseña ni el hash en logs o respuestas.
+  passwordHash    String     @map("password_hash")
+  name            String     @db.VarChar(120)
+  role            UserRole   @default(customer)
+  status          UserStatus @default(active)
+  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(3)
+  lastLoginAt     DateTime?  @map("last_login_at") @db.Timestamptz(3)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  authTokens AuthToken[]
+  sessions   Session[]
+
+  @@index([role, status])
+  @@map("users")
+}
+
+enum AuthTokenPurpose {
+  password_reset
+  email_verification
+
+  @@map("auth_token_purpose")
+}
+
+/// Token de un solo uso (recuperación de contraseña). Se guarda solo su hash.
+model AuthToken {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  purpose   AuthTokenPurpose
+  /// SHA-256 del token enviado por correo; el token en claro nunca se guarda.
+  tokenHash String           @unique @map("token_hash") @db.VarChar(128)
+  expiresAt DateTime         @map("expires_at") @db.Timestamptz(3)
+  /// Uso único: al usarse se marca y no vuelve a servir.
+  usedAt    DateTime?        @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("auth_tokens")
+}
+
+/// Sesión revocable (cookie opaca HttpOnly). Se guarda solo el hash del id.
+model Session {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash") @db.VarChar(128)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(3)
+  userAgent  String?   @map("user_agent") @db.VarChar(400)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ─── Catálogo (RF-01 a RF-04, RF-26) ────────────────────────────────────────
+
+model Category {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String   @db.VarChar(80)
+  slug        String   @unique @db.VarChar(80)
+  description String?  @db.VarChar(500)
+  sortOrder   Int      @default(0) @map("sort_order")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  products Product[]
+
+  @@map("categories")
+}
+
+enum ProductStatus {
+  draft
+  active
+  inactive
+
+  @@map("product_status")
+}
+
+model Product {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  categoryId  String        @map("category_id") @db.Uuid
+  name        String        @db.VarChar(160)
+  slug        String        @unique @db.VarChar(120)
+  summary     String?       @db.VarChar(400)
+  description String        @default("")
+  /// Niveles o edades: sala_cuna, nivel_medio, transicion, adultos.
+  ageGroups   String[]      @default([]) @map("age_groups")
+  materials   String[]      @default([])
+  /// Medidas en texto ("60 × 40 × 50 cm").
+  dimensions  String?       @db.VarChar(200)
+  /// Ficha técnica: pares etiqueta–valor.
+  specs       Json          @default("[]")
+  status      ProductStatus @default(draft)
+  featured    Boolean       @default(false)
+  /// Fecha de publicación; null mientras no se publica.
+  publishedAt DateTime?     @map("published_at") @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  category Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  variants ProductVariant[]
+  images   ProductImage[]
+  extras   ProductExtra[]
+
+  @@index([categoryId, status])
+  @@index([status, publishedAt])
+  @@map("products")
+}
+
+/// Variante vendible (una por SKU). Disponible = stock_physical − stock_reserved (RN-03).
+model ProductVariant {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  sku            String   @unique @db.VarChar(60)
+  /// Nombre de la opción ("1 plaza"); null en un producto simple.
+  optionLabel    String?  @map("option_label") @db.VarChar(80)
+  color          String?  @db.VarChar(60)
+  size           String?  @db.VarChar(60)
+  /// Precio en CLP; null mientras el cliente no lo define (no se puede comprar).
+  price          Int?
+  compareAtPrice Int?     @map("compare_at_price")
+  stockPhysical  Int      @default(0) @map("stock_physical")
+  stockReserved  Int      @default(0) @map("stock_reserved")
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  images  ProductImage[]
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  /// Vínculo opcional: la foto de una variante (p. ej. un color).
+  variantId String?  @map("variant_id") @db.Uuid
+  url       String   @db.VarChar(500)
+  alt       String   @db.VarChar(200)
+  width     Int?
+  height    Int?
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([productId, sortOrder])
+  @@map("product_images")
+}
+
+/// Servicio o agregado de un producto (armado, nombre grabado…).
+model Extra {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  /// Identificador estable ("armado", "nombre").
+  code          String   @unique @db.VarChar(40)
+  name          String   @db.VarChar(80)
+  /// Precio por unidad en CLP; null = precio por confirmar (no suma al total).
+  price         Int?
+  available     Boolean  @default(true)
+  /// Personalización: si pide un texto (p. ej. el nombre del niño).
+  requiresText  Boolean  @default(false) @map("requires_text")
+  textLabel     String?  @map("text_label") @db.VarChar(80)
+  textMaxLength Int?     @map("text_max_length")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  products ProductExtra[]
+
+  @@map("extras")
+}
+
+/// Compatibilidad producto–extra: qué extras ofrece cada producto.
+model ProductExtra {
+  productId String @map("product_id") @db.Uuid
+  extraId   String @map("extra_id") @db.Uuid
+  sortOrder Int    @default(0) @map("sort_order")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  extra   Extra   @relation(fields: [extraId], references: [id], onDelete: Restrict)
+
+  @@id([productId, extraId])
+  @@index([extraId])
+  @@map("product_extras")
 }
