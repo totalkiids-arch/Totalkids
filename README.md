@@ -46,9 +46,10 @@ docker compose up -d --wait
 # 3. Dependencias (también genera el cliente Prisma)
 pnpm install
 
-# 4. Migraciones (desarrollo y tests)
+# 4. Migraciones (desarrollo y tests) y datos iniciales
 pnpm db:migrate
 pnpm db:migrate:test
+pnpm db:seed   # categorías, catálogo importado y configuración (idempotente)
 
 # 5. Levantar web + API
 pnpm dev
@@ -60,20 +61,23 @@ pnpm dev
 
 ## Scripts de la raíz
 
-| Script                   | Qué hace                                                           |
-| ------------------------ | ------------------------------------------------------------------ |
-| `pnpm dev`               | Levanta web y API en paralelo (Next dev + `tsx watch`)             |
-| `pnpm build`             | Build de producción de todas las apps                              |
-| `pnpm start`             | Ejecuta los builds de producción                                   |
-| `pnpm lint`              | ESLint en cada app + `prettier --check`                            |
-| `pnpm format`            | Formatea todo con Prettier                                         |
-| `pnpm typecheck`         | `tsc --noEmit` en cada app                                         |
-| `pnpm test`              | Vitest en cada app (incluye un test contra `totalkids_test`)       |
-| `pnpm db:migrate`        | `prisma migrate dev` sobre `totalkids_dev` (crea y aplica cambios) |
-| `pnpm db:migrate:deploy` | Aplica las migraciones existentes sin crear nuevas (CI/producción) |
-| `pnpm db:migrate:test`   | Aplica las migraciones sobre `totalkids_test`                      |
+| Script                   | Qué hace                                                                 |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `pnpm dev`               | Levanta web y API en paralelo (Next dev + `tsx watch`)                   |
+| `pnpm build`             | Build de producción de todas las apps                                    |
+| `pnpm start`             | Ejecuta los builds de producción                                         |
+| `pnpm lint`              | ESLint en cada app + `prettier --check`                                  |
+| `pnpm format`            | Formatea todo con Prettier                                               |
+| `pnpm typecheck`         | `tsc --noEmit` en cada app                                               |
+| `pnpm test`              | Vitest en cada app (incluye tests de integridad contra `totalkids_test`) |
+| `pnpm db:migrate`        | `prisma migrate dev` sobre `totalkids_dev` (crea y aplica cambios)       |
+| `pnpm db:migrate:deploy` | Aplica las migraciones existentes sin crear nuevas (CI/producción)       |
+| `pnpm db:migrate:test`   | Aplica las migraciones sobre `totalkids_test`                            |
+| `pnpm db:seed`           | Carga categorías, el catálogo importado y la configuración inicial       |
 
 Para crear una migración nueva: `pnpm db:migrate --name <descripcion>`.
+
+**Modelo de datos (LN-01):** `apps/api/prisma/schema.prisma` sigue la sección 4.5 del SRS. Las restricciones que Prisma no expresa (CHECK de importes y stock, índices únicos parciales de pagos y los triggers de reembolsos y de `audit_log`) están escritas a mano al final del `migration.sql` de cada migración: si se regenera una migración, hay que conservarlas.
 
 ## Convenciones de la API
 

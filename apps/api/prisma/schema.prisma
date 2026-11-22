@@ -1,12 +1,21 @@
-// Schema Prisma de Total Kids.
-// Por ahora solo contiene la tabla técnica "healthcheck"; los modelos de negocio
-// se agregan en iteraciones posteriores.
+// Schema Prisma de Total Kids (SRS v1.1, sección 4.5: modelo de datos e integridad).
+//
+// Convenciones:
+// - Tablas y columnas en snake_case (@@map/@map); modelos y campos en camelCase.
+// - Identificadores UUID v7 (ordenables por fecha de creación).
+// - Fechas en UTC (timestamptz); la interfaz muestra America/Santiago.
+// - Importes en CLP como enteros no negativos (RN-01). Las restricciones CHECK
+//   (importes, stock, rangos) se agregan a mano en el SQL de cada migración,
+//   porque Prisma no las expresa.
+// - No se borra en cascada el historial comercial: el catálogo usa Restrict y
+//   se desactiva en vez de eliminarse. Solo cascadean datos que dependen por
+//   completo de su padre (imágenes, vínculos producto–extra).
 
 generator client {
-  provider               = "prisma-client"
-  output                 = "../src/generated/prisma"
-  moduleFormat           = "esm"
-  importFileExtension    = "js"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {
@@ -19,4 +28,1004 @@ model Healthcheck {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("healthcheck")
+}
+
+// ─── Cuentas (RF-22, RF-31, RNF-01) ─────────────────────────────────────────
+
+/// Comprador con cuenta o integrante del equipo (Administrador / Operador).
+enum UserRole {
+  customer
+  admin
+  operator
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  active
+  inactive
+
+  @@map("user_status")
+}
+
+model User {
+  id              String     @id @default(uuid(7)) @db.Uuid
+  /// En minúsculas; único (índice sobre lower(email) en la migración).
+  email           String     @unique @db.VarChar(254)
+  /// Hash argon2id. Nunca la contraseña ni el hash en logs o respuestas.
+  passwordHash    String     @map("password_hash")
+  name            String     @db.VarChar(120)
+  role            UserRole   @default(customer)
+  status          UserStatus @default(active)
+  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(3)
+  lastLoginAt     DateTime?  @map("last_login_at") @db.Timestamptz(3)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  authTokens         AuthToken[]
+  carts              Cart[]
+  sessions           Session[]
+  orders             Order[]
+  statusChanges      OrderStatusHistory[]
+  inventoryMovements InventoryMovement[]
+  refundsRegistered  RefundRecord[]       @relation("RefundRegisteredBy")
+  refundsResolved    RefundRecord[]       @relation("RefundResolvedBy")
+  auditEntries       AuditLog[]
+  emailResends       EmailAttempt[]
+
+  @@index([role, status])
+  @@map("users")
+}
+
+enum AuthTokenPurpose {
+  password_reset
+  email_verification
+
+  @@map("auth_token_purpose")
+}
+
+/// Token de un solo uso (recuperación de contraseña). Se guarda solo su hash.
+model AuthToken {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  purpose   AuthTokenPurpose
+  /// SHA-256 del token enviado por correo; el token en claro nunca se guarda.
+  tokenHash String           @unique @map("token_hash") @db.VarChar(128)
+  expiresAt DateTime         @map("expires_at") @db.Timestamptz(3)
+  /// Uso único: al usarse se marca y no vuelve a servir.
+  usedAt    DateTime?        @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("auth_tokens")
+}
+
+/// Sesión revocable (cookie opaca HttpOnly). Se guarda solo el hash del id.
+model Session {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash") @db.VarChar(128)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(3)
+  userAgent  String?   @map("user_agent") @db.VarChar(400)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ─── Catálogo (RF-01 a RF-04, RF-26) ────────────────────────────────────────
+
+model Category {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String   @db.VarChar(80)
+  slug        String   @unique @db.VarChar(80)
+  description String?  @db.VarChar(500)
+  sortOrder   Int      @default(0) @map("sort_order")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  products Product[]
+
+  @@map("categories")
+}
+
+enum ProductStatus {
+  draft
+  active
+  inactive
+
+  @@map("product_status")
+}
+
+model Product {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  categoryId  String        @map("category_id") @db.Uuid
+  name        String        @db.VarChar(160)
+  slug        String        @unique @db.VarChar(120)
+  summary     String?       @db.VarChar(400)
+  description String        @default("")
+  /// Niveles o edades: sala_cuna, nivel_medio, transicion, adultos.
+  ageGroups   String[]      @default([]) @map("age_groups")
+  materials   String[]      @default([])
+  /// Medidas en texto ("60 × 40 × 50 cm").
+  dimensions  String?       @db.VarChar(200)
+  /// Ficha técnica: pares etiqueta–valor.
+  specs       Json          @default("[]")
+  status      ProductStatus @default(draft)
+  featured    Boolean       @default(false)
+  /// Fecha de publicación; null mientras no se publica.
+  publishedAt DateTime?     @map("published_at") @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  category Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  variants ProductVariant[]
+  images   ProductImage[]
+  extras   ProductExtra[]
+
+  @@index([categoryId, status])
+  @@index([status, publishedAt])
+  @@map("products")
+}
+
+/// Variante vendible (una por SKU). Disponible = stock_physical − stock_reserved (RN-03).
+model ProductVariant {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  sku            String   @unique @db.VarChar(60)
+  /// Nombre de la opción ("1 plaza"); null en un producto simple.
+  optionLabel    String?  @map("option_label") @db.VarChar(80)
+  color          String?  @db.VarChar(60)
+  size           String?  @db.VarChar(60)
+  /// Precio en CLP; null mientras el cliente no lo define (no se puede comprar).
+  price          Int?
+  compareAtPrice Int?     @map("compare_at_price")
+  stockPhysical  Int      @default(0) @map("stock_physical")
+  stockReserved  Int      @default(0) @map("stock_reserved")
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product      Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  images       ProductImage[]
+  cartItems    CartItem[]
+  orderItems   OrderItem[]
+  reservations StockReservation[]
+  movements    InventoryMovement[]
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  /// Vínculo opcional: la foto de una variante (p. ej. un color).
+  variantId String?  @map("variant_id") @db.Uuid
+  url       String   @db.VarChar(500)
+  alt       String   @db.VarChar(200)
+  width     Int?
+  height    Int?
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([productId, sortOrder])
+  @@map("product_images")
+}
+
+/// Servicio o agregado de un producto (armado, nombre grabado…).
+model Extra {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  /// Identificador estable ("armado", "nombre").
+  code          String   @unique @db.VarChar(40)
+  name          String   @db.VarChar(80)
+  /// Precio por unidad en CLP; null = precio por confirmar (no suma al total).
+  price         Int?
+  available     Boolean  @default(true)
+  /// Personalización: si pide un texto (p. ej. el nombre del niño).
+  requiresText  Boolean  @default(false) @map("requires_text")
+  textLabel     String?  @map("text_label") @db.VarChar(80)
+  textMaxLength Int?     @map("text_max_length")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  products  ProductExtra[]
+  cartItems CartItemExtra[]
+
+  @@map("extras")
+}
+
+/// Compatibilidad producto–extra: qué extras ofrece cada producto.
+model ProductExtra {
+  productId String @map("product_id") @db.Uuid
+  extraId   String @map("extra_id") @db.Uuid
+  sortOrder Int    @default(0) @map("sort_order")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  extra   Extra   @relation(fields: [extraId], references: [id], onDelete: Restrict)
+
+  @@id([productId, extraId])
+  @@index([extraId])
+  @@map("product_extras")
+}
+
+// ─── Carrito (RF-05, RF-06) ─────────────────────────────────────────────────
+
+/// Carrito de un usuario o de una sesión invitada (cookie opaca; se guarda solo
+/// el hash). Agregar al carrito NO reserva stock (RN-04): se revalida al pagar.
+model Cart {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  /// Dueño con cuenta; null en un carrito invitado.
+  userId         String?  @map("user_id") @db.Uuid
+  /// Hash del identificador opaco de la cookie del invitado.
+  guestTokenHash String?  @unique @map("guest_token_hash") @db.VarChar(128)
+  /// Cupón aplicado (se valida otra vez al crear el pedido).
+  couponId       String?  @map("coupon_id") @db.Uuid
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user   User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coupon Coupon?    @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items  CartItem[]
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("carts")
+}
+
+/// Línea del carrito. Una misma variante con extras o textos distintos es otra
+/// línea: `line_key` resume esa combinación y es única dentro del carrito.
+model CartItem {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  cartId    String   @map("cart_id") @db.Uuid
+  variantId String   @map("variant_id") @db.Uuid
+  /// Combinación SKU + extras + textos (la arma la aplicación).
+  lineKey   String   @map("line_key") @db.VarChar(400)
+  quantity  Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  cart    Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  extras  CartItemExtra[]
+
+  @@unique([cartId, lineKey])
+  @@index([variantId])
+  @@map("cart_items")
+}
+
+/// Extra elegido en una línea, con su texto de personalización si lo pide.
+model CartItemExtra {
+  cartItemId String  @map("cart_item_id") @db.Uuid
+  extraId    String  @map("extra_id") @db.Uuid
+  text       String? @db.VarChar(200)
+
+  cartItem CartItem @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
+  extra    Extra    @relation(fields: [extraId], references: [id], onDelete: Restrict)
+
+  @@id([cartItemId, extraId])
+  @@map("cart_item_extras")
+}
+
+// ─── Cupones (RF-07, RF-28) ─────────────────────────────────────────────────
+
+enum CouponKind {
+  percent
+  amount
+
+  @@map("coupon_kind")
+}
+
+/// Cupón de descuento. `uses_count` suma usos reservados y consumidos y se
+/// actualiza en la misma transacción que la reserva (ver coupon_redemptions):
+/// la restricción uses_count ≤ max_uses impide superar el cupo con compras
+/// simultáneas.
+model Coupon {
+  id        String     @id @default(uuid(7)) @db.Uuid
+  /// Mayúsculas, sin espacios; único.
+  code      String     @unique @db.VarChar(40)
+  kind      CouponKind
+  /// Porcentaje entero (1–100) o monto en CLP (> 0).
+  value     Int
+  /// Vigencia en días calendario de Chile, ambos inclusive.
+  startsOn  DateTime   @map("starts_on") @db.Date
+  endsOn    DateTime   @map("ends_on") @db.Date
+  maxUses   Int        @map("max_uses")
+  usesCount Int        @default(0) @map("uses_count")
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  carts       Cart[]
+  orders      Order[]
+  redemptions CouponRedemption[]
+
+  @@index([active, startsOn, endsOn])
+  @@map("coupons")
+}
+
+// ─── Despacho y configuración (RF-08, RF-11, RF-28) ─────────────────────────
+
+/// Comuna habilitada para despacho, con su tarifa y plazo.
+model ShippingZone {
+  id                   String   @id @default(uuid(7)) @db.Uuid
+  /// Código de región de Chile ("RM", "AR"…).
+  region               String   @db.VarChar(4)
+  commune              String   @db.VarChar(80)
+  /// Tarifa en CLP; 0 = despacho sin costo en esa comuna.
+  price                Int
+  /// Plazo que ve el comprador ("3 a 5 días hábiles").
+  leadTime             String   @map("lead_time") @db.VarChar(60)
+  /// Si cuenta para el despacho gratis desde el umbral.
+  freeShippingEligible Boolean  @default(true) @map("free_shipping_eligible")
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  orders Order[]
+
+  @@unique([region, commune])
+  @@map("shipping_zones")
+}
+
+/// Configuración general de la tienda. Una sola fila (id = 1).
+model Setting {
+  id                    Int      @id @default(1)
+  /// Dirección y horario de retiro en tienda (el retiro es gratis).
+  pickupDetails         String   @map("pickup_details") @db.VarChar(200)
+  pickupEnabled         Boolean  @default(true) @map("pickup_enabled")
+  /// Despacho gratis desde este subtotal en CLP; null = sin umbral.
+  freeShippingThreshold Int?     @map("free_shipping_threshold")
+  /// Minutos que el stock queda reservado mientras se paga (RN-04).
+  reservationMinutes    Int      @default(30) @map("reservation_minutes")
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("settings")
+}
+
+/// Banner de la portada (RF-28).
+model Banner {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  title     String    @db.VarChar(80)
+  text      String    @db.VarChar(200)
+  /// Ruta interna ("/catalogo?categoria=junji").
+  href      String    @db.VarChar(200)
+  sortOrder Int       @default(1) @map("sort_order")
+  active    Boolean   @default(true)
+  /// Ventana de publicación opcional.
+  startsAt  DateTime? @map("starts_at") @db.Timestamptz(3)
+  endsAt    DateTime? @map("ends_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([active, sortOrder])
+  @@map("banners")
+}
+
+// ─── Pedidos (RF-09 a RF-14, RF-23, RF-27, RN-01, RN-02) ────────────────────
+
+enum OrderStatus {
+  pending_payment
+  in_review
+  confirmed
+  preparing
+  shipped
+  delivered
+  cancelled
+  expired
+
+  @@map("order_status")
+}
+
+enum DeliveryMethod {
+  shipping
+  pickup
+
+  @@map("delivery_method")
+}
+
+enum TaxDocument {
+  boleta
+  factura
+
+  @@map("tax_document")
+}
+
+/// Pedido. Guarda una foto (snapshot) de comprador, entrega, facturación,
+/// líneas e importes: editar productos o tarifas no cambia compras anteriores
+/// (RN-02). Total = subtotal − descuento + despacho (RN-01).
+model Order {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  /// Número visible "TK-<number>"; correlativo único.
+  number         Int         @unique @default(autoincrement())
+  /// Comprador con cuenta; null si compró como invitado.
+  userId         String?     @map("user_id") @db.Uuid
+  status         OrderStatus @default(pending_payment)
+  currency       String      @default("CLP") @db.Char(3)
+  /// Clave idempotente de creación (RF-13): repetir la petición no crea otro pedido.
+  idempotencyKey String      @unique @map("idempotency_key") @db.VarChar(100)
+
+  // Comprador (snapshot).
+  buyerName  String @map("buyer_name") @db.VarChar(120)
+  buyerRut   String @map("buyer_rut") @db.VarChar(12)
+  buyerEmail String @map("buyer_email") @db.VarChar(254)
+  buyerPhone String @map("buyer_phone") @db.VarChar(16)
+
+  // Entrega (snapshot de dirección, tarifa y plazo).
+  deliveryMethod   DeliveryMethod @map("delivery_method")
+  shippingZoneId   String?        @map("shipping_zone_id") @db.Uuid
+  shippingRegion   String?        @map("shipping_region") @db.VarChar(4)
+  shippingCommune  String?        @map("shipping_commune") @db.VarChar(80)
+  shippingStreet   String?        @map("shipping_street") @db.VarChar(160)
+  shippingUnit     String?        @map("shipping_unit") @db.VarChar(60)
+  shippingNotes    String?        @map("shipping_notes") @db.VarChar(300)
+  shippingLeadTime String?        @map("shipping_lead_time") @db.VarChar(60)
+  pickupDetails    String?        @map("pickup_details") @db.VarChar(200)
+
+  // Documento tributario (snapshot).
+  taxDocument           TaxDocument @map("tax_document")
+  invoiceRut            String?     @map("invoice_rut") @db.VarChar(12)
+  invoiceBusinessName   String?     @map("invoice_business_name") @db.VarChar(160)
+  invoiceActivity       String?     @map("invoice_activity") @db.VarChar(120)
+  invoiceEmail          String?     @map("invoice_email") @db.VarChar(254)
+  invoiceAddress        String?     @map("invoice_address") @db.VarChar(160)
+  invoiceCommune        String?     @map("invoice_commune") @db.VarChar(60)
+  purchaseOrderRequired Boolean     @default(false) @map("purchase_order_required")
+
+  // Importes en CLP (RN-01).
+  subtotal     Int
+  discount     Int     @default(0)
+  shippingCost Int     @map("shipping_cost")
+  total        Int
+  couponId     String? @map("coupon_id") @db.Uuid
+  couponCode   String? @map("coupon_code") @db.VarChar(40)
+
+  // Despacho.
+  carrier      String? @db.VarChar(80)
+  trackingCode String? @map("tracking_code") @db.VarChar(80)
+
+  /// Aceptación de condiciones (RNF-13): fecha y versión del texto.
+  termsAcceptedAt   DateTime  @map("terms_accepted_at") @db.Timestamptz(3)
+  termsVersion      String    @map("terms_version") @db.VarChar(40)
+  /// Plazo para pagar: al vencer se revisa la reserva (RN-04).
+  paymentDueAt      DateTime  @map("payment_due_at") @db.Timestamptz(3)
+  paidAt            DateTime? @map("paid_at") @db.Timestamptz(3)
+  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  /// Reposición de stock registrada (RN-06: una sola vez).
+  restockRecordedAt DateTime? @map("restock_recorded_at") @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user          User?                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  shippingZone  ShippingZone?        @relation(fields: [shippingZoneId], references: [id], onDelete: SetNull)
+  coupon        Coupon?              @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  items         OrderItem[]
+  payments      Payment[]
+  reservations  StockReservation[]
+  movements     InventoryMovement[]
+  statusHistory OrderStatusHistory[]
+  refunds       RefundRecord[]
+  redemption    CouponRedemption?
+  emails        EmailLog[]
+
+  @@index([userId, createdAt])
+  @@index([buyerEmail])
+  @@index([status, createdAt])
+  @@index([status, paymentDueAt])
+  @@map("orders")
+}
+
+/// Línea del pedido: snapshot de nombre, SKU, variante y precios al comprar.
+model OrderItem {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  orderId         String   @map("order_id") @db.Uuid
+  /// Variante comprada; el snapshot se conserva aunque cambie o se desactive.
+  variantId       String?  @map("variant_id") @db.Uuid
+  productName     String   @map("product_name") @db.VarChar(160)
+  sku             String   @db.VarChar(60)
+  optionLabel     String?  @map("option_label") @db.VarChar(80)
+  quantity        Int
+  /// Precio unitario de la variante al comprar.
+  unitPrice       Int      @map("unit_price")
+  /// Suma por unidad de los extras con precio.
+  extrasUnitPrice Int      @default(0) @map("extras_unit_price")
+  /// (unit_price + extras_unit_price) × quantity.
+  lineTotal       Int      @map("line_total")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  order   Order            @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  variant ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  extras  OrderItemExtra[]
+
+  @@index([orderId])
+  @@index([variantId])
+  @@map("order_items")
+}
+
+/// Extra de una línea del pedido (snapshot de nombre, precio y personalización).
+model OrderItemExtra {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  orderItemId String  @map("order_item_id") @db.Uuid
+  extraCode   String  @map("extra_code") @db.VarChar(40)
+  extraName   String  @map("extra_name") @db.VarChar(80)
+  /// Precio por unidad al comprar; null = por confirmar (no sumó al total).
+  unitPrice   Int?    @map("unit_price")
+  text        String? @db.VarChar(200)
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  @@unique([orderItemId, extraCode])
+  @@map("order_item_extras")
+}
+
+/// Historial de estados del pedido (RF-27, RF-34): anterior, nuevo, actor y motivo.
+model OrderStatusHistory {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  orderId     String       @map("order_id") @db.Uuid
+  fromStatus  OrderStatus? @map("from_status")
+  toStatus    OrderStatus  @map("to_status")
+  /// Integrante del equipo; null en cambios automáticos (Flow, vencimientos).
+  actorUserId String?      @map("actor_user_id") @db.Uuid
+  /// Nombre visible del actor al momento del cambio ("Sistema", "Administrador").
+  actorLabel  String       @map("actor_label") @db.VarChar(120)
+  reason      String?      @db.VarChar(500)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
+}
+
+// ─── Pagos Flow (RF-15 a RF-19, RF-32, RF-33, RN-05, RN-06) ─────────────────
+
+/// Estado de un intento. Un fallo de comunicación con Flow es "in_review"
+/// (incierto), nunca un rechazo.
+enum PaymentStatus {
+  pending
+  paid
+  rejected
+  voided
+  in_review
+  expired
+
+  @@map("payment_status")
+}
+
+/// Intento de cobro en Flow.
+model Payment {
+  id               String        @id @default(uuid(7)) @db.Uuid
+  orderId          String        @map("order_id") @db.Uuid
+  /// Número de intento dentro del pedido (1, 2…).
+  attempt          Int
+  /// Identificador propio enviado a Flow; único.
+  commerceOrder    String        @unique @map("commerce_order") @db.VarChar(60)
+  /// Número asignado por Flow; único cuando existe.
+  flowOrder        BigInt?       @unique @map("flow_order")
+  /// SHA-256 del token de Flow (para reconocer callback y retorno); nunca el token en claro.
+  tokenHash        String?       @unique @map("token_hash") @db.VarChar(128)
+  status           PaymentStatus @default(pending)
+  amount           Int
+  currency         String        @default("CLP") @db.Char(3)
+  /// Medio informado por Flow, si existe.
+  paymentMethod    String?       @map("payment_method") @db.VarChar(40)
+  /// Última respuesta de Flow, depurada: sin datos de tarjeta ni secretos (RNF-05).
+  providerResponse Json?         @map("provider_response")
+  paidAt           DateTime?     @map("paid_at") @db.Timestamptz(3)
+  lastCheckedAt    DateTime?     @map("last_checked_at") @db.Timestamptz(3)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  refunds RefundRecord[]
+
+  @@unique([orderId, attempt])
+  @@index([status, lastCheckedAt])
+  @@map("payments")
+}
+
+enum RefundStatus {
+  requested
+  processed
+  failed
+
+  @@map("refund_status")
+}
+
+/// Reembolso manual (RF-32): registra una devolución hecha fuera del sistema.
+/// No mueve dinero ni cambia el cobro original. La suma de reembolsos no
+/// fallidos nunca supera el monto cobrado (lo controla un trigger).
+model RefundRecord {
+  id                 String       @id @default(uuid(7)) @db.Uuid
+  orderId            String       @map("order_id") @db.Uuid
+  paymentId          String       @map("payment_id") @db.Uuid
+  amount             Int
+  /// Fecha de la devolución (día calendario).
+  refundDate         DateTime     @map("refund_date") @db.Date
+  /// Referencia del comprobante externo.
+  reference          String       @db.VarChar(120)
+  status             RefundStatus @default(requested)
+  registeredByUserId String?      @map("registered_by_user_id") @db.Uuid
+  registeredByLabel  String       @map("registered_by_label") @db.VarChar(120)
+  resolvedByUserId   String?      @map("resolved_by_user_id") @db.Uuid
+  resolvedByLabel    String?      @map("resolved_by_label") @db.VarChar(120)
+  resolvedAt         DateTime?    @map("resolved_at") @db.Timestamptz(3)
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  order        Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  payment      Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  registeredBy User?   @relation("RefundRegisteredBy", fields: [registeredByUserId], references: [id], onDelete: Restrict)
+  resolvedBy   User?   @relation("RefundResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([paymentId])
+  @@map("refund_records")
+}
+
+// ─── Inventario (RN-03, RN-04, RN-05, RF-34) ────────────────────────────────
+
+enum ReservationStatus {
+  active
+  consumed
+  released
+  in_review
+
+  @@map("reservation_status")
+}
+
+/// Reserva de stock de un pedido (RN-04). Agregar al carrito no reserva.
+model StockReservation {
+  id         String            @id @default(uuid(7)) @db.Uuid
+  orderId    String            @map("order_id") @db.Uuid
+  variantId  String            @map("variant_id") @db.Uuid
+  quantity   Int
+  status     ReservationStatus @default(active)
+  expiresAt  DateTime          @map("expires_at") @db.Timestamptz(3)
+  resolvedAt DateTime?         @map("resolved_at") @db.Timestamptz(3)
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, variantId])
+  @@index([status, expiresAt])
+  @@map("stock_reservations")
+}
+
+enum InventoryMovementKind {
+  reservation
+  release
+  sale
+  adjustment
+  restock
+
+  @@map("inventory_movement_kind")
+}
+
+/// Movimiento de inventario con motivo, referencia y actor (RF-34): cuánto
+/// cambiaron el stock físico y el reservado, y cómo quedaron.
+model InventoryMovement {
+  id            String                @id @default(uuid(7)) @db.Uuid
+  variantId     String                @map("variant_id") @db.Uuid
+  kind          InventoryMovementKind
+  physicalDelta Int                   @default(0) @map("physical_delta")
+  reservedDelta Int                   @default(0) @map("reserved_delta")
+  physicalAfter Int                   @map("physical_after")
+  reservedAfter Int                   @map("reserved_after")
+  reason        String                @db.VarChar(500)
+  /// Pedido relacionado (reserva, venta, liberación o reposición).
+  orderId       String?               @map("order_id") @db.Uuid
+  actorUserId   String?               @map("actor_user_id") @db.Uuid
+  actorLabel    String                @map("actor_label") @db.VarChar(120)
+  createdAt     DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  order   Order?         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actor   User?          @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([variantId, createdAt])
+  @@index([orderId])
+  @@map("inventory_movements")
+}
+
+// ─── Usos de cupón (RF-07) ──────────────────────────────────────────────────
+
+enum CouponRedemptionStatus {
+  reserved
+  consumed
+  released
+
+  @@map("coupon_redemption_status")
+}
+
+/// Uso de un cupón por un pedido: se reserva al crear el pedido, se consume al
+/// pagar y se libera si el pedido vence o se cancela. Un cupón por pedido.
+model CouponRedemption {
+  id        String                 @id @default(uuid(7)) @db.Uuid
+  couponId  String                 @map("coupon_id") @db.Uuid
+  orderId   String                 @unique @map("order_id") @db.Uuid
+  status    CouponRedemptionStatus @default(reserved)
+  /// Descuento aplicado en CLP (snapshot).
+  discount  Int
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([couponId, status])
+  @@map("coupon_redemptions")
+}
+
+// ─── Solicitudes de servicio (RF-24, RF-29) ─────────────────────────────────
+
+enum ServiceRequestStatus {
+  new
+  in_progress
+  resolved
+
+  @@map("service_request_status")
+}
+
+/// Solicitud de servicio especial (armado, diseño, instituciones…). Los
+/// cambios de seguimiento quedan en audit_log (resource_type = 'service_request').
+model ServiceRequest {
+  id                String               @id @default(uuid(7)) @db.Uuid
+  /// Referencia visible "SOL-<number>"; correlativo único.
+  number            Int                  @unique @default(autoincrement())
+  /// Servicio elegido ("armado", "diseno", "instituciones"…).
+  service           String               @db.VarChar(40)
+  name              String               @db.VarChar(120)
+  email             String               @db.VarChar(254)
+  phone             String?              @db.VarChar(16)
+  commune           String?              @db.VarChar(60)
+  /// Edad de los niños, texto libre ("3 y 6 años").
+  childrenAges      String?              @map("children_ages") @db.VarChar(60)
+  preferredDate     DateTime?            @map("preferred_date") @db.Date
+  message           String               @db.VarChar(2000)
+  /// Aceptación de la política de privacidad: fecha y versión.
+  privacyAcceptedAt DateTime             @map("privacy_accepted_at") @db.Timestamptz(3)
+  privacyVersion    String               @map("privacy_version") @db.VarChar(40)
+  status            ServiceRequestStatus @default(new)
+  /// Nota interna del equipo (no la ve el solicitante).
+  internalNote      String               @default("") @map("internal_note") @db.VarChar(1000)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  emails EmailLog[]
+
+  @@index([status, createdAt])
+  @@map("service_requests")
+}
+
+// ─── Newsletter (RF-25, RF-35) ──────────────────────────────────────────────
+
+enum SubscriberStatus {
+  active
+  unsubscribed
+
+  @@map("subscriber_status")
+}
+
+/// Suscriptor del newsletter con su consentimiento explícito y su baja.
+model NewsletterSubscriber {
+  id                   String           @id @default(uuid(7)) @db.Uuid
+  /// En minúsculas; único.
+  email                String           @unique @db.VarChar(254)
+  status               SubscriberStatus @default(active)
+  /// Último consentimiento aceptado: fecha y versión del texto (RF-35).
+  consentedAt          DateTime         @map("consented_at") @db.Timestamptz(3)
+  consentVersion       String           @map("consent_version") @db.VarChar(40)
+  /// Hash del token del enlace "darme de baja" de cada correo.
+  unsubscribeTokenHash String           @unique @map("unsubscribe_token_hash") @db.VarChar(128)
+  unsubscribedAt       DateTime?        @map("unsubscribed_at") @db.Timestamptz(3)
+  /// Quién registró la baja ("Suscriptor" o el rol del equipo).
+  unsubscribedBy       String?          @map("unsubscribed_by") @db.VarChar(120)
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([status])
+  @@map("newsletter_subscribers")
+}
+
+// ─── Outbox y correos transaccionales (RF-20, RF-21, SRS 4.4.3) ─────────────
+
+enum OutboxStatus {
+  pending
+  processing
+  done
+  failed
+  dead
+
+  @@map("outbox_status")
+}
+
+/// Evento durable que procesa el worker (correos y otras tareas). Se crea en
+/// la misma transacción que el cambio que lo origina. Reintentos a 1, 5 y 15
+/// minutos; tras el último queda "dead" para revisión.
+model OutboxJob {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  /// Tipo de tarea ("email.purchase_confirmed").
+  type        String       @db.VarChar(60)
+  /// Clave única del evento: el mismo hecho no se encola dos veces.
+  eventKey    String       @unique @map("event_key") @db.VarChar(160)
+  /// Datos para ejecutar la tarea; sin contraseñas, secretos ni datos de tarjeta.
+  payload     Json
+  status      OutboxStatus @default(pending)
+  attempts    Int          @default(0)
+  maxAttempts Int          @default(4) @map("max_attempts")
+  nextRunAt   DateTime     @default(now()) @map("next_run_at") @db.Timestamptz(3)
+  /// Bloqueo del worker que la está procesando (evita doble ejecución).
+  lockedAt    DateTime?    @map("locked_at") @db.Timestamptz(3)
+  lockedBy    String?      @map("locked_by") @db.VarChar(80)
+  /// Último error depurado.
+  lastError   String?      @map("last_error") @db.VarChar(1000)
+  processedAt DateTime?    @map("processed_at") @db.Timestamptz(3)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  emails EmailLog[]
+
+  @@index([status, nextRunAt])
+  @@map("outbox_jobs")
+}
+
+enum EmailEvent {
+  order_received
+  purchase_confirmed
+  new_sale
+  payment_rejected
+  order_shipped
+  order_delivered
+  service_request
+  password_recovery
+
+  @@map("email_event")
+}
+
+/// "uncertain": el proveedor no respondió; no se sabe si el correo salió.
+enum EmailStatus {
+  pending
+  sent
+  failed
+  uncertain
+
+  @@map("email_status")
+}
+
+/// Registro de un correo transaccional (RF-21). Un reenvío crea un registro
+/// nuevo que apunta al original (`resend_of_id`).
+model EmailLog {
+  id                String      @id @default(uuid(7)) @db.Uuid
+  event             EmailEvent
+  recipient         String      @db.VarChar(254)
+  /// Clave única del evento: evita duplicar el mismo correo.
+  eventKey          String      @unique @map("event_key") @db.VarChar(160)
+  status            EmailStatus @default(pending)
+  /// Id del mensaje en el proveedor (Brevo), cuando lo acepta.
+  providerMessageId String?     @map("provider_message_id") @db.VarChar(120)
+  /// Referencia opcional: pedido o solicitud.
+  orderId           String?     @map("order_id") @db.Uuid
+  serviceRequestId  String?     @map("service_request_id") @db.Uuid
+  outboxJobId       String?     @map("outbox_job_id") @db.Uuid
+  resendOfId        String?     @map("resend_of_id") @db.Uuid
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  order          Order?          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id], onDelete: Restrict)
+  outboxJob      OutboxJob?      @relation(fields: [outboxJobId], references: [id], onDelete: SetNull)
+  resendOf       EmailLog?       @relation("EmailResend", fields: [resendOfId], references: [id], onDelete: Restrict)
+  resends        EmailLog[]      @relation("EmailResend")
+  attempts       EmailAttempt[]
+
+  @@index([status, createdAt])
+  @@index([orderId])
+  @@index([serviceRequestId])
+  @@map("email_log")
+}
+
+enum EmailAttemptKind {
+  automatic
+  manual
+
+  @@map("email_attempt_kind")
+}
+
+enum EmailAttemptResult {
+  sent
+  failed
+  timeout
+
+  @@map("email_attempt_result")
+}
+
+/// Intento de envío de un correo, con su resultado y, si fue manual, su actor.
+model EmailAttempt {
+  id          String             @id @default(uuid(7)) @db.Uuid
+  emailId     String             @map("email_id") @db.Uuid
+  kind        EmailAttemptKind
+  result      EmailAttemptResult
+  actorUserId String?            @map("actor_user_id") @db.Uuid
+  actorLabel  String?            @map("actor_label") @db.VarChar(120)
+  /// Último error depurado, sin datos sensibles.
+  detail      String?            @db.VarChar(500)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  email EmailLog @relation(fields: [emailId], references: [id], onDelete: Restrict)
+  actor User?    @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([emailId, createdAt])
+  @@map("email_attempts")
+}
+
+// ─── Auditoría e idempotencia (RF-27, RF-34, SRS 4.4.2) ─────────────────────
+
+/// Operación administrativa auditada: quién, qué, sobre qué recurso y cuándo.
+/// No guarda contraseñas, secretos ni datos de tarjeta.
+model AuditLog {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  actorUserId  String?  @map("actor_user_id") @db.Uuid
+  /// Nombre visible del actor al momento ("Administrador", "Sistema").
+  actorLabel   String   @map("actor_label") @db.VarChar(120)
+  /// Acción ("order.status_changed", "user.updated", "coupon.created").
+  action       String   @db.VarChar(80)
+  /// Recurso afectado ("order", "product_variant", "user"…) y su id.
+  resourceType String   @map("resource_type") @db.VarChar(40)
+  resourceId   String   @map("resource_id") @db.VarChar(60)
+  /// Qué cambió (antes/después), depurado.
+  details      Json     @default("{}")
+  reason       String?  @db.VarChar(500)
+  requestId    String?  @map("request_id") @db.VarChar(100)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([resourceType, resourceId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+enum IdempotencyStatus {
+  in_progress
+  completed
+
+  @@map("idempotency_status")
+}
+
+/// Registro idempotente (RF-13, RF-19): la misma clave con la misma petición
+/// devuelve la respuesta guardada; con otra petición, se rechaza.
+model IdempotencyRecord {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  /// Ámbito de la operación ("POST /orders") + clave enviada por el cliente.
+  scope          String            @db.VarChar(80)
+  key            String            @db.VarChar(100)
+  /// SHA-256 del cuerpo de la petición (huella).
+  requestHash    String            @map("request_hash") @db.VarChar(128)
+  status         IdempotencyStatus @default(in_progress)
+  responseStatus Int?              @map("response_status")
+  /// Respuesta recuperable; sin secretos ni datos de tarjeta.
+  responseBody   Json?             @map("response_body")
+  expiresAt      DateTime          @map("expires_at") @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
 }

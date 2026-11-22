@@ -7,6 +7,8 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    // pnpm db:seed: catálogo importado y configuración inicial (idempotente).
+    seed: "tsx prisma/seed.ts",
   },
   datasource: {
     url: env("DATABASE_URL"),
