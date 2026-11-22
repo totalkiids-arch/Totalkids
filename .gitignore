@@ -26,3 +26,9 @@ coverage/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Skills de asistentes de IA (cada uno las instala localmente)
+.agents/
+.windsurf/
+**/.claude/skills/
+skills-lock.json
