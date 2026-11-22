@@ -70,6 +70,8 @@ model User {
   inventoryMovements InventoryMovement[]
   refundsRegistered  RefundRecord[]       @relation("RefundRegisteredBy")
   refundsResolved    RefundRecord[]       @relation("RefundResolvedBy")
+  auditEntries       AuditLog[]
+  emailResends       EmailAttempt[]
 
   @@index([role, status])
   @@map("users")
@@ -516,6 +518,7 @@ model Order {
   statusHistory OrderStatusHistory[]
   refunds       RefundRecord[]
   redemption    CouponRedemption?
+  emails        EmailLog[]
 
   @@index([userId, createdAt])
   @@index([buyerEmail])
@@ -766,4 +769,263 @@ model CouponRedemption {
 
   @@index([couponId, status])
   @@map("coupon_redemptions")
+}
+
+// ─── Solicitudes de servicio (RF-24, RF-29) ─────────────────────────────────
+
+enum ServiceRequestStatus {
+  new
+  in_progress
+  resolved
+
+  @@map("service_request_status")
+}
+
+/// Solicitud de servicio especial (armado, diseño, instituciones…). Los
+/// cambios de seguimiento quedan en audit_log (resource_type = 'service_request').
+model ServiceRequest {
+  id                String               @id @default(uuid(7)) @db.Uuid
+  /// Referencia visible "SOL-<number>"; correlativo único.
+  number            Int                  @unique @default(autoincrement())
+  /// Servicio elegido ("armado", "diseno", "instituciones"…).
+  service           String               @db.VarChar(40)
+  name              String               @db.VarChar(120)
+  email             String               @db.VarChar(254)
+  phone             String?              @db.VarChar(16)
+  commune           String?              @db.VarChar(60)
+  /// Edad de los niños, texto libre ("3 y 6 años").
+  childrenAges      String?              @map("children_ages") @db.VarChar(60)
+  preferredDate     DateTime?            @map("preferred_date") @db.Date
+  message           String               @db.VarChar(2000)
+  /// Aceptación de la política de privacidad: fecha y versión.
+  privacyAcceptedAt DateTime             @map("privacy_accepted_at") @db.Timestamptz(3)
+  privacyVersion    String               @map("privacy_version") @db.VarChar(40)
+  status            ServiceRequestStatus @default(new)
+  /// Nota interna del equipo (no la ve el solicitante).
+  internalNote      String               @default("") @map("internal_note") @db.VarChar(1000)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  emails EmailLog[]
+
+  @@index([status, createdAt])
+  @@map("service_requests")
+}
+
+// ─── Newsletter (RF-25, RF-35) ──────────────────────────────────────────────
+
+enum SubscriberStatus {
+  active
+  unsubscribed
+
+  @@map("subscriber_status")
+}
+
+/// Suscriptor del newsletter con su consentimiento explícito y su baja.
+model NewsletterSubscriber {
+  id                   String           @id @default(uuid(7)) @db.Uuid
+  /// En minúsculas; único.
+  email                String           @unique @db.VarChar(254)
+  status               SubscriberStatus @default(active)
+  /// Último consentimiento aceptado: fecha y versión del texto (RF-35).
+  consentedAt          DateTime         @map("consented_at") @db.Timestamptz(3)
+  consentVersion       String           @map("consent_version") @db.VarChar(40)
+  /// Hash del token del enlace "darme de baja" de cada correo.
+  unsubscribeTokenHash String           @unique @map("unsubscribe_token_hash") @db.VarChar(128)
+  unsubscribedAt       DateTime?        @map("unsubscribed_at") @db.Timestamptz(3)
+  /// Quién registró la baja ("Suscriptor" o el rol del equipo).
+  unsubscribedBy       String?          @map("unsubscribed_by") @db.VarChar(120)
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([status])
+  @@map("newsletter_subscribers")
+}
+
+// ─── Outbox y correos transaccionales (RF-20, RF-21, SRS 4.4.3) ─────────────
+
+enum OutboxStatus {
+  pending
+  processing
+  done
+  failed
+  dead
+
+  @@map("outbox_status")
+}
+
+/// Evento durable que procesa el worker (correos y otras tareas). Se crea en
+/// la misma transacción que el cambio que lo origina. Reintentos a 1, 5 y 15
+/// minutos; tras el último queda "dead" para revisión.
+model OutboxJob {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  /// Tipo de tarea ("email.purchase_confirmed").
+  type        String       @db.VarChar(60)
+  /// Clave única del evento: el mismo hecho no se encola dos veces.
+  eventKey    String       @unique @map("event_key") @db.VarChar(160)
+  /// Datos para ejecutar la tarea; sin contraseñas, secretos ni datos de tarjeta.
+  payload     Json
+  status      OutboxStatus @default(pending)
+  attempts    Int          @default(0)
+  maxAttempts Int          @default(4) @map("max_attempts")
+  nextRunAt   DateTime     @default(now()) @map("next_run_at") @db.Timestamptz(3)
+  /// Bloqueo del worker que la está procesando (evita doble ejecución).
+  lockedAt    DateTime?    @map("locked_at") @db.Timestamptz(3)
+  lockedBy    String?      @map("locked_by") @db.VarChar(80)
+  /// Último error depurado.
+  lastError   String?      @map("last_error") @db.VarChar(1000)
+  processedAt DateTime?    @map("processed_at") @db.Timestamptz(3)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  emails EmailLog[]
+
+  @@index([status, nextRunAt])
+  @@map("outbox_jobs")
+}
+
+enum EmailEvent {
+  order_received
+  purchase_confirmed
+  new_sale
+  payment_rejected
+  order_shipped
+  order_delivered
+  service_request
+  password_recovery
+
+  @@map("email_event")
+}
+
+/// "uncertain": el proveedor no respondió; no se sabe si el correo salió.
+enum EmailStatus {
+  pending
+  sent
+  failed
+  uncertain
+
+  @@map("email_status")
+}
+
+/// Registro de un correo transaccional (RF-21). Un reenvío crea un registro
+/// nuevo que apunta al original (`resend_of_id`).
+model EmailLog {
+  id                String      @id @default(uuid(7)) @db.Uuid
+  event             EmailEvent
+  recipient         String      @db.VarChar(254)
+  /// Clave única del evento: evita duplicar el mismo correo.
+  eventKey          String      @unique @map("event_key") @db.VarChar(160)
+  status            EmailStatus @default(pending)
+  /// Id del mensaje en el proveedor (Brevo), cuando lo acepta.
+  providerMessageId String?     @map("provider_message_id") @db.VarChar(120)
+  /// Referencia opcional: pedido o solicitud.
+  orderId           String?     @map("order_id") @db.Uuid
+  serviceRequestId  String?     @map("service_request_id") @db.Uuid
+  outboxJobId       String?     @map("outbox_job_id") @db.Uuid
+  resendOfId        String?     @map("resend_of_id") @db.Uuid
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  order          Order?          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id], onDelete: Restrict)
+  outboxJob      OutboxJob?      @relation(fields: [outboxJobId], references: [id], onDelete: SetNull)
+  resendOf       EmailLog?       @relation("EmailResend", fields: [resendOfId], references: [id], onDelete: Restrict)
+  resends        EmailLog[]      @relation("EmailResend")
+  attempts       EmailAttempt[]
+
+  @@index([status, createdAt])
+  @@index([orderId])
+  @@index([serviceRequestId])
+  @@map("email_log")
+}
+
+enum EmailAttemptKind {
+  automatic
+  manual
+
+  @@map("email_attempt_kind")
+}
+
+enum EmailAttemptResult {
+  sent
+  failed
+  timeout
+
+  @@map("email_attempt_result")
+}
+
+/// Intento de envío de un correo, con su resultado y, si fue manual, su actor.
+model EmailAttempt {
+  id          String             @id @default(uuid(7)) @db.Uuid
+  emailId     String             @map("email_id") @db.Uuid
+  kind        EmailAttemptKind
+  result      EmailAttemptResult
+  actorUserId String?            @map("actor_user_id") @db.Uuid
+  actorLabel  String?            @map("actor_label") @db.VarChar(120)
+  /// Último error depurado, sin datos sensibles.
+  detail      String?            @db.VarChar(500)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  email EmailLog @relation(fields: [emailId], references: [id], onDelete: Restrict)
+  actor User?    @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([emailId, createdAt])
+  @@map("email_attempts")
+}
+
+// ─── Auditoría e idempotencia (RF-27, RF-34, SRS 4.4.2) ─────────────────────
+
+/// Operación administrativa auditada: quién, qué, sobre qué recurso y cuándo.
+/// No guarda contraseñas, secretos ni datos de tarjeta.
+model AuditLog {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  actorUserId  String?  @map("actor_user_id") @db.Uuid
+  /// Nombre visible del actor al momento ("Administrador", "Sistema").
+  actorLabel   String   @map("actor_label") @db.VarChar(120)
+  /// Acción ("order.status_changed", "user.updated", "coupon.created").
+  action       String   @db.VarChar(80)
+  /// Recurso afectado ("order", "product_variant", "user"…) y su id.
+  resourceType String   @map("resource_type") @db.VarChar(40)
+  resourceId   String   @map("resource_id") @db.VarChar(60)
+  /// Qué cambió (antes/después), depurado.
+  details      Json     @default("{}")
+  reason       String?  @db.VarChar(500)
+  requestId    String?  @map("request_id") @db.VarChar(100)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([resourceType, resourceId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+enum IdempotencyStatus {
+  in_progress
+  completed
+
+  @@map("idempotency_status")
+}
+
+/// Registro idempotente (RF-13, RF-19): la misma clave con la misma petición
+/// devuelve la respuesta guardada; con otra petición, se rechaza.
+model IdempotencyRecord {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  /// Ámbito de la operación ("POST /orders") + clave enviada por el cliente.
+  scope          String            @db.VarChar(80)
+  key            String            @db.VarChar(100)
+  /// SHA-256 del cuerpo de la petición (huella).
+  requestHash    String            @map("request_hash") @db.VarChar(128)
+  status         IdempotencyStatus @default(in_progress)
+  responseStatus Int?              @map("response_status")
+  /// Respuesta recuperable; sin secretos ni datos de tarjeta.
+  responseBody   Json?             @map("response_body")
+  expiresAt      DateTime          @map("expires_at") @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
 }
