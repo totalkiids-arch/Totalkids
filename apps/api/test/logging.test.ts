@@ -1,22 +1,14 @@
 import request from "supertest";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createApp } from "../src/app.js";
 import { createLogger } from "../src/lib/logger.js";
-import type { PrismaClient } from "../src/lib/prisma.js";
+import { fakePrisma, testEnv } from "./helpers.js";
 
 function buildAppWithCapturedLogs() {
   const lines: string[] = [];
   const logger = createLogger("info", false, { write: (line: string) => lines.push(line) });
-  const prisma = { $queryRaw: vi.fn().mockResolvedValue([]) } as unknown as Pick<
-    PrismaClient,
-    "$queryRaw"
-  >;
-  const app = createApp({
-    env: { CORS_ORIGINS: ["http://localhost:3000"], TRUST_PROXY: "loopback" },
-    logger,
-    prisma,
-  });
+  const app = createApp({ env: testEnv, logger, prisma: fakePrisma() });
   return { app, lines };
 }
 

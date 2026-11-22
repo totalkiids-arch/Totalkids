@@ -84,6 +84,7 @@ Para crear una migración nueva: `pnpm db:migrate --name <descripcion>`.
   ```
 - Cada respuesta incluye `X-Request-Id`. Si Next.js envía uno, la API lo reutiliza para poder correlacionar logs.
 - La documentación vive en `apps/api/openapi.yaml` (OpenAPI 3.1). Cada endpoint nuevo debe documentarse ahí.
+- Validación (422), límites de peticiones (429), CSRF (403) y cómo crear un endpoint nuevo: [apps/api/README.md](apps/api/README.md).
 
 ## Variables de entorno
 
@@ -97,4 +98,4 @@ Cada app tiene un `.env.example` con un comentario por variable. Los archivos `.
 - **Puerto 5434**: Postgres de Docker se expone en 5434 para no chocar con un Postgres local en 5432. Se puede cambiar con `POSTGRES_PORT`.
 - **`totalkids_test`** se crea con `docker/postgres/init/01-create-test-db.sql`. Ese script solo corre cuando el volumen está vacío. Para recrearla: `docker compose down -v && docker compose up -d --wait`.
 - **Scripts de instalación**: pnpm bloquea los scripts postinstall de las dependencias. Los permitidos (`prisma`, `@prisma/engines`, `argon2`, `esbuild`) están en `allowBuilds` dentro de `pnpm-workspace.yaml`.
-- **Rate limiting**: la API recibe todo el tráfico a través de Next.js. `TRUST_PROXY` hace que `req.ip` sea la IP real del cliente (usando `X-Forwarded-For`), y eso es requisito para que `express-rate-limit` funcione cuando se configure.
+- **Rate limiting**: la API recibe todo el tráfico a través de Next.js. `TRUST_PROXY` hace que `req.ip` sea la IP real del cliente (usando `X-Forwarded-For`), y eso es requisito para que `express-rate-limit` cuente por cliente y no por el servidor de Next.

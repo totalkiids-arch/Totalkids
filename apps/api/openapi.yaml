@@ -1,17 +1,61 @@
 openapi: 3.1.0
 info:
   title: Total Kids API
-  version: 0.0.0
-  description: API de la tienda online Total Kids (mobiliario infantil).
+  version: 0.1.0
+  description: |
+    API interna de la tienda online Total Kids (mobiliario infantil), SRS 4.4.2.
+
+    - Base `/api/v1`. El navegador nunca la llama directo: Next.js (BFF) intermedia
+      y la autorización se verifica siempre aquí.
+    - Operaciones en JSON. Solo los callbacks de Flow aceptan formularios.
+    - Errores con el formato `ErrorBody` y el catálogo de códigos de abajo.
+    - Métodos que modifican (POST/PUT/PATCH/DELETE) exigen CSRF de doble envío:
+      cookie `tk_csrf` (`__Host-tk_csrf` en producción) y cabecera `X-CSRF-Token`
+      con el mismo valor, obtenidos de `GET /csrf`. Exentos: callbacks de Flow.
+    - Límites: global por IP (`RateLimit`, `RateLimit-Policy`, `Retry-After`) y más
+      estrictos en formularios públicos y login.
+
+    Alcance acordado con el cliente (aún no está en la SRS): compras solo como
+    invitado (sin registro, recuperación ni `/me/orders`; el comprador consulta su
+    pedido con número y correo), productos a pedido con reserva salvo stock cargado,
+    despacho a coordinar o retiro en taller, factura emitida por Total Kids con folio
+    y boleta con el comprobante de Flow.
+
+    Las operaciones marcadas `[Pendiente LN-xx]` (extensión `x-pending-task`) son el
+    contrato previsto: aún no existen y responden 404. Sus cuerpos se definen en la
+    tarea indicada. `x-roles` indica los roles del panel que pueden usarlas.
+
+    Códigos de error: BAD_REQUEST (400), UNAUTHORIZED (401), FORBIDDEN (403),
+    CSRF_FAILED (403), NOT_FOUND (404), METHOD_NOT_ALLOWED (405), CONFLICT (409),
+    PAYLOAD_TOO_LARGE (413), UNSUPPORTED_MEDIA_TYPE (415), VALIDATION_ERROR (422),
+    RATE_LIMITED (429), INTERNAL_ERROR (500), DATABASE_UNAVAILABLE (503).
 servers:
   - url: http://localhost:4000/api/v1
     description: Desarrollo local
+tags:
+  - name: Sistema
+  - name: Catálogo
+  - name: Carrito
+  - name: Pedidos
+  - name: Pagos
+  - name: Panel - Sesión
+  - name: Formularios
+  - name: Panel - Catálogo
+  - name: Panel - Pedidos
+  - name: Panel - Configuración
+  - name: Panel - Solicitudes y newsletter
+  - name: Panel - Reportes
+  - name: Panel - Usuarios
+  - name: Panel - Correos
+
 paths:
+  # ───────────────────────── Sistema (implementado) ─────────────────────────
   /health:
     get:
       operationId: getHealth
       summary: Estado de la API y de la conexión a la base de datos
       tags: [Sistema]
+      security: []
       responses:
         "200":
           description: API operativa y base de datos accesible
@@ -24,33 +68,1316 @@ paths:
                   status:
                     type: string
                     enum: [ok]
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "503":
           description: Base de datos no disponible
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+              schema: { $ref: "#/components/schemas/ErrorBody" }
               example:
                 code: DATABASE_UNAVAILABLE
                 message: No hay conexión con la base de datos
                 details:
                   cause: PrismaClientKnownRequestError
                 requestId: 3f0a9c1e-2b7d-4c55-9a3e-1d2f6b8e9a10
+
+  /csrf:
+    get:
+      operationId: getCsrfToken
+      summary: Token CSRF para los formularios (doble envío firmado)
+      description: |
+        Devuelve el token y lo fija en la cookie `tk_csrf` (HttpOnly, SameSite=Lax,
+        Path=/; en producción `__Host-tk_csrf` con Secure). Next.js reenvía el
+        `Set-Cookie` al navegador, pinta el token en un campo oculto del formulario
+        y lo manda en `X-CSRF-Token` al enviar. Si la cookie actual sigue siendo
+        válida para la sesión, se devuelve la misma. El token está atado a la
+        sesión (panel o carrito): tras iniciar sesión hay que pedir uno nuevo.
+      tags: [Sistema]
+      security: []
+      responses:
+        "200":
+          description: Token emitido o reutilizado
+          headers:
+            Set-Cookie:
+              description: "`tk_csrf=<token>; Path=/; HttpOnly; SameSite=Lax` (+ Secure en producción)"
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrfToken]
+                properties:
+                  csrfToken: { $ref: "#/components/schemas/CsrfToken" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ───────────────────────── Catálogo público (LN-05) ─────────────────────────
+  /products:
+    get:
+      operationId: listProducts
+      summary: "[Pendiente LN-05] Catálogo de productos activos"
+      description: |
+        Paginado y filtrable por categoría. Cada producto indica su disponibilidad:
+        `en_stock` si hay unidades cargadas en el inventario, o `a_pedido` (se
+        fabrica a pedido y se compra como reserva).
+      x-pending-task: LN-05
+      tags: [Catálogo]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - { name: category, in: query, schema: { type: string }, description: Slug de categoría }
+      responses:
+        "200":
+          description: Página de productos (esquema en LN-05)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta]
+                properties:
+                  items: { type: array, items: { type: object } }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /products/{slug}:
+    get:
+      operationId: getProduct
+      summary: "[Pendiente LN-05] Ficha de producto"
+      x-pending-task: LN-05
+      tags: [Catálogo]
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ficha con variantes y disponibilidad (esquema en LN-05) }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /categories:
+    get:
+      operationId: listCategories
+      summary: "[Pendiente LN-05] Categorías activas"
+      x-pending-task: LN-05
+      tags: [Catálogo]
+      security: []
+      responses:
+        "200": { description: Lista de categorías (esquema en LN-05) }
+
+  # ───────────────────────── Carrito (LN-06) ─────────────────────────
+  /cart:
+    get:
+      operationId: getCart
+      summary: "[Pendiente LN-06] Carrito propio"
+      description: |
+        Solo sesión opaca de invitado (no hay cuentas de comprador). Precios y
+        totales calculados en el servidor (RNF-03). Las líneas sin stock se marcan
+        "a pedido" y no bloquean la compra.
+      x-pending-task: LN-06
+      tags: [Carrito]
+      security: [{ cartSession: [] }]
+      responses:
+        "200": { description: Carrito con líneas y totales (esquema en LN-06) }
+  /cart/items:
+    post:
+      operationId: addCartItem
+      summary: "[Pendiente LN-06] Agregar una variante al carrito"
+      description: Crea la sesión opaca de carrito si no existe.
+      x-pending-task: LN-06
+      tags: [Carrito]
+      security: [{ cartSession: [], csrfCookie: [] }, { csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: Carrito actualizado }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /cart/items/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - $ref: "#/components/parameters/CsrfTokenHeader"
+    patch:
+      operationId: updateCartItem
+      summary: "[Pendiente LN-06] Cambiar la cantidad de una línea"
+      x-pending-task: LN-06
+      tags: [Carrito]
+      security: [{ cartSession: [], csrfCookie: [] }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Carrito actualizado }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: deleteCartItem
+      summary: "[Pendiente LN-06] Quitar una línea"
+      x-pending-task: LN-06
+      tags: [Carrito]
+      security: [{ cartSession: [], csrfCookie: [] }]
+      responses:
+        "200": { description: Carrito actualizado }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /cart/coupon:
+    parameters:
+      - $ref: "#/components/parameters/CsrfTokenHeader"
+    post:
+      operationId: applyCartCoupon
+      summary: "[Pendiente LN-06] Aplicar un cupón"
+      x-pending-task: LN-06
+      tags: [Carrito]
+      security: [{ cartSession: [], csrfCookie: [] }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Carrito con descuento }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: removeCartCoupon
+      summary: "[Pendiente LN-06] Quitar el cupón"
+      x-pending-task: LN-06
+      tags: [Carrito]
+      security: [{ cartSession: [], csrfCookie: [] }]
+      responses:
+        "200": { description: Carrito sin cupón }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /shipping/quote:
+    get:
+      operationId: quoteShipping
+      summary: "[Pendiente LN-06] Costo de entrega del carrito"
+      description: |
+        Cambio del cliente: no hay despacho a todo Chile. `retiro` (en taller) es
+        siempre gratis. `despacho` (a coordinar) es gratis desde el umbral
+        configurado; si no, la tarifa depende de la zona y puede venir `cost: null`
+        ("por confirmar"), que no se suma al total (RF-08, RF-11).
+      x-pending-task: LN-06
+      tags: [Carrito]
+      security: [{ cartSession: [] }]
+      parameters:
+        - {
+            name: method,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [despacho, retiro] },
+          }
+        - { name: region, in: query, schema: { type: string } }
+        - { name: commune, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Cotización
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [method, cost]
+                properties:
+                  method: { type: string, enum: [despacho, retiro] }
+                  cost:
+                    type: [integer, "null"]
+                    description: CLP; null = por confirmar
+                  reason: { type: string, enum: [pickup, threshold, zone] }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  # ───────────────────────── Pedidos de invitado (LN-09) ─────────────────────────
+  /orders:
+    post:
+      operationId: createOrder
+      summary: "[Pendiente LN-09] Crear el pedido desde el carrito"
+      description: |
+        Compra como invitado con el correo del checkout. Reserva stock, incluso de
+        productos a pedido. `document` es `boleta` (el comprobante de Flow la
+        reemplaza) o `factura` (la emite Total Kids con folio tras el pago).
+        Entrega `retiro` o `despacho`. Totales calculados en el servidor (RNF-03).
+      x-pending-task: LN-09
+      tags: [Pedidos]
+      security: [{ cartSession: [], csrfCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: Pedido creado en pendiente_pago con su credencial de acceso }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /orders/lookup:
+    post:
+      operationId: lookupGuestOrder
+      summary: "[Pendiente LN-09] Consultar un pedido con número y correo"
+      description: |
+        Reemplaza a `/me/orders` (no hay cuentas de comprador). Va por POST para que
+        el correo no quede en URLs ni logs. Responde el mismo 404 genérico si el
+        número no existe o el correo no coincide, para no revelar pedidos (RF-36).
+        Límite estricto por IP. Entrega la credencial `orderAccess` del pedido.
+      x-pending-task: LN-09
+      tags: [Pedidos]
+      security: [{ csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderNumber, email]
+              properties:
+                orderNumber: { type: string, example: TK-1048 }
+                email: { type: string, format: email }
+      responses:
+        "200": { description: Resumen del pedido y credencial de acceso (esquema en LN-09) }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /orders/{orderNumber}:
+    get:
+      operationId: getGuestOrder
+      summary: "[Pendiente LN-09] Detalle y seguimiento de un pedido"
+      description: Solo con la credencial específica del pedido (RF-36). Sin sesión de cliente.
+      x-pending-task: LN-09
+      tags: [Pedidos]
+      security: [{ orderAccess: [] }]
+      parameters:
+        - {
+            name: orderNumber,
+            in: path,
+            required: true,
+            schema: { type: string, example: TK-1048 },
+          }
+      responses:
+        "200": { description: Pedido (esquema en LN-09) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ───────────────────────── Pagos Flow (LN-10) ─────────────────────────
+  /payments/flow/create:
+    post:
+      operationId: createFlowPayment
+      summary: "[Pendiente LN-10] Crear o recuperar el intento de pago vigente"
+      x-pending-task: LN-10
+      tags: [Pagos]
+      security: [{ orderAccess: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: URL de pago de Flow (url + token) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /payments/flow/confirm:
+    post:
+      operationId: confirmFlowPayment
+      summary: "[Pendiente LN-10] Callback de confirmación de Flow"
+      description: |
+        Público y exento de CSRF. El token no es confiable hasta consultar a Flow
+        (`getStatus`) con credenciales del backend y verificar pedido, moneda y
+        monto (RF-16). Idempotente (RF-19). Responde éxito solo tras registrar el
+        callback de forma durable.
+      x-pending-task: LN-10
+      tags: [Pagos]
+      security: []
+      requestBody: { $ref: "#/components/requestBodies/FlowCallback" }
+      responses:
+        "200": { description: Callback registrado }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /payments/flow/return:
+    post:
+      operationId: returnFromFlow
+      summary: "[Pendiente LN-10] Retorno del comprador desde Flow"
+      description: |
+        Público y exento de CSRF de sesión, pero sin autoridad para acreditar pagos
+        (RNF-04): volver del proveedor no confirma nada. Consulta el estado de forma
+        segura y redirige al resultado en la tienda.
+      x-pending-task: LN-10
+      tags: [Pagos]
+      security: []
+      requestBody: { $ref: "#/components/requestBodies/FlowCallback" }
+      responses:
+        "303":
+          description: Redirección a la página de resultado de la tienda
+          headers:
+            Location: { schema: { type: string } }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+
+  # ───────────────────────── Sesión del panel (LN-04) ─────────────────────────
+  /auth/login:
+    post:
+      operationId: panelLogin
+      summary: "[Pendiente LN-04] Ingreso al panel (Administrador u Operador)"
+      description: |
+        Solo para el equipo del taller: no hay cuentas de comprador. Límites: 5
+        fallos por cuenta cada 15 min y 20 intentos por IP cada 15 min (RNF-04).
+        Cookie de sesión HttpOnly, Secure y SameSite (RNF-01).
+      x-pending-task: LN-04
+      tags: [Panel - Sesión]
+      security: [{ csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        "204": { description: Sesión iniciada (Set-Cookie de la sesión del panel) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /auth/logout:
+    post:
+      operationId: panelLogout
+      summary: "[Pendiente LN-04] Cerrar sesión del panel"
+      x-pending-task: LN-04
+      tags: [Panel - Sesión]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      responses:
+        "204": { description: Sesión revocada }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /auth/session:
+    get:
+      operationId: getPanelSession
+      summary: "[Pendiente LN-04] Usuario y rol de la sesión del panel"
+      x-pending-task: LN-04
+      x-roles: [admin, operator]
+      tags: [Panel - Sesión]
+      security: [{ panelSession: [] }]
+      responses:
+        "200": { description: Usuario interno y rol (esquema en LN-04) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ───────────────────────── Formularios públicos (LN-08) ─────────────────────────
+  /service-requests:
+    post:
+      operationId: createServiceRequest
+      summary: "[Pendiente LN-08] Solicitud de armado, diseño, personalización, etc."
+      description: Público con validación y límite por IP (10 cada 15 min). Devuelve la referencia.
+      x-pending-task: LN-08
+      tags: [Formularios]
+      security: [{ csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: "Solicitud registrada: { reference }" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /newsletter:
+    post:
+      operationId: subscribeNewsletter
+      summary: "[Pendiente LN-08] Suscripción con consentimiento explícito"
+      description: Registra fecha y versión del texto de consentimiento (RF-25). Límite por IP.
+      x-pending-task: LN-08
+      tags: [Formularios]
+      security: [{ csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "202": { description: Suscripción recibida }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /newsletter/unsubscribe:
+    post:
+      operationId: unsubscribeNewsletter
+      summary: "[Pendiente LN-08] Baja del newsletter con credencial de baja"
+      description: Responde igual exista o no la suscripción (RF-35).
+      x-pending-task: LN-08
+      tags: [Formularios]
+      security: [{ csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "202": { description: Baja procesada }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ───────────────────────── Panel: catálogo e inventario (LN-12) ─────────────────────────
+  /admin/products:
+    get:
+      operationId: adminListProducts
+      summary: "[Pendiente LN-12] Productos del panel"
+      x-pending-task: LN-12
+      x-roles: [admin, operator]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200": { description: Página de productos }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: adminCreateProduct
+      summary: "[Pendiente LN-12] Crear producto con variantes e imágenes"
+      x-pending-task: LN-12
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: Producto creado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/products/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: adminGetProduct
+      summary: "[Pendiente LN-12] Producto con variantes, imágenes y stock"
+      x-pending-task: LN-12
+      x-roles: [admin, operator]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [] }]
+      responses:
+        "200": { description: Producto }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: adminUpdateProduct
+      summary: "[Pendiente LN-12] Editar producto, variantes e imágenes"
+      x-pending-task: LN-12
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Producto actualizado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: adminDeactivateProduct
+      summary: "[Pendiente LN-12] Desactivar producto (no borra el historial)"
+      x-pending-task: LN-12
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      responses:
+        "204": { description: Producto desactivado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/products/{id}/stock-adjustments:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: adminAdjustStock
+      summary: "[Pendiente LN-12] Ajuste de inventario de una variante"
+      description: |
+        Stock cargado en el inventario del panel (parte en 0 = "a pedido"). Cada
+        ajuste queda en el historial con actor, fecha y motivo (RF-34).
+      x-pending-task: LN-12
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: Ajuste registrado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/categories:
+    get:
+      operationId: adminListCategories
+      summary: "[Pendiente LN-12] Categorías del panel"
+      x-pending-task: LN-12
+      x-roles: [admin, operator]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [] }]
+      responses:
+        "200": { description: Categorías }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: adminCreateCategory
+      summary: "[Pendiente LN-12] Crear categoría"
+      x-pending-task: LN-12
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: Categoría creada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/categories/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/CsrfTokenHeader"
+    patch:
+      operationId: adminUpdateCategory
+      summary: "[Pendiente LN-12] Editar categoría"
+      x-pending-task: LN-12
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Categoría actualizada }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: adminDeactivateCategory
+      summary: "[Pendiente LN-12] Desactivar categoría"
+      x-pending-task: LN-12
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      responses:
+        "204": { description: Categoría desactivada }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ───────────────────────── Panel: pedidos (LN-13) ─────────────────────────
+  /admin/orders:
+    get:
+      operationId: adminListOrders
+      summary: "[Pendiente LN-13] Pedidos filtrables"
+      x-pending-task: LN-13
+      x-roles: [admin, operator]
+      tags: [Panel - Pedidos]
+      security: [{ panelSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200": { description: Página de pedidos }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/orders/{id}:
+    get:
+      operationId: adminGetOrder
+      summary: "[Pendiente LN-13] Detalle de pedido con pagos, historial y factura"
+      x-pending-task: LN-13
+      x-roles: [admin, operator]
+      tags: [Panel - Pedidos]
+      security: [{ panelSession: [] }]
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      responses:
+        "200": { description: Pedido }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/orders/{id}/status:
+    patch:
+      operationId: adminChangeOrderStatus
+      summary: "[Pendiente LN-13] Transición de estado autorizada"
+      description: Un pedido no pagado no se despacha; registra actor, fecha y motivo (RF-27).
+      x-pending-task: LN-13
+      x-roles: [admin, operator]
+      tags: [Panel - Pedidos]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Pedido actualizado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/orders/{id}/refund-records:
+    post:
+      operationId: adminRecordRefund
+      summary: "[Pendiente LN-13] Registrar reembolso manual"
+      description: Monto, fecha, referencia y responsable; no ejecuta devoluciones (RF-32).
+      x-pending-task: LN-13
+      x-roles: [admin]
+      tags: [Panel - Pedidos]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: Reembolso registrado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/orders/{id}/invoice:
+    post:
+      operationId: adminRegisterInvoice
+      summary: "[Pendiente LN-13] Registrar el folio de la factura emitida por Total Kids"
+      description: |
+        Cambio del cliente: Flow solo cubre la boleta (su comprobante la reemplaza).
+        Para pedidos con factura y pago confirmado, que quedan como "Factura
+        pendiente" hasta registrar el folio. Queda en el historial del pedido.
+      x-pending-task: LN-13
+      x-roles: [admin, operator]
+      tags: [Panel - Pedidos]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: Folio registrado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  # ───────────────────────── Panel: configuración (LN-16) ─────────────────────────
+  /admin/coupons:
+    get:
+      operationId: adminListCoupons
+      summary: "[Pendiente LN-16] Cupones"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [] }]
+      responses:
+        "200": { description: Cupones }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: adminCreateCoupon
+      summary: "[Pendiente LN-16] Crear cupón"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: Cupón creado }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/coupons/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/CsrfTokenHeader"
+    patch:
+      operationId: adminUpdateCoupon
+      summary: "[Pendiente LN-16] Editar cupón (código, tipo y valor fijos si tiene usos)"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Cupón actualizado }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: adminDeleteCoupon
+      summary: "[Pendiente LN-16] Eliminar cupón sin usos (con usos, solo desactivar)"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      responses:
+        "204": { description: Cupón eliminado }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/banners:
+    get:
+      operationId: adminListBanners
+      summary: "[Pendiente LN-16] Banners"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [] }]
+      responses:
+        "200": { description: Banners }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: adminCreateBanner
+      summary: "[Pendiente LN-16] Crear banner (destino solo interno)"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: Banner creado }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/banners/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/CsrfTokenHeader"
+    patch:
+      operationId: adminUpdateBanner
+      summary: "[Pendiente LN-16] Editar banner"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Banner actualizado }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: adminDeleteBanner
+      summary: "[Pendiente LN-16] Desactivar banner (no se eliminan)"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      responses:
+        "204": { description: Banner eliminado }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/shipping-zones:
+    get:
+      operationId: adminListShippingZones
+      summary: "[Pendiente LN-16] Zonas de despacho a coordinar (comuna, tarifa y plazo)"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [] }]
+      responses:
+        "200": { description: Zonas }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: adminCreateShippingZone
+      summary: "[Pendiente LN-16] Crear zona"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "201": { description: Zona creada }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/shipping-zones/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/CsrfTokenHeader"
+    patch:
+      operationId: adminUpdateShippingZone
+      summary: "[Pendiente LN-16] Editar zona (no cambia pedidos anteriores)"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Zona actualizada }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: adminDeactivateShippingZone
+      summary: "[Pendiente LN-16] Desactivar zona"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      responses:
+        "204": { description: Zona desactivada }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/shipping-settings:
+    get:
+      operationId: adminGetShippingSettings
+      summary: "[Pendiente LN-16] Condiciones de retiro y despacho"
+      description: Dirección y horario de retiro en taller, umbral de despacho gratis y minutos de reserva.
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [] }]
+      responses:
+        "200": { description: Configuración vigente }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      operationId: adminUpdateShippingSettings
+      summary: "[Pendiente LN-16] Guardar condiciones de retiro y despacho"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Configuración actualizada }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  # ───────────────────────── Panel: solicitudes y newsletter (LN-16) ─────────────────────────
+  /admin/service-requests:
+    get:
+      operationId: adminListServiceRequests
+      summary: "[Pendiente LN-16] Solicitudes de servicio"
+      x-pending-task: LN-16
+      x-roles: [admin, operator]
+      tags: [Panel - Solicitudes y newsletter]
+      security: [{ panelSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200": { description: Página de solicitudes }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/service-requests/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: adminGetServiceRequest
+      summary: "[Pendiente LN-16] Detalle de solicitud con historial"
+      x-pending-task: LN-16
+      x-roles: [admin, operator]
+      tags: [Panel - Solicitudes y newsletter]
+      security: [{ panelSession: [] }]
+      responses:
+        "200": { description: Solicitud }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: adminUpdateServiceRequest
+      summary: "[Pendiente LN-16] Cambiar estado o nota interna"
+      x-pending-task: LN-16
+      x-roles: [admin, operator]
+      tags: [Panel - Solicitudes y newsletter]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Solicitud actualizada }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/newsletter:
+    get:
+      operationId: adminListSubscribers
+      summary: "[Pendiente LN-16] Suscriptores del newsletter"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Solicitudes y newsletter]
+      security: [{ panelSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200": { description: Página de suscriptores }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ───────────────────────── Panel: reportes y exportaciones (LN-16) ─────────────────────────
+  /admin/reports/sales:
+    get:
+      operationId: adminSalesReport
+      summary: "[Pendiente LN-16] Ventas por período, producto y medio de pago"
+      description: Separa cobros y reembolsos registrados e indica el criterio de fecha (RF-30).
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Reportes]
+      security: [{ panelSession: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        "200": { description: Reporte }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/exports/{resource}:
+    get:
+      operationId: adminExport
+      summary: "[Pendiente LN-16] Exportación CSV (fórmulas neutralizadas)"
+      description: Solo Administrador. CSV con BOM, `;` y celdas peligrosas neutralizadas (RF-29).
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Reportes]
+      security: [{ panelSession: [] }]
+      parameters:
+        - name: resource
+          in: path
+          required: true
+          schema: { type: string, enum: [orders, sales, service-requests, subscribers] }
+      responses:
+        "200":
+          description: Archivo CSV
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ───────────────────────── Panel: usuarios (LN-16) y correos (LN-14) ─────────────────────────
+  /admin/users/{id}/role:
+    patch:
+      operationId: adminChangeUserRole
+      summary: "[Pendiente LN-16] Cambiar el rol de un usuario interno"
+      x-pending-task: LN-16
+      x-roles: [admin]
+      tags: [Panel - Usuarios]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      responses:
+        "200": { description: Rol actualizado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/emails/{id}/resend:
+    post:
+      operationId: adminResendEmail
+      summary: "[Pendiente LN-14] Reenvío manual auditado de un correo fallido o incierto"
+      x-pending-task: LN-14
+      x-roles: [admin]
+      tags: [Panel - Correos]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      responses:
+        "202": { description: Reenvío encolado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
 components:
   schemas:
-    Error:
+    ErrorBody:
       type: object
       description: Formato estándar de error de la API.
       required: [code, message, details, requestId]
       properties:
         code:
           type: string
-          description: Código legible por máquina (p. ej. NOT_FOUND, VALIDATION_ERROR).
+          description: Código legible por máquina (catálogo en la descripción de la API).
+          enum:
+            - BAD_REQUEST
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - CSRF_FAILED
+            - NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - CONFLICT
+            - PAYLOAD_TOO_LARGE
+            - UNSUPPORTED_MEDIA_TYPE
+            - VALIDATION_ERROR
+            - RATE_LIMITED
+            - INTERNAL_ERROR
+            - DATABASE_UNAVAILABLE
         message:
           type: string
-          description: Mensaje legible por personas.
+          description: Mensaje en español para personas; puede cambiar.
         details:
           description: Información adicional (p. ej. errores de validación) o null.
         requestId:
           type: string
           description: Identificador de la petición (cabecera X-Request-Id).
+    ValidationIssue:
+      type: object
+      required: [location, path, message]
+      properties:
+        location: { type: string, enum: [body, query, params] }
+        path:
+          type: string
+          description: Ruta con puntos ("items.0.quantity"); vacía si es el objeto entero.
+        message: { type: string, description: Mensaje en español }
+    PageMeta:
+      type: object
+      required: [page, pageSize, total, totalPages]
+      properties:
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+    CsrfToken:
+      type: string
+      description: "base64url(nonce).base64url(HMAC-SHA256)"
+      pattern: "^[A-Za-z0-9_-]{43}\\.[A-Za-z0-9_-]{43}$"
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Clave única por intento de creación (UUID v4 recomendado). Repetir la misma
+        clave con el mismo cuerpo devuelve el mismo resultado; con otro cuerpo, 409.
+      schema: { type: string, minLength: 16, maxLength: 128 }
+    CsrfTokenHeader:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: Mismo valor que la cookie tk_csrf (ver GET /csrf).
+      schema: { $ref: "#/components/schemas/CsrfToken" }
+
+  requestBodies:
+    PendingJson:
+      description: Cuerpo JSON; el esquema se define en la tarea LN indicada.
+      required: true
+      content:
+        application/json:
+          schema: { type: object }
+    FlowCallback:
+      description: Formulario que envía Flow (solo `token`; no confiable hasta consultar a Flow).
+      required: true
+      content:
+        application/x-www-form-urlencoded:
+          schema:
+            type: object
+            required: [token]
+            properties:
+              token: { type: string }
+
+  headers:
+    RateLimit:
+      description: 'Cupo restante de la política (draft-8), p. ej. `"global"; r=12; t=240`.'
+      schema: { type: string }
+    RateLimitPolicy:
+      description: 'Política aplicada (draft-8), p. ej. `"global"; q=300; w=300`.'
+      schema: { type: string }
+    RetryAfter:
+      description: Segundos hasta poder reintentar.
+      schema: { type: integer }
+
+  responses:
+    BadRequest:
+      description: Solicitud inválida (p. ej. JSON malformado)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+          example:
+            {
+              code: BAD_REQUEST,
+              message: El cuerpo de la solicitud no es JSON válido,
+              details: null,
+              requestId: 3f0a9c1e,
+            }
+    Unauthorized:
+      description: No autenticado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+          example:
+            {
+              code: UNAUTHORIZED,
+              message: Debes iniciar sesión,
+              details: null,
+              requestId: 3f0a9c1e,
+            }
+    Forbidden:
+      description: Sin permiso para la acción, o verificación CSRF fallida (CSRF_FAILED)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+          examples:
+            forbidden:
+              value:
+                {
+                  code: FORBIDDEN,
+                  message: No tienes permiso para esta acción,
+                  details: null,
+                  requestId: 3f0a9c1e,
+                }
+            csrf:
+              value:
+                {
+                  code: CSRF_FAILED,
+                  message: Falta el token de seguridad del formulario,
+                  details: null,
+                  requestId: 3f0a9c1e,
+                }
+    NotFound:
+      description: Recurso o ruta inexistente
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+          example:
+            { code: NOT_FOUND, message: Recurso no encontrado, details: null, requestId: 3f0a9c1e }
+    MethodNotAllowed:
+      description: Método no permitido en la ruta
+      headers:
+        Allow: { schema: { type: string }, description: "Métodos admitidos, p. ej. `GET, HEAD`" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+          example:
+            {
+              code: METHOD_NOT_ALLOWED,
+              message: Método DELETE no permitido en esta ruta,
+              details: { allowed: [GET, HEAD] },
+              requestId: 3f0a9c1e,
+            }
+    Conflict:
+      description: Conflicto con el estado actual (duplicado, transición inválida, clave de idempotencia reutilizada)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+          example:
+            {
+              code: CONFLICT,
+              message: El recurso cambió o ya existe,
+              details: null,
+              requestId: 3f0a9c1e,
+            }
+    PayloadTooLarge:
+      description: Cuerpo demasiado grande (JSON 100 KB; formularios de Flow 16 KB)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+          example:
+            {
+              code: PAYLOAD_TOO_LARGE,
+              message: El cuerpo de la solicitud es demasiado grande,
+              details: null,
+              requestId: 3f0a9c1e,
+            }
+    UnsupportedMediaType:
+      description: Content-Type no permitido (solo JSON; formularios solo en callbacks de Flow)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+          example:
+            {
+              code: UNSUPPORTED_MEDIA_TYPE,
+              message: El cuerpo debe enviarse como application/json,
+              details: { allowed: [application/json] },
+              requestId: 3f0a9c1e,
+            }
+    ValidationFailed:
+      description: Los datos no pasan la validación (un issue por campo)
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/ErrorBody"
+              - type: object
+                properties:
+                  details:
+                    type: object
+                    required: [issues]
+                    properties:
+                      issues:
+                        type: array
+                        items: { $ref: "#/components/schemas/ValidationIssue" }
+          example:
+            code: VALIDATION_ERROR
+            message: Los datos enviados no son válidos
+            details:
+              issues:
+                - { location: body, path: email, message: Inválido dirección de correo electrónico }
+            requestId: 3f0a9c1e
+    TooManyRequests:
+      description: Límite de peticiones superado
+      headers:
+        RateLimit: { $ref: "#/components/headers/RateLimit" }
+        RateLimit-Policy: { $ref: "#/components/headers/RateLimitPolicy" }
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+          example:
+            {
+              code: RATE_LIMITED,
+              message: "Demasiadas solicitudes, intenta más tarde",
+              details: { retryAfterSeconds: 240 },
+              requestId: 3f0a9c1e,
+            }
+    InternalError:
+      description: Fallo interno, sin trazas ni datos sensibles
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+          example:
+            {
+              code: INTERNAL_ERROR,
+              message: Error interno del servidor,
+              details: null,
+              requestId: 3f0a9c1e,
+            }
+
+  securitySchemes:
+    panelSession:
+      type: apiKey
+      in: cookie
+      name: tk_panel
+      description: |
+        Sesión opaca del panel (Administrador u Operador), HttpOnly, Secure y
+        SameSite (RNF-01). Nombre provisional: lo fija LN-04.
+    cartSession:
+      type: apiKey
+      in: cookie
+      name: tk_carrito
+      description: Sesión opaca de carrito del invitado (LN-06). No contiene líneas ni precios.
+    orderAccess:
+      type: apiKey
+      in: header
+      name: X-Order-Access
+      description: |
+        Credencial no adivinable y de acceso limitado a un pedido de invitado
+        (RF-36), entregada al crearlo y por POST /orders/lookup. Forma final: LN-09.
+    csrfCookie:
+      type: apiKey
+      in: cookie
+      name: tk_csrf
+      description: |
+        Cookie del doble envío CSRF (`__Host-tk_csrf` en producción). Se envía junto
+        con la cabecera X-CSRF-Token en todo método que modifica.

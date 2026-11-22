@@ -3,15 +3,24 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { pino, type DestinationStream } from "pino";
 import { pinoHttp } from "pino-http";
 
-/** Rutas que nunca deben llegar a los logs (credenciales, tokens, cookies). */
+/**
+ * Rutas que nunca deben llegar a los logs: credenciales, tokens, cookies,
+ * secretos de proveedores (RNF-02) y el correo de los compradores invitados.
+ * Los datos de tarjeta nunca llegan a la API (RNF-05: pago alojado en Flow).
+ */
 const REDACT_PATHS = [
   "req.headers.cookie",
   "req.headers.authorization",
+  'req.headers["x-csrf-token"]',
   'res.headers["set-cookie"]',
   "*.password",
   "*.token",
   "*.refreshToken",
   "*.accessToken",
+  "*.csrfToken",
+  "*.apiKey",
+  "*.secretKey",
+  "*.email",
 ];
 
 export function createLogger(level: string, pretty: boolean, destination?: DestinationStream) {
