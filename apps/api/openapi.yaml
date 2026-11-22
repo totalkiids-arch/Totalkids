@@ -114,56 +114,144 @@ paths:
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
-  # ───────────────────────── Catálogo público (LN-05) ─────────────────────────
+  # ───────────────────────── Catálogo público (LN-05, implementado) ─────────────────────────
   /products:
     get:
       operationId: listProducts
-      summary: "[Pendiente LN-05] Catálogo de productos activos"
+      summary: Catálogo de productos visibles, con búsqueda, filtros y orden
       description: |
-        Paginado y filtrable por categoría. Cada producto indica su disponibilidad:
-        `en_stock` si hay unidades cargadas en el inventario, o `a_pedido` (se
-        fabrica a pedido y se compra como reserva).
-      x-pending-task: LN-05
+        Visibles: productos activos y publicados, de categorías activas y con al
+        menos una variante activa. `price` es el menor precio entre las variantes
+        (null si aún no tiene). `availability` es `en_stock` si alguna variante
+        tiene unidades cargadas en el inventario, o `a_pedido` (se fabrica a pedido
+        y se compra como reserva).
+
+        Búsqueda (`q`): sin tildes ni mayúsculas; todas las palabras (máx. 8) deben
+        aparecer en el nombre, el resumen o la categoría. Los filtros de lista
+        aceptan el parámetro repetido o separado por comas y coinciden con
+        cualquiera de los valores. Un filtro de precio excluye los productos sin
+        precio. `best_selling` ordena por unidades de pedidos con pago confirmado,
+        luego destacados y luego novedades.
       tags: [Catálogo]
       security: []
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PageSize"
-        - { name: category, in: query, schema: { type: string }, description: Slug de categoría }
+        - name: q
+          in: query
+          description: Texto a buscar (sin tildes ni mayúsculas)
+          schema: { type: string, maxLength: 100 }
+          example: baul madera
+        - name: category
+          in: query
+          description: Slug de categoría
+          schema: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$" }
+        - name: ageGroup
+          in: query
+          description: Nivel o edad (`sala-cuna`, `nivel-medio`, `transicion`, `adultos`). Repetible.
+          style: form
+          explode: true
+          schema: { type: array, maxItems: 10, items: { type: string } }
+        - name: material
+          in: query
+          description: Material (`madera`, `melamina`, `plastico`, `metal`). Repetible.
+          style: form
+          explode: true
+          schema: { type: array, maxItems: 10, items: { type: string } }
+        - { name: priceMin, in: query, schema: { type: integer, minimum: 0 } }
+        - name: priceMax
+          in: query
+          description: Debe ser mayor o igual a priceMin
+          schema: { type: integer, minimum: 0 }
+        - name: onSale
+          in: query
+          description: Solo productos con precio anterior (en oferta)
+          schema: { type: boolean }
+        - name: availability
+          in: query
+          schema: { type: string, enum: [en_stock, a_pedido] }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [best_selling, price_asc, price_desc, newest]
+            default: best_selling
       responses:
         "200":
-          description: Página de productos (esquema en LN-05)
+          description: Página de productos
           content:
             application/json:
               schema:
                 type: object
                 required: [items, meta]
                 properties:
-                  items: { type: array, items: { type: object } }
+                  items: { type: array, items: { $ref: "#/components/schemas/ProductSummary" } }
                   meta: { $ref: "#/components/schemas/PageMeta" }
+              example:
+                items:
+                  - slug: cuna-coigue-junji
+                    name: Cuna coigüe JUNJI
+                    summary: Cuna de madera nativa
+                    category: { slug: cunas, name: Cunas y camas }
+                    ageGroups: [sala-cuna]
+                    materials: [madera]
+                    price: 199990
+                    compareAtPrice: null
+                    onSale: false
+                    featured: true
+                    availability: a_pedido
+                    publishedAt: "2026-03-01T00:00:00.000Z"
+                    image:
+                      {
+                        url: /productos/cuna-coigue-junji/1.webp,
+                        alt: Cuna coigüe,
+                        width: 800,
+                        height: 800,
+                      }
+                meta: { page: 1, pageSize: 20, total: 12, totalPages: 1 }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /products/{slug}:
     get:
       operationId: getProduct
-      summary: "[Pendiente LN-05] Ficha de producto"
-      x-pending-task: LN-05
+      summary: Ficha de producto
+      description: |
+        Variantes activas con sus unidades disponibles (físico − reservado; 0 = a
+        pedido), todas las fotos (la principal primero, con la variante que
+        ilustran) y solo los extras disponibles. 404 si no existe o no está visible.
       tags: [Catálogo]
       security: []
       parameters:
-        - { name: slug, in: path, required: true, schema: { type: string } }
+        - { name: slug, in: path, required: true, schema: { type: string, maxLength: 200 } }
       responses:
-        "200": { description: Ficha con variantes y disponibilidad (esquema en LN-05) }
+        "200":
+          description: Ficha del producto
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductDetail" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /categories:
     get:
       operationId: listCategories
-      summary: "[Pendiente LN-05] Categorías activas"
-      x-pending-task: LN-05
+      summary: Categorías activas
+      description: En el orden definido en el panel, con la cantidad de productos visibles.
       tags: [Catálogo]
       security: []
       responses:
-        "200": { description: Lista de categorías (esquema en LN-05) }
+        "200":
+          description: Lista de categorías
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Category" } }
+              example:
+                items:
+                  - { slug: cunas, name: Cunas y camas, description: null, productCount: 11 }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   # ───────────────────────── Carrito (LN-06) ─────────────────────────
   /cart:
@@ -1222,6 +1310,124 @@ components:
           type: string
           description: Ruta con puntos ("items.0.quantity"); vacía si es el objeto entero.
         message: { type: string, description: Mensaje en español }
+    Image:
+      type: object
+      required: [url, alt, width, height]
+      properties:
+        url: { type: string }
+        alt: { type: string }
+        width: { type: [integer, "null"] }
+        height: { type: [integer, "null"] }
+    ProductSummary:
+      type: object
+      required:
+        [
+          slug,
+          name,
+          summary,
+          category,
+          ageGroups,
+          materials,
+          price,
+          compareAtPrice,
+          onSale,
+          featured,
+          availability,
+          publishedAt,
+          image,
+        ]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: [string, "null"] }
+        category:
+          type: object
+          required: [slug, name]
+          properties:
+            slug: { type: string }
+            name: { type: string }
+        ageGroups: { type: array, items: { type: string } }
+        materials: { type: array, items: { type: string } }
+        price:
+          type: [integer, "null"]
+          description: Menor precio en CLP entre las variantes; null mientras no esté definido.
+        compareAtPrice:
+          type: [integer, "null"]
+          description: Precio anterior de la variante más barata, si está en oferta.
+        onSale: { type: boolean }
+        featured: { type: boolean }
+        availability: { type: string, enum: [en_stock, a_pedido] }
+        publishedAt: { type: string, format: date-time }
+        image:
+          oneOf: [{ $ref: "#/components/schemas/Image" }, { type: "null" }]
+    ProductDetail:
+      allOf:
+        - $ref: "#/components/schemas/ProductSummary"
+        - type: object
+          required: [description, dimensions, specs, images, variants, extras]
+          properties:
+            description: { type: string }
+            dimensions: { type: [string, "null"] }
+            specs:
+              type: array
+              items:
+                type: object
+                properties:
+                  label: { type: string }
+                  value: { type: string }
+            images:
+              type: array
+              items:
+                allOf:
+                  - $ref: "#/components/schemas/Image"
+                  - type: object
+                    properties:
+                      variantSku: { type: [string, "null"] }
+            variants:
+              type: array
+              items:
+                type: object
+                required:
+                  [sku, optionLabel, color, size, price, compareAtPrice, available, availability]
+                properties:
+                  sku: { type: string }
+                  optionLabel: { type: [string, "null"] }
+                  color: { type: [string, "null"] }
+                  size: { type: [string, "null"] }
+                  price: { type: [integer, "null"] }
+                  compareAtPrice: { type: [integer, "null"] }
+                  available:
+                    type: integer
+                    minimum: 0
+                    description: Unidades disponibles (físico − reservado). 0 = a pedido.
+                  availability: { type: string, enum: [en_stock, a_pedido] }
+            extras:
+              type: array
+              items:
+                type: object
+                required: [code, name, price, personalization]
+                properties:
+                  code: { type: string }
+                  name: { type: string }
+                  price:
+                    type: [integer, "null"]
+                    description: null = precio por confirmar (no suma al total).
+                  personalization:
+                    oneOf:
+                      - type: object
+                        required: [label, maxLength]
+                        properties:
+                          label: { type: string }
+                          maxLength: { type: integer }
+                      - type: "null"
+    Category:
+      type: object
+      required: [slug, name, description, productCount]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        productCount: { type: integer, minimum: 0 }
     PanelUser:
       type: object
       required: [id, email, name, role]

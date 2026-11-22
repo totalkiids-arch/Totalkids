@@ -23,6 +23,10 @@ const IMPLEMENTED = new Set([
   "/auth/session",
   "/auth/password-reset/request",
   "/auth/password-reset/confirm",
+  // LN-05
+  "/products",
+  "/products/{slug}",
+  "/categories",
 ]);
 
 function operations() {

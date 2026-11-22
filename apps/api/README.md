@@ -157,6 +157,17 @@ Solo el equipo del taller (Administrador y Operador) tiene cuenta: los comprador
 
 - **Auditoría:** el ingreso (`auth.login`) y el restablecimiento (`auth.password_reset`) quedan en `audit_log`.
 
+## Catálogo público (LN-05)
+
+`GET /products`, `GET /products/{slug}` y `GET /categories`, sin sesión. La lógica está en `services/catalog.ts`.
+
+- **Visibles:** producto `active` con `published_at` ya cumplido, categoría activa y al menos una variante activa. Lo demás responde como si no existiera (404 en la ficha).
+- **Precio y disponibilidad:** `price` es el menor precio entre las variantes activas (null si ninguna tiene). `availability` es `en_stock` si alguna variante tiene `stock_physical − stock_reserved > 0`; si no, `a_pedido` (UI-11). La ficha trae `available` por variante.
+- **Búsqueda sin tildes:** la migración `busqueda_sin_tildes` crea la extensión `unaccent` y la función inmutable `tk_search_normalize(text)`. Cada palabra de `q` (máximo 8) debe aparecer en nombre, resumen o categoría. Los comodines `%` y `_` se escapan.
+- **Filtros:** `category`, `ageGroup`, `material` (repetibles o separados por coma), `priceMin`/`priceMax` (excluyen productos sin precio), `onSale` y `availability`.
+- **Orden:** `best_selling` (por defecto) suma las unidades de pedidos `confirmed` en adelante; empata por destacado y novedad. También `price_asc`, `price_desc` (sin precio al final) y `newest`.
+- **Consultas:** el listado arma un solo `WHERE` parametrizado con `Prisma.sql` (RNF-04) para el conteo y la página, y luego carga los productos de la página con Prisma.
+
 ## Crear un endpoint nuevo (ejemplo completo)
 
 `POST /api/v1/newsletter` (LN-08):
