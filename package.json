@@ -17,7 +17,8 @@
     "test": "pnpm -r test",
     "db:migrate": "pnpm --filter @totalkids/api db:migrate",
     "db:migrate:deploy": "pnpm --filter @totalkids/api db:migrate:deploy",
-    "db:migrate:test": "pnpm --filter @totalkids/api db:migrate:test"
+    "db:migrate:test": "pnpm --filter @totalkids/api db:migrate:test",
+    "db:seed": "pnpm --filter @totalkids/api db:seed"
   },
   "devDependencies": {
     "@totalkids/config": "workspace:*",
