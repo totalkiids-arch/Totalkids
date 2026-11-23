@@ -98,6 +98,15 @@ export async function touchCart(db: Db, cartId: string, now = new Date()): Promi
   await db.cart.update({ where: { id: cartId }, data: { expiresAt: expiry(now) } });
 }
 
+/**
+ * Bloquea la fila del carrito hasta el fin de la transacción: dos peticiones
+ * simultáneas sobre el mismo carrito se atienden en orden (así no se salta el
+ * máximo por SKU). Usar solo dentro de una transacción.
+ */
+export async function lockCart(db: Db, cartId: string): Promise<void> {
+  await db.$queryRaw`SELECT 1 FROM "carts" WHERE "id" = ${cartId}::uuid FOR UPDATE`;
+}
+
 /** Borra los carritos vencidos (para un proceso periódico). Devuelve cuántos. */
 export async function deleteExpiredCarts(db: Db, now = new Date()): Promise<number> {
   const { count } = await db.cart.deleteMany({ where: { expiresAt: { lte: now } } });

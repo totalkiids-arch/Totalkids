@@ -27,6 +27,10 @@ const IMPLEMENTED = new Set([
   "/products",
   "/products/{slug}",
   "/categories",
+  // LN-06
+  "/cart",
+  "/cart/items",
+  "/cart/items/{id}",
 ]);
 
 function operations() {

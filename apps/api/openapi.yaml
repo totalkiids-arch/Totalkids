@@ -257,56 +257,94 @@ paths:
   /cart:
     get:
       operationId: getCart
-      summary: "[Pendiente LN-06] Carrito propio"
+      summary: Carrito propio
       description: |
-        Solo sesión opaca de invitado (no hay cuentas de comprador). Precios y
-        totales calculados en el servidor (RNF-03). Las líneas sin stock se marcan
-        "a pedido" y no bloquean la compra.
-      x-pending-task: LN-06
+        Solo sesión opaca de invitado (no hay cuentas de comprador). Sin cookie
+        `tk_carrito` (o con una vencida) responde un carrito vacío, sin crearlo.
+        Cada consulta revalida contra el catálogo vigente (RF-06): precios de hoy,
+        extras que ya no se ofrecen se quitan, y un producto retirado o sin precio
+        deja la línea `unavailable` (bloquea el pago hasta quitarla). Las líneas
+        sin unidades terminadas se marcan `madeToOrder` con su plazo y no bloquean.
+        Totales calculados en el servidor (RNF-03); el despacho se cotiza aparte.
       tags: [Carrito]
-      security: [{ cartSession: [] }]
+      security: [{ cartSession: [] }, {}]
       responses:
-        "200": { description: Carrito con líneas y totales (esquema en LN-06) }
+        "200":
+          description: Carrito revalidado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /cart/items:
     post:
       operationId: addCartItem
-      summary: "[Pendiente LN-06] Agregar una variante al carrito"
-      description: Crea la sesión opaca de carrito si no existe.
-      x-pending-task: LN-06
+      summary: Agregar una variante al carrito
+      description: |
+        Crea la sesión opaca de carrito si no existe (Set-Cookie `tk_carrito`; en
+        producción `__Host-tk_carrito`). Al crearse, la clave CSRF de la sesión
+        cambia: pedir un token nuevo en GET /csrf antes de la siguiente modificación.
+        La misma combinación de variante, extras y textos suma unidades a su
+        línea. Máximo 9 unidades por SKU (sumando sus líneas) y 30 líneas. El
+        stock no limita la compra: todo se fabrica a pedido.
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }, { csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddCartItem" }
+            example: { sku: TK-6536, quantity: 1, extras: [{ code: armado }] }
       responses:
-        "201": { description: Carrito actualizado }
+        "201":
+          description: Carrito actualizado
+          headers:
+            Set-Cookie:
+              description: Cookie del carrito (creada o renovada por 30 días).
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /cart/items/{id}:
     parameters:
-      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       - $ref: "#/components/parameters/CsrfTokenHeader"
     patch:
       operationId: updateCartItem
-      summary: "[Pendiente LN-06] Cambiar la cantidad de una línea"
-      x-pending-task: LN-06
+      summary: Cambiar la cantidad de una línea
+      description: Cantidad 0 quita la línea. El máximo por SKU cuenta las demás líneas del mismo SKU.
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCartItem" }
       responses:
-        "200": { description: Carrito actualizado }
+        "200":
+          description: Carrito actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: deleteCartItem
-      summary: "[Pendiente LN-06] Quitar una línea"
-      x-pending-task: LN-06
+      summary: Quitar una línea
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
       responses:
-        "200": { description: Carrito actualizado }
+        "200":
+          description: Carrito actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
   /cart/coupon:
@@ -1434,6 +1472,116 @@ components:
         name: { type: string }
         description: { type: [string, "null"] }
         productCount: { type: integer, minimum: 0 }
+    AddCartItem:
+      type: object
+      required: [sku, quantity]
+      properties:
+        sku: { type: string, maxLength: 60 }
+        quantity: { type: integer, minimum: 1, maximum: 9 }
+        extras:
+          type: array
+          maxItems: 10
+          description: Extras ofrecidos por el producto; `text` solo en los que piden personalización.
+          items:
+            type: object
+            required: [code]
+            properties:
+              code: { type: string, maxLength: 40 }
+              text: { type: [string, "null"], maxLength: 200 }
+    UpdateCartItem:
+      type: object
+      required: [quantity]
+      properties:
+        quantity: { type: integer, minimum: 0, maximum: 9, description: 0 quita la línea }
+    CartLine:
+      type: object
+      required:
+        [
+          id,
+          sku,
+          productSlug,
+          productName,
+          optionLabel,
+          imageUrl,
+          quantity,
+          unitPrice,
+          compareAtPrice,
+          extras,
+          extrasUnitPrice,
+          lineTotal,
+          madeToOrder,
+          leadTime,
+          status,
+          note,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string }
+        productSlug: { type: string }
+        productName: { type: string }
+        optionLabel: { type: [string, "null"] }
+        imageUrl: { type: [string, "null"] }
+        quantity: { type: integer, minimum: 1, maximum: 9 }
+        unitPrice:
+          { type: [integer, "null"], description: CLP; null si la línea no se puede comprar }
+        compareAtPrice: { type: [integer, "null"] }
+        extras:
+          type: array
+          items:
+            type: object
+            required: [code, name, unitPrice, text]
+            properties:
+              code: { type: string }
+              name: { type: string }
+              unitPrice: { type: [integer, "null"], description: Por unidad; null = por confirmar }
+              text: { type: [string, "null"] }
+        extrasUnitPrice: { type: integer, minimum: 0 }
+        lineTotal:
+          type: [integer, "null"]
+          description: (precio + extras) × cantidad; null si la línea no se puede comprar
+        madeToOrder:
+          type: boolean
+          description: Hay menos unidades terminadas que las pedidas; se fabrica a pedido (UI-11)
+        leadTime: { type: [string, "null"], description: Plazo a pedido, cuando corresponde }
+        status:
+          type: string
+          enum: [ok, adjusted, unavailable]
+          description: "`unavailable`: retirado o sin precio; bloquea el pago hasta quitarla"
+        note: { type: [string, "null"], description: Qué se ajustó o por qué no se puede comprar }
+    Cart:
+      type: object
+      required: [lines, units, unpriced, coupon, totals, blocked, changed, checkoutReady]
+      properties:
+        lines: { type: array, items: { $ref: "#/components/schemas/CartLine" } }
+        units: { type: integer, minimum: 0 }
+        unpriced:
+          type: array
+          items: { type: string }
+          description: Extras con precio por confirmar (no suman al total)
+        coupon:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [code, valid, discount, message]
+              properties:
+                code: { type: string }
+                valid: { type: boolean }
+                discount: { type: integer, minimum: 0 }
+                message: { type: [string, "null"] }
+        totals:
+          type: object
+          required: [subtotal, discount, shipping, total]
+          description: total = subtotal − descuento + despacho (RN-01)
+          properties:
+            subtotal: { type: integer, minimum: 0 }
+            discount: { type: integer, minimum: 0 }
+            shipping:
+              type: [integer, "null"]
+              description: Siempre null en el carrito; se cotiza en GET /shipping/quote
+            total: { type: integer, minimum: 0 }
+        blocked: { type: boolean }
+        changed: { type: boolean }
+        checkoutReady: { type: boolean, description: Hay líneas y ninguna bloqueada }
     PanelUser:
       type: object
       required: [id, email, name, role]
