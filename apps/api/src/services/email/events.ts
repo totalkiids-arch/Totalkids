@@ -131,13 +131,26 @@ export const EMAIL_DATA_SCHEMAS = {
     buyerName: text(120),
     outcome: z.enum(["rejected", "cancelled"]),
   }),
-  /** Comprador: transportista y número de seguimiento. */
-  order_shipped: z.object({
-    orderNumber,
-    buyerName: text(120),
-    carrier: text(80),
-    trackingCode: text(80).nullish(),
-  }),
+  /**
+   * Comprador. Despacho a domicilio (`method` omitido o "shipping"):
+   * transportista y número de seguimiento. Retiro en taller ("pickup", LN-13):
+   * el pedido está listo para retirar, con la dirección y horario del taller.
+   */
+  order_shipped: z.discriminatedUnion("method", [
+    z.object({
+      method: z.literal("shipping").optional(),
+      orderNumber,
+      buyerName: text(120),
+      carrier: text(80),
+      trackingCode: text(80).nullish(),
+    }),
+    z.object({
+      method: z.literal("pickup"),
+      orderNumber,
+      buyerName: text(120),
+      pickupDetails: text(200),
+    }),
+  ]),
   /** Comprador: confirmación y cuidados del producto. */
   order_delivered: z.object({
     orderNumber,

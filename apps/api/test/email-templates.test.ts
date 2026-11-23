@@ -20,6 +20,13 @@ const line = {
   madeToOrder: true,
 };
 const amounts = { subtotal: 379980, discount: 20000, shippingCost: null, total: 359980 };
+/** Despacho a domicilio (sin `method`, como lo encolaba LN-14). */
+const shipped = {
+  orderNumber: 1048,
+  buyerName: "Ana",
+  carrier: "Starken",
+  trackingCode: "ST-998877" as string | null,
+};
 
 const SAMPLES: { [E in EmailEvent]: EmailDataInput<E> } = {
   order_received: {
@@ -50,12 +57,7 @@ const SAMPLES: { [E in EmailEvent]: EmailDataInput<E> } = {
     taxDocument: "boleta",
   },
   payment_rejected: { orderNumber: 1048, buyerName: "Ana", outcome: "rejected" },
-  order_shipped: {
-    orderNumber: 1048,
-    buyerName: "Ana",
-    carrier: "Starken",
-    trackingCode: "ST-998877",
-  },
+  order_shipped: shipped,
   order_delivered: { orderNumber: 1048, buyerName: "Ana" },
   service_request: {
     audience: "requester",
@@ -131,7 +133,7 @@ describe("plantillas de correo", () => {
         delivery: { method: "shipping", address: XSS },
         contact: XSS,
       }),
-      render("order_shipped", { ...SAMPLES.order_shipped, carrier: XSS, trackingCode: XSS }),
+      render("order_shipped", { ...shipped, carrier: XSS, trackingCode: XSS }),
       render("service_request", { ...SAMPLES.service_request, name: XSS, service: XSS }),
     ];
     for (const email of events) {
@@ -201,9 +203,25 @@ describe("plantillas de correo", () => {
 
   it("pedido despachado: transportista y seguimiento (opcional)", () => {
     expect(render("order_shipped").text).toContain("Número de seguimiento: ST-998877");
-    const noCode = render("order_shipped", { ...SAMPLES.order_shipped, trackingCode: null }).text;
+    const noCode = render("order_shipped", { ...shipped, trackingCode: null }).text;
     expect(noCode).toContain("Transporte: Starken");
     expect(noCode).not.toContain("Número de seguimiento");
+  });
+
+  it("pedido de retiro en taller (LN-13): listo para retiro, sin transportista", () => {
+    const email = render("order_shipped", {
+      method: "pickup",
+      orderNumber: 1048,
+      buyerName: "Ana",
+      pickupDetails: "Taller Total Kids, Temuco. Lunes a viernes de 10 a 18 h.",
+    });
+    expect(email.subject).toBe("Tu pedido #TK-1048 está listo para retiro");
+    expect(email.text).toContain("está listo para retirar en el taller");
+    expect(email.text).toContain(
+      "Retiro en taller: Taller Total Kids, Temuco. Lunes a viernes de 10 a 18 h.",
+    );
+    expect(email.text).not.toMatch(/va en camino|Transporte|undefined|null/);
+    expect(hrefs(email.html)).toEqual(["https://tienda.example.com/seguimiento"]);
   });
 
   it("pedido entregado: confirmación y cuidados, sin módulo de reseñas", () => {

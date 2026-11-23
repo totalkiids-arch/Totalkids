@@ -16,6 +16,7 @@ import { globalLimiter } from "./middleware/rate-limit.js";
 import { requestId } from "./middleware/request-id.js";
 import { adminCatalogRouter } from "./routes/admin-catalog.js";
 import { adminEmailsRouter } from "./routes/admin-emails.js";
+import { adminOrdersRouter } from "./routes/admin-orders.js";
 import { authRouter } from "./routes/auth.js";
 import { cartRouter } from "./routes/cart.js";
 import { catalogRouter } from "./routes/catalog.js";
@@ -143,6 +144,7 @@ export function createApp({
   v1.use("/admin", requirePanel(prisma, isProduction));
   v1.use(adminEmailsRouter(prisma));
   v1.use(adminCatalogRouter(prisma, storage));
+  v1.use(adminOrdersRouter(prisma));
   registerRoutes?.(v1);
   app.use("/api/v1", v1);
 

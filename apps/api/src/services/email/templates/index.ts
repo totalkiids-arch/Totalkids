@@ -215,6 +215,26 @@ const TEMPLATES: Renderers = {
 
   order_shipped: (data, ctx) => {
     const ref = orderRef(data.orderNumber);
+    if (data.method === "pickup") {
+      // Retiro en taller (LN-13): "Despachado" significa listo para retirar.
+      return {
+        subject: `Tu pedido #${ref} está listo para retiro`,
+        preheader: `Ya puedes retirar tu pedido #${ref} en el taller.`,
+        heading: "¡Tu pedido está listo!",
+        blocks: [
+          {
+            kind: "p",
+            text: `Hola ${data.buyerName}, tu pedido #${ref} está listo para retirar en el taller.`,
+          },
+          { kind: "rows", rows: [["Retiro en taller", data.pickupDetails]] },
+          {
+            kind: "action",
+            label: "Ver mi pedido",
+            url: siteLink(ctx.siteUrl, ORDER_LOOKUP_PATH),
+          },
+        ],
+      };
+    }
     const rows: [string, string][] = [["Transporte", data.carrier]];
     if (data.trackingCode) rows.push(["Número de seguimiento", data.trackingCode]);
     return {
