@@ -22,12 +22,22 @@ export interface RenderContext {
   siteUrl: string;
   /** Solo para password_recovery: enlace de un solo uso, emitido al enviar. */
   passwordReset?: { url: string; expiresAt: Date };
+  /** Solo para newsletter_unsubscribe: enlace de baja, emitido al enviar. */
+  unsubscribeUrl?: string;
 }
 
 /** Ruta pública de la consulta de pedidos por número y correo (UI-09). */
 export const ORDER_LOOKUP_PATH = "/seguimiento";
 /** Ruta del panel para restablecer la contraseña (página aún por crear en apps/web). */
 export const PASSWORD_RESET_PATH = "/admin/restablecer";
+
+/** Página pública que confirma la baja del newsletter con el token del enlace. */
+export const NEWSLETTER_UNSUBSCRIBE_PATH = "/suscripcion/baja";
+
+/** Enlace de baja del newsletter. El token va codificado y nunca se registra en logs. */
+export function newsletterUnsubscribeUrl(siteUrl: string, token: string): string {
+  return siteLink(siteUrl, `${NEWSLETTER_UNSUBSCRIBE_PATH}?token=${encodeURIComponent(token)}`);
+}
 
 /** Enlace de recuperación. El token va codificado y nunca se registra en logs. */
 export function passwordResetUrl(siteUrl: string, token: string): string {
@@ -334,6 +344,30 @@ const TEMPLATES: Renderers = {
         {
           kind: "note",
           text: "Si no fuiste tú, ignora este correo: tu contraseña no cambia. Nunca te pediremos tu contraseña por correo.",
+        },
+      ],
+    };
+  },
+
+  newsletter_unsubscribe: (_data, ctx) => {
+    if (!ctx.unsubscribeUrl) throw new Error("Falta el enlace de baja");
+    return {
+      subject: "Confirma tu baja del newsletter de Total Kids",
+      preheader: "Un clic y dejas de recibir nuestras novedades.",
+      heading: "¿Te das de baja?",
+      blocks: [
+        {
+          kind: "p",
+          text: "Recibimos una solicitud para dejar de enviarte ofertas y novedades de Total Kids a este correo.",
+        },
+        { kind: "action", label: "Confirmar la baja", url: ctx.unsubscribeUrl },
+        {
+          kind: "p",
+          text: "Tus pedidos y su seguimiento no cambian: solo dejas de recibir el newsletter.",
+        },
+        {
+          kind: "note",
+          text: "Si no fuiste tú, ignora este correo: seguirás suscrito.",
         },
       ],
     };

@@ -8,7 +8,7 @@ import { Checkbox, SelectField, TextareaField, TextField } from "@/shared/ui/for
 import { ArrowRightIcon } from "@/shared/ui/icons";
 
 import { MESSAGE_MAX, REQUEST_FIELDS as F, type RequestField } from "../domain/service-request";
-import { SERVICES, type ServiceId } from "../domain/services";
+import { RESPONSE_TIME, SERVICES, type ServiceId } from "../domain/services";
 import { submitServiceRequestAction } from "./service-request-actions";
 
 const SERVICE_OPTIONS = [
@@ -60,12 +60,11 @@ function RequestForm({
         </h2>
         <p className="text-lg text-text-body">
           Tu solicitud de <strong>{state.serviceTitle}</strong> quedó con la referencia{" "}
-          <strong className="font-mono">{state.reference}</strong>. Te contactaremos en [PLAZO DE
-          RESPUESTA] para coordinarla.
+          <strong className="font-mono">{state.reference}</strong>. Te contactaremos dentro de{" "}
+          {RESPONSE_TIME} para coordinarla.
         </p>
         <p className="rounded-2xl bg-cream px-4 py-3 text-sm">
-          <strong>Solicitud de demostración.</strong> Por ahora no se guarda ni se envía un correo a{" "}
-          {state.email}.
+          Te enviamos un correo de confirmación a <strong>{state.email}</strong>.
         </p>
         <div className="flex flex-wrap gap-3 pt-1">
           <ButtonLink href="/servicios" size="lg">
@@ -87,6 +86,11 @@ function RequestForm({
 
   return (
     <form ref={formRef} action={formAction} noValidate className="flex flex-col gap-4">
+      {failed?.formError ? (
+        <p role="alert" className="rounded-3xl bg-soft-red px-5 py-4 font-bold text-brand-red-deep">
+          {failed.formError}
+        </p>
+      ) : null}
       {errorCount > 0 ? (
         <p role="alert" className="rounded-3xl bg-soft-red px-5 py-4 font-bold text-brand-red-deep">
           {errorCount === 1

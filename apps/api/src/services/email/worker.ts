@@ -12,9 +12,11 @@ import type { Prisma } from "../../generated/prisma/client.js";
 import type { Logger } from "../../lib/logger.js";
 import type { PrismaClient } from "../../lib/prisma.js";
 import { issuePasswordResetToken } from "../auth.js";
+import { issueUnsubscribeToken } from "../newsletter.js";
 import { EMAIL_JOB_PREFIX, eventFromJobType, parseEmailData } from "./events.js";
 import type { EmailSender, SendResult } from "./sender.js";
 import {
+  newsletterUnsubscribeUrl,
   passwordResetUrl,
   renderEmail,
   type RenderContext,
@@ -256,6 +258,13 @@ export function createEmailWorker(deps: EmailWorkerDeps): EmailWorker {
         url: passwordResetUrl(config.siteUrl, reset.token),
         expiresAt: reset.expiresAt,
       };
+    }
+    if (event === "newsletter_unsubscribe") {
+      const { subscriberId } = data as { subscriberId: string };
+      // Solo a una suscripción activa; el token se emite justo antes de enviar.
+      const token = await issueUnsubscribeToken(prisma, subscriberId);
+      if (!token) return { kind: "rejected", detail: "La suscripción ya no está activa" };
+      ctx.unsubscribeUrl = newsletterUnsubscribeUrl(config.siteUrl, token);
     }
     return {
       kind: "send",

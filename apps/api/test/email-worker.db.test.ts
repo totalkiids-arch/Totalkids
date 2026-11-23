@@ -9,6 +9,7 @@ import { createStaffUser, resetPassword } from "../src/services/auth.js";
 import { enqueueEmail } from "../src/services/email/enqueue.js";
 import { emailEventKey } from "../src/services/email/events.js";
 import { FakeEmailSender } from "../src/services/email/fake-sender.js";
+import { unsubscribeWithToken } from "../src/services/newsletter.js";
 import { createEmailWorker, RETRY_DELAYS_MS } from "../src/services/email/worker.js";
 
 // Worker de correos (LN-14, SRS 4.4.3) contra totalkids_test. Cada test trabaja
@@ -383,6 +384,58 @@ describe.skipIf(!url)("worker de correos (PostgreSQL real)", () => {
     expect(log.status).toBe("failed");
     expect(sender.sent).toHaveLength(0);
     expect(await prisma.authToken.count({ where: { userId: user.id } })).toBe(0);
+  });
+
+  it("baja del newsletter: emite el token al enviar; dado de baja, falla sin enviar", async () => {
+    const scope = randomUUID();
+    const subscriber = await prisma.newsletterSubscriber.create({
+      data: {
+        email: `baja-${scope}@ejemplo.cl`,
+        consentedAt: new Date(),
+        consentVersion: "v1",
+        unsubscribeTokenHash: hashToken(scope),
+      },
+    });
+    const enqueue = async (n: string) => {
+      const eventKey = emailEventKey("newsletter_unsubscribe", subscriber.id, scope, n);
+      await prisma.$transaction((tx) =>
+        enqueueEmail(tx, {
+          event: "newsletter_unsubscribe",
+          recipient: subscriber.email,
+          eventKey,
+          data: { subscriberId: subscriber.id },
+        }),
+      );
+      return eventKey;
+    };
+    try {
+      const first = await enqueue("1");
+      const sender = new FakeEmailSender();
+      await worker(scope, sender, () => new Date()).runOnce();
+
+      const { job, log } = await state(first);
+      expect(log.status).toBe("sent");
+      const link = /https:\/\/tienda\.example\.com\/suscripcion\/baja\?token=([\w-]+)/.exec(
+        sender.sent[0]?.text ?? "",
+      );
+      const token = decodeURIComponent(link?.[1] ?? "");
+      expect(token).not.toBe("");
+      expect(JSON.stringify(job)).not.toContain(token);
+      expect(await unsubscribeWithToken(prisma, token)).toBe(true);
+
+      const second = await enqueue("2");
+      await worker(scope, sender, () => new Date()).runOnce();
+      expect((await state(second)).log.status).toBe("failed");
+      expect(sender.sent).toHaveLength(1);
+    } finally {
+      const logs = await prisma.emailLog.findMany({ where: { recipient: subscriber.email } });
+      await prisma.emailAttempt.deleteMany({ where: { emailId: { in: logs.map((l) => l.id) } } });
+      await prisma.emailLog.deleteMany({ where: { recipient: subscriber.email } });
+      await prisma.outboxJob.deleteMany({
+        where: { id: { in: logs.flatMap((l) => (l.outboxJobId ? [l.outboxJobId] : [])) } },
+      });
+      await prisma.newsletterSubscriber.delete({ where: { id: subscriber.id } });
+    }
   });
 
   it("los logs del worker no llevan destinatarios, cuerpos ni tokens", async () => {

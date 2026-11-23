@@ -4,7 +4,7 @@ import cors from "cors";
 import express, { type Express, type Router } from "express";
 import helmet from "helmet";
 
-import { DEV_IMAGES_URL, parseTrustProxy, type Env } from "./config/env.js";
+import { DEV_ADMIN_TO, DEV_IMAGES_URL, parseTrustProxy, type Env } from "./config/env.js";
 import { httpLogger, type Logger } from "./lib/logger.js";
 import type { PrismaClient } from "./lib/prisma.js";
 import { bodyParsers, isFlowCallbackPath, requireContentType } from "./middleware/body.js";
@@ -23,6 +23,7 @@ import { ordersRouter } from "./routes/orders.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { csrfRouter } from "./routes/csrf.js";
 import { docsRouter } from "./routes/docs.js";
+import { formsRouter } from "./routes/forms.js";
 import { healthRouter } from "./routes/health.js";
 import { shippingRouter } from "./routes/shipping.js";
 import { cartTtlMs } from "./services/cart/session.js";
@@ -42,7 +43,7 @@ export interface AppDeps {
     | "CSRF_SECRET"
     | "API_DOCS"
   > &
-    Partial<Pick<Env, "IMAGES_DIR" | "IMAGES_PUBLIC_URL" | "CART_TTL_DAYS">>;
+    Partial<Pick<Env, "IMAGES_DIR" | "IMAGES_PUBLIC_URL" | "CART_TTL_DAYS" | "EMAIL_ADMIN_TO">>;
   logger: Logger;
   prisma: PrismaClient;
   /**
@@ -137,6 +138,8 @@ export function createApp({
   v1.use(shippingRouter({ prisma, isProduction, quoter }));
   // Pedidos de invitado (LN-09): cotiza la entrega con el mismo puerto que el carrito.
   v1.use(ordersRouter({ prisma, isProduction, accessSecret: csrfSecret, quoter }));
+  // Formularios públicos (LN-08): solicitudes de servicio y newsletter.
+  v1.use(formsRouter({ prisma, adminEmail: env.EMAIL_ADMIN_TO ?? DEV_ADMIN_TO }));
   // Panel: todo /admin exige sesión del equipo (denegar por defecto, RF-31). Cada
   // ruta agrega el rol que necesita con requireRole.
   v1.use("/admin", requirePanel(prisma, isProduction));

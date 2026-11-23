@@ -785,46 +785,124 @@ paths:
   /service-requests:
     post:
       operationId: createServiceRequest
-      summary: "[Pendiente LN-08] Solicitud de armado, diseño, personalización, etc."
-      description: Público con validación y límite por IP (10 cada 15 min). Devuelve la referencia.
-      x-pending-task: LN-08
+      summary: Solicitud de armado, diseño, personalización, instituciones, regalos o garantía
+      description: |
+        Público (RF-24). Guarda la solicitud con la aceptación de la política de
+        privacidad (fecha y versión) y, en la misma transacción, encola dos correos:
+        el acuse al solicitante y el aviso al equipo (`EMAIL_ADMIN_TO`). Devuelve la
+        referencia `SOL-<número>`. Límite: 10 envíos por IP cada 15 min.
       tags: [Formularios]
       security: [{ csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateServiceRequest" }
+            example:
+              service: armado
+              name: María González
+              email: maria@correo.cl
+              phone: "+56 9 1234 5678"
+              commune: Temuco
+              childrenAges: 3 y 6 años
+              preferredDate: "2026-12-20"
+              message: Necesito armar una cuna y un ropero en el dormitorio.
+              privacyAccepted: true
       responses:
-        "201": { description: "Solicitud registrada: { reference }" }
+        "201":
+          description: Solicitud registrada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reference]
+                properties: { reference: { type: string, example: SOL-1002 } }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /newsletter:
     post:
       operationId: subscribeNewsletter
-      summary: "[Pendiente LN-08] Suscripción con consentimiento explícito"
-      description: Registra fecha y versión del texto de consentimiento (RF-25). Límite por IP.
-      x-pending-task: LN-08
+      summary: Suscripción con consentimiento explícito
+      description: |
+        RF-25. `consent` debe ser `true` (la casilla no viene marcada). Guarda la
+        fecha y la versión del texto aceptado. Si el correo ya estaba, renueva el
+        consentimiento; si se había dado de baja, lo reactiva y los enlaces de baja
+        anteriores dejan de servir. Responde 202 siempre (no revela quién está en la
+        lista). Límite: 10 por IP cada 15 min.
       tags: [Formularios]
       security: [{ csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, consent, consentVersion]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                consent: { const: true }
+                consentVersion:
+                  { type: string, maxLength: 40, description: Versión del texto que vio la persona }
+            example: { email: maria@correo.cl, consent: true, consentVersion: v1-provisional }
       responses:
         "202": { description: Suscripción recibida }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /newsletter/unsubscribe-link:
+    post:
+      operationId: requestNewsletterUnsubscribeLink
+      summary: Pedir el enlace de baja del newsletter
+      description: |
+        Paso 1 de la baja (RF-35). Responde 202 exista o no la suscripción. Si el
+        correo está suscrito, encola el correo `newsletter_unsubscribe`; el worker
+        emite el token de baja al enviarlo (no se guarda en claro). Así nadie puede
+        dar de baja a otra persona con solo su correo. Límites: 5 por IP cada 15 min
+        y 3 por correo cada hora.
+      tags: [Formularios]
+      security: [{ csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties: { email: { type: string, format: email, maxLength: 254 } }
+      responses:
+        "202": { description: Pedido recibido }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /newsletter/unsubscribe:
     post:
       operationId: unsubscribeNewsletter
-      summary: "[Pendiente LN-08] Baja del newsletter con credencial de baja"
-      description: Responde igual exista o no la suscripción (RF-35).
-      x-pending-task: LN-08
+      summary: Confirmar la baja con el token del enlace
+      description: |
+        Paso 2 de la baja (RF-35): el enlace `/suscripcion/baja?token=…` del correo.
+        La baja no borra pedidos ni el historial; queda registrada con fecha y
+        "Suscriptor". Repetir el enlace después de la baja responde 204 igual. Un
+        token que no corresponde a ninguna suscripción responde 404.
       tags: [Formularios]
       security: [{ csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, pattern: "^[A-Za-z0-9_-]{43}$" }
       responses:
-        "202": { description: Baja procesada }
+        "204": { description: Baja registrada }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
@@ -2571,6 +2649,30 @@ components:
           type: string
           description: Credencial para X-Order-Access (ver orderAccess). Guardarla para ver y pagar el pedido.
 
+    CreateServiceRequest:
+      type: object
+      required: [service, name, email, message, privacyAccepted]
+      properties:
+        service:
+          type: string
+          enum: [armado, diseno, personalizacion, instituciones, regalos, garantia]
+        name: { type: string, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        phone:
+          type: [string, "null"]
+          description: 9 dígitos, con o sin +56; se guarda "+56XXXXXXXXX".
+        commune: { type: [string, "null"], maxLength: 60 }
+        childrenAges: { type: [string, "null"], maxLength: 60, example: 3 y 6 años }
+        preferredDate:
+          type: [string, "null"]
+          format: date
+          description: Desde hoy (día de Chile) en adelante.
+        message: { type: string, minLength: 10, maxLength: 2000 }
+        privacyAccepted:
+          {
+            const: true,
+            description: Acepta la política de privacidad (fecha y versión se guardan),
+          }
     CreateOrder:
       type: object
       required: [buyer, delivery, billing, expectedTotal, termsAccepted]

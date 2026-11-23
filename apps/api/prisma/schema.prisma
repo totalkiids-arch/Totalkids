@@ -932,6 +932,8 @@ enum EmailEvent {
   order_delivered
   service_request
   password_recovery
+  /// Enlace para confirmar la baja del newsletter (RF-35); el token se emite al enviar.
+  newsletter_unsubscribe
 
   @@map("email_event")
 }

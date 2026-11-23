@@ -34,10 +34,17 @@ function Success({ text, ref }: { text: string; ref: Ref<HTMLParagraphElement> }
       <p ref={ref} tabIndex={-1} className="rounded-2xl bg-soft-green px-4 py-3 font-bold">
         {text}
       </p>
-      <p className="text-sm text-text-secondary">
-        Demostración: por ahora no se guarda la lista ni se envían correos.
-      </p>
     </div>
+  );
+}
+
+/** Error general del envío (la API no respondió o hubo demasiados intentos). */
+function FormError({ state }: { state: SubscriptionFormState }) {
+  if (!state || state.ok || !state.formError) return null;
+  return (
+    <p role="alert" className="rounded-2xl bg-soft-red px-4 py-3 font-bold text-brand-red-deep">
+      {state.formError}
+    </p>
   );
 }
 
@@ -68,6 +75,7 @@ export function SubscribeForm({
         />
       ) : (
         <form ref={formRef} action={action} noValidate className="flex flex-col gap-3">
+          <FormError state={state} />
           <TextField
             label="Tu correo"
             name={F.email}
@@ -126,12 +134,14 @@ export function UnsubscribeForm({ initialEmail }: { initialEmail: string }) {
       {state?.ok ? (
         <Success
           ref={doneRef}
-          text={`Si ${state.email} estaba suscrito, ya no recibirá nuestros correos.`}
+          text={`Si ${state.email} está suscrito, le enviamos un correo con el enlace para confirmar la baja.`}
         />
       ) : (
         <form ref={formRef} action={action} noValidate className="flex flex-col gap-3">
+          <FormError state={state} />
           <p className="text-text-body">
-            Escribe el correo que quieres quitar de la lista. No necesitas una cuenta.
+            Escribe el correo que quieres quitar de la lista. Te enviaremos un enlace para confirmar
+            la baja; no necesitas una cuenta.
           </p>
           <TextField
             label="Correo a dar de baja"
@@ -151,7 +161,7 @@ export function UnsubscribeForm({ initialEmail }: { initialEmail: string }) {
             className="self-start"
             disabled={pending}
           >
-            {pending ? "Procesando…" : "Darme de baja"}
+            {pending ? "Enviando…" : "Enviarme el enlace de baja"}
           </Button>
         </form>
       )}

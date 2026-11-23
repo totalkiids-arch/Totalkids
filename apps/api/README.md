@@ -322,6 +322,21 @@ La cotización pasa por el **puerto `ShippingQuoter`** ([`services/shipping/quot
 3. En las escrituras envía `X-CSRF-Token`. Si la respuesta trae la cabecera `X-CSRF-Token`, ese es el token para el siguiente formulario.
 4. Reemplaza la cookie JSON actual (`CookieCartStore`) por estas llamadas: la API ya no acepta ese formato. Los ids de línea pasan a ser `CartLine.id` (uuid). Los textos de avisos, cupón, disponibilidad y despacho gratis ya vienen en español desde la API; el aviso de despacho gratis debe usar `freeShipping.remaining` (después del descuento).
 
+## Formularios públicos (LN-08)
+
+Solicitudes de servicio y newsletter, sin sesión: CSRF (middleware global) y límites por IP. Rutas en [`src/routes/forms.ts`](src/routes/forms.ts); reglas en [`services/service-requests.ts`](src/services/service-requests.ts) y [`services/newsletter.ts`](src/services/newsletter.ts).
+
+| Ruta                                | Qué hace                                                                                                                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /service-requests`            | Guarda la solicitud (RF-24) con la privacidad aceptada (fecha y versión) y encola el acuse al solicitante y el aviso a `EMAIL_ADMIN_TO`. 201 `{ reference: "SOL-1002" }`. |
+| `POST /newsletter`                  | `{ email, consent: true, consentVersion }` (RF-25). Alta, renovación del consentimiento o reactivación tras una baja. 202 siempre.                                        |
+| `POST /newsletter/unsubscribe-link` | `{ email }`. Si está suscrito, encola `newsletter_unsubscribe`. 202 siempre (no revela quién está en la lista). 5 por IP / 15 min y 3 por correo / hora.                  |
+| `POST /newsletter/unsubscribe`      | `{ token }` del enlace `/suscripcion/baja?token=…`. 204; repetirlo responde igual; un token ajeno, 404.                                                                   |
+
+- **Baja con credencial (RF-35):** con solo el correo nadie puede dar de baja a otra persona. El worker emite el token al enviar el correo (como la recuperación de contraseña): en la base queda solo su hash (`unsubscribe_token_hash`) y solo vale el último enlace enviado. Volver a suscribirse cambia el hash, así los enlaces viejos dejan de servir.
+- **La baja no borra nada:** queda `unsubscribed` con fecha y `unsubscribed_by = "Suscriptor"`; los pedidos no cambian.
+- **Pendiente:** el plazo de respuesta de los correos de solicitudes (`RESPONSE_TIME`, "2 días hábiles") y las versiones de los textos (`v1-provisional`) son provisionales hasta CL-02. El seguimiento de solicitudes y suscriptores en el panel llega con LN-13.
+
 ## Correos y worker (LN-14)
 
 Correos transaccionales de la SRS 4.4.3 (RF-20, RF-21). El código está en [`src/services/email/`](src/services/email/) y el proceso del worker en [`src/worker.ts`](src/worker.ts).

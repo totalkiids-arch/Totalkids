@@ -5,6 +5,12 @@
  * queda guardado en la solicitud. Los precios entre corchetes son marcadores de
  * la maqueta: los define el cliente (CL-02).
  */
+/**
+ * Plazo de respuesta que se promete al enviar una solicitud. Igual que el de
+ * los correos de la API (RESPONSE_TIME); provisional hasta que el cliente lo defina.
+ */
+export const RESPONSE_TIME = "2 días hábiles";
+
 export const SERVICES = [
   {
     id: "armado",

@@ -18,6 +18,7 @@ export const EMAIL_EVENTS = [
   "order_delivered",
   "service_request",
   "password_recovery",
+  "newsletter_unsubscribe",
 ] as const satisfies readonly EmailEvent[];
 
 /** Prefijo del tipo de trabajo en outbox: "email.purchase_confirmed". */
@@ -45,6 +46,7 @@ export const EVENT_KEY_MAX = 160;
  * - `order_shipped:<orderId>`, `order_delivered:<orderId>`
  * - `service_request:<serviceRequestId>:requester` y `…:admin`
  * - `password_recovery:<userId>:<uuid>` (cada solicitud es un hecho distinto)
+ * - `newsletter_unsubscribe:<subscriberId>:<uuid>` (igual: cada pedido de baja)
  */
 export function emailEventKey(event: EmailEvent, ...parts: string[]): string {
   const key = [event, ...parts].join(":");
@@ -172,6 +174,13 @@ export const EMAIL_DATA_SCHEMAS = {
    */
   password_recovery: z.object({
     userId: z.uuid(),
+  }),
+  /**
+   * Suscriptor del newsletter: solo el id. Como en password_recovery, el worker
+   * emite el token de baja al enviar (`issueUnsubscribeToken`).
+   */
+  newsletter_unsubscribe: z.object({
+    subscriberId: z.uuid(),
   }),
 } satisfies Record<EmailEvent, z.ZodType>;
 

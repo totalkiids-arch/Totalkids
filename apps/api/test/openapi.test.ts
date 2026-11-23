@@ -48,6 +48,11 @@ const IMPLEMENTED = new Set([
   ...LN12_PATHS,
   // LN-06
   ...LN06_PATHS,
+  // LN-08
+  "/service-requests",
+  "/newsletter",
+  "/newsletter/unsubscribe-link",
+  "/newsletter/unsubscribe",
   // LN-09
   "/orders",
   "/orders/lookup",

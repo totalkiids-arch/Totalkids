@@ -3,7 +3,7 @@ import type { ActivityEntry } from "@/features/activity";
 import { chileDateTimeForCsv } from "@/shared/lib/chile-time";
 import { toCsv } from "@/shared/lib/csv";
 
-import type { ServiceRequestGateway } from "./application/ports";
+import { ServiceRequestRejectedError, type ServiceRequestGateway } from "./application/ports";
 import type { ServiceRequestAdmin } from "./application/service-request-admin";
 import {
   parseServiceRequest,
@@ -16,9 +16,10 @@ import {
   REQUESTER_ACTOR,
   requestsCsvTable,
 } from "./domain/service-request-admin";
+import { apiServiceRequestGateway } from "./infrastructure/api-service-request-gateway";
 import { demoServiceRequestDesk } from "./infrastructure/demo-service-request-desk";
 
-const gateway: ServiceRequestGateway = demoServiceRequestDesk;
+const gateway: ServiceRequestGateway = apiServiceRequestGateway;
 
 /** Fecha de hoy en Chile, "AAAA-MM-DD" (para validar la fecha preferida). */
 function todayInChile(): string {
@@ -27,7 +28,7 @@ function todayInChile(): string {
 
 export type SubmitRequestResult =
   | { ok: true; reference: string; serviceTitle: string; email: string }
-  | { ok: false; errors: RequestErrors };
+  | { ok: false; errors: RequestErrors; formError?: string };
 
 /** Caso de uso: enviar una solicitud de servicio especial (RF-24), validada en el servidor. */
 export async function submitServiceRequest(
@@ -35,7 +36,15 @@ export async function submitServiceRequest(
 ): Promise<SubmitRequestResult> {
   const result = parseServiceRequest(input, todayInChile());
   if (!result.ok) return result;
-  const { reference } = await gateway.submit(result.request);
+  let reference: string;
+  try {
+    ({ reference } = await gateway.submit(result.request));
+  } catch (error) {
+    if (error instanceof ServiceRequestRejectedError) {
+      return { ok: false, errors: {}, formError: error.message };
+    }
+    throw error;
+  }
   return {
     ok: true,
     reference,
@@ -45,9 +54,9 @@ export async function submitServiceRequest(
 }
 
 // ── Panel: solicitudes (UI-14) ───────────────────────────────────────────────
-// DEMO hasta LN-08/LN-13 (ver infrastructure/demo-service-request-desk.ts): el
-// mismo almacén recibe el formulario público y responde al panel. Las
-// pantallas, las acciones y la exportación verifican el rol antes.
+// DEMO hasta LN-13 (ver infrastructure/demo-service-request-desk.ts). El
+// formulario público ya usa la API (LN-08), así que las solicitudes reales no
+// aparecen aquí. Las pantallas, las acciones y la exportación verifican el rol.
 export const serviceRequestAdmin: ServiceRequestAdmin = demoServiceRequestDesk;
 
 /**

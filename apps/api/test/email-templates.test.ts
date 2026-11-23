@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { EmailEvent } from "../src/generated/prisma/enums.js";
 import { EMAIL_EVENTS, parseEmailData, type EmailDataInput } from "../src/services/email/events.js";
-import { passwordResetUrl, renderEmail } from "../src/services/email/templates/index.js";
+import {
+  newsletterUnsubscribeUrl,
+  passwordResetUrl,
+  renderEmail,
+} from "../src/services/email/templates/index.js";
 import { escapeHtml, formatClp, formatDateTime } from "../src/services/email/templates/format.js";
 
 // Plantillas de correo (LN-14, RF-21, SRS 4.4.3).
@@ -67,6 +71,7 @@ const SAMPLES: { [E in EmailEvent]: EmailDataInput<E> } = {
     responseTime: "2 días hábiles",
   },
   password_recovery: { userId: "0195f3a0-0000-7000-8000-000000000001" },
+  newsletter_unsubscribe: { subscriberId: "0195f3a0-0000-7000-8000-000000000002" },
 };
 
 const SUBJECTS: Record<EmailEvent, string> = {
@@ -78,6 +83,7 @@ const SUBJECTS: Record<EmailEvent, string> = {
   order_delivered: "Tu pedido #TK-1048 fue entregado",
   service_request: "Recibimos tu solicitud #SOL-1002",
   password_recovery: "Restablece tu contraseña del panel",
+  newsletter_unsubscribe: "Confirma tu baja del newsletter de Total Kids",
 };
 
 const RESET_EXPIRES = new Date("2026-11-23T15:00:00.000Z");
@@ -86,6 +92,7 @@ function render<E extends EmailEvent>(event: E, data: EmailDataInput<E> = SAMPLE
   return renderEmail(event, parseEmailData(event, data), {
     siteUrl: SITE,
     passwordReset: { url: passwordResetUrl(SITE, "tok_abc"), expiresAt: RESET_EXPIRES },
+    unsubscribeUrl: newsletterUnsubscribeUrl(SITE, "tok_baja"),
   });
 }
 
@@ -261,6 +268,20 @@ describe("plantillas de correo", () => {
         },
       ),
     ).toThrow("Falta el enlace de recuperación");
+  });
+
+  it("baja del newsletter: un enlace con el token, sin el id del suscriptor", () => {
+    const { html, text } = render("newsletter_unsubscribe");
+    expect(hrefs(html)).toEqual(["https://tienda.example.com/suscripcion/baja?token=tok_baja"]);
+    expect(text).toContain("Tus pedidos y su seguimiento no cambian");
+    expect(`${html}${text}`).not.toContain("0195f3a0");
+    expect(() =>
+      renderEmail(
+        "newsletter_unsubscribe",
+        parseEmailData("newsletter_unsubscribe", SAMPLES.newsletter_unsubscribe),
+        { siteUrl: SITE },
+      ),
+    ).toThrow("Falta el enlace de baja");
   });
 
   it("formato: CLP, hora de Chile y escape", () => {
