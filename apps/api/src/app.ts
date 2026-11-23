@@ -8,9 +8,10 @@ import { parseTrustProxy, type Env } from "./config/env.js";
 import { httpLogger, type Logger } from "./lib/logger.js";
 import type { PrismaClient } from "./lib/prisma.js";
 import { bodyParsers, isFlowCallbackPath, requireContentType } from "./middleware/body.js";
+import { storeCsrfSessionKey } from "./middleware/cart-session.js";
 import { csrfProtection, type CsrfSessionKey } from "./middleware/csrf.js";
 import { createErrorHandler, notFound } from "./middleware/error-handler.js";
-import { panelCsrfSessionKey, requirePanel } from "./middleware/panel-auth.js";
+import { requirePanel } from "./middleware/panel-auth.js";
 import { globalLimiter } from "./middleware/rate-limit.js";
 import { requestId } from "./middleware/request-id.js";
 import { authRouter } from "./routes/auth.js";
@@ -39,7 +40,7 @@ export interface AppDeps {
   registerRoutes?: (v1: Router) => void;
   /**
    * Clave de la sesión actual a la que se ata el token CSRF. Por defecto, el hash
-   * de la cookie del panel (LN-04); LN-06 le suma la del carrito.
+   * de la cookie del panel (LN-04) más el de la cookie del carrito (LN-06).
    */
   csrfSessionKey?: CsrfSessionKey;
 }
@@ -61,7 +62,7 @@ export function createApp({
 }: AppDeps): Express {
   const app = express();
   const isProduction = env.NODE_ENV === "production";
-  const sessionKey = csrfSessionKey ?? panelCsrfSessionKey(isProduction);
+  const sessionKey = csrfSessionKey ?? storeCsrfSessionKey(isProduction);
   const csrfSecret = resolveCsrfSecret(env, logger);
 
   // La API recibe tráfico a través de Next.js: confiar en X-Forwarded-For del proxy

@@ -15,6 +15,8 @@ export const MAX_QUANTITY_PER_SKU = 9;
 export const MAX_LINES = 30;
 /** Largo máximo de un texto de personalización si el extra no define uno. */
 export const DEFAULT_TEXT_MAX_LENGTH = 40;
+/** Plazo de fabricación a pedido para productos sin plazo propio. */
+export const DEFAULT_LEAD_TIME = "3 a 5 días hábiles";
 
 // ─── Catálogo vigente (lo que el repositorio lee de la base) ────────────────
 
