@@ -54,6 +54,33 @@ describe("rutas del carrito (sin base)", () => {
     expect(res.headers.allow).toBe("POST");
   });
 
+  it("cupón: exige CSRF, valida el código y sin carrito responde 404", async () => {
+    expect((await request(app).post("/api/v1/cart/coupon").send({ code: "X" })).status).toBe(403);
+    const empty = await request(app)
+      .post("/api/v1/cart/coupon")
+      .set(csrfHeaders())
+      .send({ code: " " });
+    expect(empty.status).toBe(422);
+    const noCart = await request(app)
+      .post("/api/v1/cart/coupon")
+      .set(csrfHeaders())
+      .send({ code: "APRENDER10" });
+    expect(noCart.status).toBe(404);
+  });
+
+  it("quitar el cupón sin carrito es idempotente: carrito vacío", async () => {
+    const res = await request(app).delete("/api/v1/cart/coupon").set(csrfHeaders());
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ lines: [], coupon: null });
+  });
+
+  it("cotizar despacho valida método, región y comuna", async () => {
+    const res = await request(app).get("/api/v1/shipping/quote?method=avion&region=araucania");
+    expect(res.status).toBe(422);
+    const paths = (res.body.details.issues as { path: string }[]).map((i) => i.path).sort();
+    expect(paths).toEqual(["method", "region"]);
+  });
+
   it("una cookie de carrito con otro formato se ignora (como sin carrito)", async () => {
     const legacy = encodeURIComponent(JSON.stringify({ v: 1, l: [] }));
     const res = await request(app)

@@ -9,7 +9,8 @@ import {
   type PricedCart,
   type PricedLine,
 } from "../domain/cart.js";
-import { checkCoupon } from "../domain/coupon.js";
+import { checkCoupon, normalizeCouponCode, type CouponRow } from "../domain/coupon.js";
+import { quoteShipping, type DeliveryMethod, type ShippingQuote } from "../domain/shipping.js";
 import { chileDay, dateOnly } from "../lib/chile-time.js";
 import { errors } from "../lib/errors.js";
 import type { PrismaClient } from "../lib/prisma.js";
@@ -22,6 +23,7 @@ import {
   lockCart,
   removeLine,
   saveLine,
+  setCartCoupon,
   setLineQuantity,
   touchCart,
   type CartRecord,
@@ -77,15 +79,11 @@ const EMPTY_CART: CartDto = {
   checkoutReady: false,
 };
 
-async function couponFor(
-  db: Db,
-  cart: CartRecord,
-  subtotal: number,
-  now: Date,
-): Promise<CartCouponDto | null> {
-  if (!cart.couponId) return null;
-  const row = await db.coupon.findUnique({ where: { id: cart.couponId } });
-  const check = checkCoupon(
+type CouponModel = NonNullable<Awaited<ReturnType<Db["coupon"]["findUnique"]>>>;
+
+/** Fila de la base → datos que evalúa el dominio (fechas como día en Chile). */
+function toCouponRow(row: CouponModel | null): CouponRow | null {
+  return (
     row && {
       code: row.code,
       kind: row.kind,
@@ -95,10 +93,19 @@ async function couponFor(
       maxUses: row.maxUses,
       usesCount: row.usesCount,
       active: row.active,
-    },
-    subtotal,
-    chileDay(now),
+    }
   );
+}
+
+async function couponFor(
+  db: Db,
+  cart: CartRecord,
+  subtotal: number,
+  now: Date,
+): Promise<CartCouponDto | null> {
+  if (!cart.couponId) return null;
+  const row = await db.coupon.findUnique({ where: { id: cart.couponId } });
+  const check = checkCoupon(toCouponRow(row), subtotal, chileDay(now));
   return check.ok
     ? { code: check.code, valid: true, discount: check.discount, message: null }
     : {
@@ -221,6 +228,7 @@ export async function updateItem(
   quantity: number,
   now = new Date(),
 ): Promise<CartDto> {
+  if (!token) throw errors.notFound("No encontramos tu carrito");
   return prisma.$transaction(async (tx) => {
     const cart = await lockedCart(tx, token, now);
     const line = cart.lines.find((l) => l.id === lineId);
@@ -248,6 +256,7 @@ export async function removeItem(
   lineId: string,
   now = new Date(),
 ): Promise<CartDto> {
+  if (!token) throw errors.notFound("No encontramos tu carrito");
   return prisma.$transaction(async (tx) => {
     const cart = await lockedCart(tx, token, now);
     if (!(await removeLine(tx, cart.id, lineId))) {
@@ -256,4 +265,82 @@ export async function removeItem(
     await touchCart(tx, cart.id, now);
     return viewCart(tx, await findCart(tx, token ?? "", now), now);
   });
+}
+
+// ─── Cupón (RF-07) ──────────────────────────────────────────────────────────
+
+/**
+ * POST /cart/coupon: aplica un cupón al carrito (uno por carrito: reemplaza al
+ * anterior). Se valida con el subtotal de hoy; el uso se reserva recién al
+ * crear el pedido (LN-09, reserveCouponUse). 409 si no se puede usar.
+ */
+export async function applyCoupon(
+  prisma: PrismaClient,
+  token: string | undefined,
+  rawCode: string,
+  now = new Date(),
+): Promise<CartDto> {
+  if (!token) throw errors.notFound("No encontramos tu carrito");
+  return prisma.$transaction(async (tx) => {
+    const cart = await lockedCart(tx, token, now);
+    const view = await viewCart(tx, { ...cart, couponId: null }, now);
+    if (view.lines.length === 0) {
+      throw errors.conflict("Agrega productos al carrito antes de usar un cupón.");
+    }
+    const row = await tx.coupon.findUnique({ where: { code: normalizeCouponCode(rawCode) } });
+    const check = checkCoupon(toCouponRow(row), view.totals.subtotal, chileDay(now));
+    if (!check.ok || !row) {
+      const message = check.ok ? "Ese cupón no existe." : check.message;
+      throw errors.conflict(message, { reason: check.ok ? "not_found" : check.reason });
+    }
+    await setCartCoupon(tx, cart.id, row.id);
+    await touchCart(tx, cart.id, now);
+    return viewCart(tx, await findCart(tx, token ?? "", now), now);
+  });
+}
+
+/** DELETE /cart/coupon: quita el cupón. Sin carrito responde uno vacío (idempotente). */
+export async function removeCoupon(
+  prisma: PrismaClient,
+  token: string | undefined,
+  now = new Date(),
+): Promise<CartDto> {
+  const cart = token ? await findCart(prisma, token, now) : null;
+  if (!cart) return viewCart(prisma, null, now);
+  if (cart.couponId) {
+    await setCartCoupon(prisma, cart.id, null);
+    await touchCart(prisma, cart.id, now);
+  }
+  return viewCart(prisma, { ...cart, couponId: null, couponCode: null }, now);
+}
+
+// ─── Despacho (RF-08, RF-11) ────────────────────────────────────────────────
+
+/**
+ * GET /shipping/quote: costo de entrega para el carrito actual (o 0 sin
+ * carrito). Retiro gratis; despacho gratis desde el umbral o tarifa de la zona
+ * de la comuna; sin zona o tarifa a coordinar, por confirmar (null).
+ */
+export async function quoteShippingForCart(
+  prisma: PrismaClient,
+  token: string | undefined,
+  input: { method: DeliveryMethod; region?: string | undefined; commune?: string | undefined },
+  now = new Date(),
+): Promise<ShippingQuote> {
+  const cart = token ? await findCart(prisma, token, now) : null;
+  const { totals } = await viewCart(prisma, cart, now);
+  const [settings, zone] = await Promise.all([
+    prisma.setting.findUnique({ where: { id: 1 } }),
+    input.method === "despacho" && input.region && input.commune
+      ? prisma.shippingZone.findFirst({
+          where: {
+            region: input.region,
+            commune: { equals: input.commune.trim(), mode: "insensitive" },
+          },
+        })
+      : null,
+  ]);
+  // Descuento antes del despacho: el umbral se mide sobre lo que paga el comprador.
+  const base = totals.subtotal - totals.discount;
+  return quoteShipping(input.method, base, zone, settings?.freeShippingThreshold ?? null);
 }

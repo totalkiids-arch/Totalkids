@@ -7,7 +7,27 @@ import type { PrismaClient } from "../lib/prisma.js";
 import { validated } from "../lib/validation.js";
 import { cartToken, setCartCookie } from "../middleware/cart-session.js";
 import { methodNotAllowed } from "../middleware/method-not-allowed.js";
-import { addItem, getCart, removeItem, updateItem } from "../services/cart.js";
+import {
+  addItem,
+  applyCoupon,
+  getCart,
+  quoteShippingForCart,
+  removeCoupon,
+  removeItem,
+  updateItem,
+} from "../services/cart.js";
+
+const couponBody = z.object({ code: z.string().trim().min(1).max(40) });
+
+const quoteQuery = z.object({
+  method: z.enum(["despacho", "retiro"]),
+  region: z
+    .string()
+    .trim()
+    .regex(/^[A-Z]{2}$/, "Código de región de 2 letras, p. ej. AR")
+    .optional(),
+  commune: z.string().trim().min(1).max(80).optional(),
+});
 
 const extraChoice = z.object({
   code: z.string().trim().min(1).max(40),
@@ -83,6 +103,30 @@ export function cartRouter({
       }),
     )
     .all(methodNotAllowed("PATCH", "DELETE"));
+
+  router
+    .route("/cart/coupon")
+    .post(
+      validated({ body: couponBody }, async ({ body }, req, res) => {
+        const token = cartToken(req, isProduction);
+        const cart = await applyCoupon(prisma, token, body.code);
+        if (token) setCartCookie(res, token, isProduction);
+        res.json(cart);
+      }),
+    )
+    .delete(async (req, res) => {
+      res.json(await removeCoupon(prisma, cartToken(req, isProduction)));
+    })
+    .all(methodNotAllowed("POST", "DELETE"));
+
+  router
+    .route("/shipping/quote")
+    .get(
+      validated({ query: quoteQuery }, async ({ query }, req, res) => {
+        res.json(await quoteShippingForCart(prisma, cartToken(req, isProduction), query));
+      }),
+    )
+    .all(methodNotAllowed("GET"));
 
   return router;
 }

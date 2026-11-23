@@ -352,37 +352,68 @@ paths:
       - $ref: "#/components/parameters/CsrfTokenHeader"
     post:
       operationId: applyCartCoupon
-      summary: "[Pendiente LN-06] Aplicar un cupón"
-      x-pending-task: LN-06
+      summary: Aplicar un cupón
+      description: |
+        Un cupón por carrito (reemplaza al anterior; RN-01: no se acumulan). El
+        código se normaliza (mayúsculas, sin espacios). Se valida vigencia (día en
+        Chile), estado y cupo con el subtotal de hoy; el porcentaje se redondea al
+        peso y el descuento no aplica al despacho. El uso NO se reserva aquí: se
+        reserva al crear el pedido (LN-09), así que un cupón puede agotarse antes de
+        pagar y `GET /cart` lo informará con `coupon.valid: false`.
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, maxLength: 40 }
+            example: { code: APRENDER10 }
       responses:
-        "200": { description: Carrito con descuento }
+        "200":
+          description: Carrito con el cupón aplicado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { $ref: "#/components/responses/Conflict" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            El cupón no se puede usar, o el carrito está vacío. `details.reason`:
+            `not_found`, `inactive`, `not_started`, `expired` o `exhausted`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: removeCartCoupon
-      summary: "[Pendiente LN-06] Quitar el cupón"
-      x-pending-task: LN-06
+      summary: Quitar el cupón
+      description: Idempotente; sin carrito responde un carrito vacío.
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
       responses:
-        "200": { description: Carrito sin cupón }
+        "200":
+          description: Carrito sin cupón
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /shipping/quote:
     get:
       operationId: quoteShipping
-      summary: "[Pendiente LN-06] Costo de entrega del carrito"
+      summary: Costo de entrega del carrito
       description: |
         Cambio del cliente: no hay despacho a todo Chile. `retiro` (en taller) es
         siempre gratis. `despacho` (a coordinar) es gratis desde el umbral
-        configurado; si no, la tarifa depende de la zona y puede venir `cost: null`
-        ("por confirmar"), que no se suma al total (RF-08, RF-11).
-      x-pending-task: LN-06
+        configurado (medido sobre el subtotal con descuento) si la zona lo admite;
+        si no, la tarifa de la zona de la comuna. Sin zona habilitada o con tarifa a
+        coordinar viene `cost: null` ("por confirmar"), que no se suma al total
+        (RF-08, RF-11). Sin carrito, cotiza sobre un subtotal 0.
       tags: [Carrito]
-      security: [{ cartSession: [] }]
+      security: [{ cartSession: [] }, {}]
       parameters:
         - {
             name: method,
@@ -390,8 +421,19 @@ paths:
             required: true,
             schema: { type: string, enum: [despacho, retiro] },
           }
-        - { name: region, in: query, schema: { type: string } }
-        - { name: commune, in: query, schema: { type: string } }
+        - {
+            name: region,
+            in: query,
+            description: Código de región (p. ej. AR,
+            RM),
+            schema: { type: string, pattern: "^[A-Z]{2}$" },
+          }
+        - {
+            name: commune,
+            in: query,
+            description: Comuna (sin distinguir mayúsculas),
+            schema: { type: string, maxLength: 80 },
+          }
       responses:
         "200":
           description: Cotización
@@ -399,13 +441,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [method, cost]
+                required: [method, cost, reason, leadTime]
                 properties:
                   method: { type: string, enum: [despacho, retiro] }
                   cost:
                     type: [integer, "null"]
                     description: CLP; null = por confirmar
                   reason: { type: string, enum: [pickup, threshold, zone] }
+                  leadTime:
+                    type: [string, "null"]
+                    description: Plazo de la zona, cuando hay una habilitada
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
   # ───────────────────────── Pedidos de invitado (LN-09) ─────────────────────────
