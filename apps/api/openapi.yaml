@@ -7,7 +7,8 @@ info:
 
     - Base `/api/v1`. El navegador nunca la llama directo: Next.js (BFF) intermedia
       y la autorización se verifica siempre aquí.
-    - Operaciones en JSON. Solo los callbacks de Flow aceptan formularios.
+    - Operaciones en JSON. Solo los callbacks de Flow aceptan formularios y solo la
+      subida de imágenes del panel acepta multipart/form-data (máximo 2 MB).
     - Errores con el formato `ErrorBody` y el catálogo de códigos de abajo.
     - Métodos que modifican (POST/PUT/PATCH/DELETE) exigen CSRF de doble envío:
       cookie `tk_csrf` (`__Host-tk_csrf` en producción) y cabecera `X-CSRF-Token`
@@ -257,35 +258,41 @@ paths:
   /cart:
     get:
       operationId: getCart
-      summary: Carrito propio
+      summary: Carrito propio con precios, avisos y totales calculados en el servidor
       description: |
-        Solo sesión opaca de invitado (no hay cuentas de comprador). Sin cookie
-        `tk_carrito` (o con una vencida) responde un carrito vacío, sin crearlo.
-        Cada consulta revalida contra el catálogo vigente (RF-06): precios de hoy,
-        extras que ya no se ofrecen se quitan, y un producto retirado o sin precio
-        deja la línea `unavailable` (bloquea el pago hasta quitarla). Las líneas
-        sin unidades terminadas se marcan `madeToOrder` con su plazo y no bloquean.
-        Totales calculados en el servidor (RNF-03); el despacho se cotiza aparte.
+        Solo sesión opaca de invitado (no hay cuentas de comprador). Sin cookie, o
+        con un carrito vencido, responde un carrito vacío y **no crea filas**.
+        Revalida en cada lectura (RF-06): precio actual de variante y extras,
+        productos o variantes inactivos (`status: unavailable`, fuera de los
+        totales), precio por definir (`unpriced`, bloquea el pago), extras
+        retirados y cupón que dejó de valer, con su aviso. Leer no borra nada: la
+        siguiente escritura del carrito los limpia. Stock 0 no es «agotado»: la
+        línea se vende a pedido con su plazo. Extiende la vida del carrito
+        (`CART_TTL_DAYS`) y renueva la cookie como mucho una vez por hora.
       tags: [Carrito]
       security: [{ cartSession: [] }, {}]
       responses:
         "200":
-          description: Carrito revalidado
+          description: Carrito
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Cart" }
-        "429": { $ref: "#/components/responses/TooManyRequests" }
   /cart/items:
     post:
       operationId: addCartItem
       summary: Agregar una variante al carrito
       description: |
-        Crea la sesión opaca de carrito si no existe (Set-Cookie `tk_carrito`; en
-        producción `__Host-tk_carrito`). Al crearse, la clave CSRF de la sesión
-        cambia: pedir un token nuevo en GET /csrf antes de la siguiente modificación.
-        La misma combinación de variante, extras y textos suma unidades a su
-        línea. Máximo 9 unidades por SKU (sumando sus líneas) y 30 líneas. El
-        stock no limita la compra: todo se fabrica a pedido.
+        Crea la sesión opaca de carrito si no existe (`Set-Cookie: tk_carrito`,
+        HttpOnly, SameSite=Lax; `__Host-tk_carrito` y Secure en producción). Al
+        crearla cambia la clave de sesión del CSRF, así que la misma respuesta trae
+        un token nuevo en `Set-Cookie: tk_csrf` y en la cabecera `X-CSRF-Token`
+        (Next.js lo usa en el siguiente formulario sin pedir `/csrf`).
+
+        Variante activa de un producto visible (404 si no). Los extras deben estar
+        ofrecidos por el producto; los que piden texto lo exigen con su largo
+        máximo efectivo. La misma combinación SKU + extras + textos (normalizados)
+        suma cantidad; otra combinación es otra línea. Máximo 9 unidades por SKU
+        y 30 líneas (422). Agregar NO reserva stock (RN-04).
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }, { csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
@@ -293,38 +300,40 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/AddCartItem" }
-            example: { sku: TK-6536, quantity: 1, extras: [{ code: armado }] }
+            schema: { $ref: "#/components/schemas/AddCartItemInput" }
       responses:
         "201":
           description: Carrito actualizado
           headers:
-            Set-Cookie:
-              description: Cookie del carrito (creada o renovada por 30 días).
-              schema: { type: string }
+            X-CSRF-Token:
+              description: Solo al crear el carrito; token CSRF atado a la nueva sesión.
+              schema: { $ref: "#/components/schemas/CsrfToken" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /cart/items/{id}:
     parameters:
-      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: id
+        in: path
+        required: true
+        description: Id de la línea (`CartLine.id`). Una línea de otro carrito responde 404.
+        schema: { type: string, format: uuid }
       - $ref: "#/components/parameters/CsrfTokenHeader"
     patch:
       operationId: updateCartItem
-      summary: Cambiar la cantidad de una línea
-      description: Cantidad 0 quita la línea. El máximo por SKU cuenta las demás líneas del mismo SKU.
+      summary: Cambiar la cantidad de una línea (1 a 9)
+      description: Para quitarla se usa DELETE. Responde el carrito con los avisos de la limpieza.
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/UpdateCartItem" }
+            schema: { $ref: "#/components/schemas/UpdateCartItemInput" }
       responses:
         "200":
           description: Carrito actualizado
@@ -352,46 +361,37 @@ paths:
       - $ref: "#/components/parameters/CsrfTokenHeader"
     post:
       operationId: applyCartCoupon
-      summary: Aplicar un cupón
+      summary: Aplicar un cupón (reemplaza al anterior)
       description: |
-        Un cupón por carrito (reemplaza al anterior; RN-01: no se acumulan). El
-        código se normaliza (mayúsculas, sin espacios). Se valida vigencia (día en
-        Chile), estado y cupo con el subtotal de hoy; el porcentaje se redondea al
-        peso y el descuento no aplica al despacho. El uso NO se reserva aquí: se
-        reserva al crear el pedido (LN-09), así que un cupón puede agotarse antes de
-        pagar y `GET /cart` lo informará con `coupon.valid: false`.
+        Uno por carrito (no se acumulan, RN-01). El código se normaliza (mayúsculas,
+        sin espacios). Debe estar activo, vigente hoy en días de Chile (ambos
+        extremos inclusive) y con cupo (`usesCount < maxUses`). El descuento se
+        calcula solo sobre el subtotal elegible (productos y extras, nunca el
+        despacho); el porcentaje se redondea al peso y nunca supera ese subtotal.
+        **No reserva usos**: eso ocurre al crear el pedido (LN-09).
+
+        Rechazos (422, `details.reason`): `empty` («Escribe el código de tu
+        cupón.»), `not_found`, `inactive`, `not_started`, `expired`, `exhausted`
+        (todos «El cupón «X» no existe o ya no está vigente.») y `empty_cart`
+        («Agrega productos antes de aplicar un cupón.»). Sin carrito no crea filas.
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: { type: string, maxLength: 40 }
-            example: { code: APRENDER10 }
+            schema: { $ref: "#/components/schemas/ApplyCouponInput" }
       responses:
         "200":
-          description: Carrito con el cupón aplicado
+          description: Carrito con descuento
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409":
-          description: |
-            El cupón no se puede usar, o el carrito está vacío. `details.reason`:
-            `not_found`, `inactive`, `not_started`, `expired` o `exhausted`.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorBody" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: removeCartCoupon
       summary: Quitar el cupón
-      description: Idempotente; sin carrito responde un carrito vacío.
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
       responses:
@@ -407,50 +407,38 @@ paths:
       summary: Costo de entrega del carrito
       description: |
         Cambio del cliente: no hay despacho a todo Chile. `retiro` (en taller) es
-        siempre gratis. `despacho` (a coordinar) es gratis desde el umbral
-        configurado (medido sobre el subtotal con descuento) si la zona lo admite;
-        si no, la tarifa de la zona de la comuna. Sin zona habilitada o con tarifa a
-        coordinar viene `cost: null` ("por confirmar"), que no se suma al total
-        (RF-08, RF-11). Sin carrito, cotiza sobre un subtotal 0.
+        siempre gratis (422 si está deshabilitado). `despacho` (a coordinar) exige
+        `region` y `commune` (la comuna se compara sin tildes ni mayúsculas):
+        - zona activa y elegible con el umbral alcanzado → `cost: 0`, `threshold`;
+        - zona con tarifa → `cost`, `zone`;
+        - zona sin tarifa → `cost: null`, `pending_rate` («por confirmar»);
+        - comuna sin zona activa → `cost: null`, `coordinate` («a coordinar»).
+
+        El umbral se calcula sobre subtotal elegible − descuento del carrito
+        (RF-08) y solo en zonas habilitadas y elegibles. El descuento nunca se
+        aplica al despacho, y un `cost: null` no se suma al total (RF-11). La
+        cotización sale del puerto `ShippingQuoter` (hoy, zonas del panel).
       tags: [Carrito]
       security: [{ cartSession: [] }, {}]
       parameters:
-        - {
-            name: method,
-            in: query,
-            required: true,
-            schema: { type: string, enum: [despacho, retiro] },
-          }
-        - {
-            name: region,
-            in: query,
-            description: Código de región (p. ej. AR,
-            RM),
-            schema: { type: string, pattern: "^[A-Z]{2}$" },
-          }
-        - {
-            name: commune,
-            in: query,
-            description: Comuna (sin distinguir mayúsculas),
-            schema: { type: string, maxLength: 80 },
-          }
+        - name: method
+          in: query
+          required: true
+          schema: { type: string, enum: [despacho, retiro] }
+        - name: region
+          in: query
+          description: Código de región ("RM"). Obligatorio con despacho.
+          schema: { type: string, maxLength: 4 }
+        - name: commune
+          in: query
+          description: Comuna. Obligatoria con despacho.
+          schema: { type: string, maxLength: 80 }
       responses:
         "200":
           description: Cotización
           content:
             application/json:
-              schema:
-                type: object
-                required: [method, cost, reason, leadTime]
-                properties:
-                  method: { type: string, enum: [despacho, retiro] }
-                  cost:
-                    type: [integer, "null"]
-                    description: CLP; null = por confirmar
-                  reason: { type: string, enum: [pickup, threshold, zone] }
-                  leadTime:
-                    type: [string, "null"]
-                    description: Plazo de la zona, cuando hay una habilitada
+              schema: { $ref: "#/components/schemas/ShippingQuote" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
   # ───────────────────────── Pedidos de invitado (LN-09) ─────────────────────────
@@ -491,6 +479,7 @@ paths:
                 }
               delivery: { method: retiro }
               billing: { document: boleta }
+              expectedTotal: 50000
               termsAccepted: true
       responses:
         "200":
@@ -506,9 +495,14 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409":
           description: |
-            No se creó el pedido. `details.reason`: `empty_cart`, `cart_blocked`,
-            `cart_changed` (revisar el carrito antes de pagar), `coupon_invalid`,
-            `coupon_exhausted`, `pickup_disabled`, `idempotency_mismatch` o `in_progress`.
+            No se creó el pedido. `details.reason`: `empty_cart`; `cart_blocked`
+            (un producto ya no se vende), `coupon_invalid` (el cupón dejó de valer) o
+            `cart_changed` (extra retirado o cantidad ajustada), con los avisos en
+            `details.notices` (revisar GET /cart antes de pagar); `cart_unpriced`
+            (un producto quedó sin precio); `coupon_exhausted` (otra
+            compra se llevó el último uso); `total_changed` (el total de hoy no es
+            `expectedTotal`; `details.totals` trae el vigente); `pickup_disabled`; `idempotency_mismatch`
+            o `in_progress`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorBody" }
@@ -827,32 +821,74 @@ paths:
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
   # ───────────────────────── Panel: catálogo e inventario (LN-12) ─────────────────────────
+  # Solo Administrador (RF-26, RF-31: el Operador no modifica ni consulta el catálogo
+  # del panel). Cada cambio queda en audit_log con actor, antes/después y requestId.
   /admin/products:
     get:
       operationId: adminListProducts
-      summary: "[Pendiente LN-12] Productos del panel"
-      x-pending-task: LN-12
-      x-roles: [admin, operator]
+      summary: Productos del panel (todos los estados)
+      description: |
+        Búsqueda por nombre o SKU (sin distinguir mayúsculas), filtro por estado y
+        por categoría (principal o adicional), paginado. Más recientes primero.
+      x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [] }]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PageSize"
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, active, inactive] } }
+        - { name: categoryId, in: query, schema: { type: string, format: uuid } }
       responses:
-        "200": { description: Página de productos }
+        "200":
+          description: Página de productos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta]
+                properties:
+                  items:
+                    { type: array, items: { $ref: "#/components/schemas/AdminProductSummary" } }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
     post:
       operationId: adminCreateProduct
-      summary: "[Pendiente LN-12] Crear producto con variantes e imágenes"
-      x-pending-task: LN-12
+      summary: Crear producto con variantes, categorías y extras
+      description: |
+        El slug se deriva del nombre y se hace único ("silla", "silla-2"). El SKU se
+        guarda en mayúsculas y es único sin distinguir mayúsculas (RF-26). Importes
+        enteros ≥ 0 (RN-01); el precio anterior debe ser igual o mayor al precio, y
+        si es igual se guarda null (sin oferta). `stockPhysical` de una variante
+        nueva queda como movimiento "Stock inicial". Las imágenes se suben después
+        (`POST /admin/products/{id}/images`), así que un producto nuevo normalmente
+        nace como `draft`.
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminProductCreate" }
+            example:
+              name: Mesa Pikler
+              description: Mesa de madera para sala cuna.
+              categoryId: 0195f3a0-1b2c-7d3e-8f40-1a2b3c4d5e6f
+              optionName: Tamaño
+              variants:
+                - { sku: TK-MESA-S, optionLabel: Chica, price: 59990, stockPhysical: 2 }
+                - { sku: TK-MESA-L, optionLabel: Grande, price: 79990, compareAtPrice: 89990 }
+              extras: [{ code: nombre, price: 5000, textMaxLength: 12 }]
       responses:
-        "201": { description: Producto creado }
+        "201":
+          description: Producto creado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminProduct" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
@@ -862,27 +898,48 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     get:
       operationId: adminGetProduct
-      summary: "[Pendiente LN-12] Producto con variantes, imágenes y stock"
-      x-pending-task: LN-12
-      x-roles: [admin, operator]
+      summary: Producto con variantes (activas e inactivas), imágenes, categorías, extras y stock
+      x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [] }]
       responses:
-        "200": { description: Producto }
+        "200":
+          description: Producto
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminProduct" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       operationId: adminUpdateProduct
-      summary: "[Pendiente LN-12] Editar producto, variantes e imágenes"
-      x-pending-task: LN-12
+      summary: Editar producto, variantes, categorías y extras
+      description: |
+        Campos parciales. `variants` y `extras`, si vienen, son la lista completa:
+        - Variante con `id`: se actualiza. Sin `id`: se crea.
+        - Variante que no viene: con unidades reservadas → 409; con historial
+          (pedidos, carritos, reservas o movimientos) → se desactiva; sin nada → se borra.
+        - El stock físico de una variante existente no se cambia aquí: se usa
+          `POST /admin/products/{id}/stock-adjustments` (con motivo, RF-34).
+        Publicar (`status: active`) exige categoría principal activa, al menos una
+        variante activa, precio en todas las activas y una imagen con texto
+        alternativo; la primera vez fija `publishedAt`. El slug no cambia. Editar no
+        modifica pedidos anteriores (RN-02).
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminProductUpdate" }
       responses:
-        "200": { description: Producto actualizado }
+        "200":
+          description: Producto actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminProduct" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -890,8 +947,8 @@ paths:
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: adminDeactivateProduct
-      summary: "[Pendiente LN-12] Desactivar producto (no borra el historial)"
-      x-pending-task: LN-12
+      summary: Desactivar producto (no borra el historial)
+      description: Pasa a `inactive`. No borra el producto, sus variantes ni sus pedidos (RF-26).
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
@@ -901,51 +958,231 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /admin/products/{id}/images:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: adminUploadProductImage
+      summary: Subir una imagen del producto (multipart)
+      description: |
+        Única operación que acepta `multipart/form-data`. JPG, PNG o WebP
+        verificados por sus bytes iniciales (no por la extensión), máximo 2 MB
+        (413). El nombre del archivo lo genera el servidor; el ancho y alto se leen
+        del encabezado. Sin `sortOrder`, queda al final.
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, alt]
+              properties:
+                file: { type: string, format: binary, description: JPG, PNG o WebP de hasta 2 MB }
+                alt: { type: string, maxLength: 160, description: Texto alternativo (obligatorio) }
+                sortOrder: { type: integer, minimum: 0 }
+                variantId: { type: string, format: uuid, description: Variante de este producto }
+      responses:
+        "201":
+          description: Imagen guardada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminImage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/products/{id}/images/order:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    put:
+      operationId: adminReorderProductImages
+      summary: Reordenar las imágenes del producto
+      description: "`imageIds` debe traer todas las imágenes del producto, una vez cada una."
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [imageIds]
+              properties:
+                imageIds:
+                  { type: array, minItems: 1, maxItems: 100, items: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Imágenes en el nuevo orden
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminImage" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/products/{id}/images/{imageId}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+      - { name: imageId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: adminUpdateProductImage
+      summary: Editar el texto alternativo o la variante de una imagen
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                alt: { type: string, minLength: 1, maxLength: 160 }
+                variantId: { type: [string, "null"], format: uuid }
+      responses:
+        "200":
+          description: Imagen actualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminImage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: adminDeleteProductImage
+      summary: Borrar una imagen (y su archivo)
+      description: 409 si es la última imagen de un producto publicado.
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      responses:
+        "204": { description: Imagen borrada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /admin/products/{id}/stock-adjustments:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
     post:
       operationId: adminAdjustStock
-      summary: "[Pendiente LN-12] Ajuste de inventario de una variante"
+      summary: Ajuste de inventario de una variante
       description: |
-        Stock cargado en el inventario del panel (parte en 0 = "a pedido"). Cada
-        ajuste queda en el historial con actor, fecha y motivo (RF-34).
-      x-pending-task: LN-12
+        Fija el nuevo stock físico con un motivo obligatorio (RF-34). Bloquea la
+        fila de la variante (SELECT … FOR UPDATE): un ajuste y una reserva
+        simultáneos se aplican uno tras otro. No puede dejar el físico por debajo
+        de lo reservado (RN-03) ni repetir el valor actual (422). Stock 0 = se vende
+        a pedido. Crea un `InventoryMovement` (`adjustment`) y una fila de audit_log.
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StockAdjustmentInput" }
+            example:
+              {
+                variantId: 0195f3a0-7c1e-7d2a-9b44-2f1c3a5d6e70,
+                stockPhysical: 8,
+                reason: Conteo de bodega,
+              }
       responses:
-        "201": { description: Ajuste registrado }
+        "201":
+          description: Ajuste registrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StockAdjustmentResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/products/{id}/stock-movements:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: adminListStockMovements
+      summary: Historial de movimientos de inventario del producto o de una variante
+      description: Todos los tipos (ajustes, reservas, ventas…), más recientes primero.
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - { name: variantId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Página de movimientos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/InventoryMovement" } }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /admin/categories:
     get:
       operationId: adminListCategories
-      summary: "[Pendiente LN-12] Categorías del panel"
-      x-pending-task: LN-12
-      x-roles: [admin, operator]
+      summary: Categorías del panel (activas e inactivas) con su conteo de productos
+      x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [] }]
       responses:
-        "200": { description: Categorías }
+        "200":
+          description: Categorías
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminCategory" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
       operationId: adminCreateCategory
-      summary: "[Pendiente LN-12] Crear categoría"
-      x-pending-task: LN-12
+      summary: Crear categoría
+      description: |
+        Nombre único sin distinguir mayúsculas, tildes ni espacios de más; el slug
+        se deriva del nombre y también debe ser único.
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminCategoryInput" }
       responses:
-        "201": { description: Categoría creada }
+        "201":
+          description: Categoría creada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCategory" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
@@ -956,28 +1193,63 @@ paths:
       - $ref: "#/components/parameters/CsrfTokenHeader"
     patch:
       operationId: adminUpdateCategory
-      summary: "[Pendiente LN-12] Editar categoría"
-      x-pending-task: LN-12
+      summary: Editar categoría (el slug no cambia)
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminCategoryInput" }
       responses:
-        "200": { description: Categoría actualizada }
+        "200":
+          description: Categoría actualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: adminDeactivateCategory
-      summary: "[Pendiente LN-12] Desactivar categoría"
-      x-pending-task: LN-12
+      summary: Desactivar categoría (avisa si hay productos que la usan)
+      description: |
+        La categoría pasa a inactiva; los productos no cambian. Responde 200 con el
+        conteo de productos que la usan y un aviso: los publicados que la tienen
+        como principal dejan de verse en la tienda hasta reasignarlos o reactivarla.
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
       responses:
-        "204": { description: Categoría desactivada }
+        "200":
+          description: Categoría desactivada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCategoryDeactivation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /admin/extras:
+    get:
+      operationId: adminListExtras
+      summary: Extras que se pueden ofrecer en un producto
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [] }]
+      responses:
+        "200":
+          description: Extras
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminExtra" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   # ───────────────────────── Panel: pedidos (LN-13) ─────────────────────────
   /admin/orders:
@@ -1392,20 +1664,53 @@ paths:
   /admin/emails/{id}/resend:
     post:
       operationId: adminResendEmail
-      summary: "[Pendiente LN-14] Reenvío manual auditado de un correo fallido o incierto"
-      x-pending-task: LN-14
+      summary: Reenvío manual auditado de un correo fallido o incierto
+      description: |
+        Solo Administrador (RF-21). Solo sobre un correo `failed` o `uncertain`.
+        Crea un registro nuevo vinculado al original (`resendOf`) y lo encola: el
+        worker hace un único intento y registra el intento manual con el actor,
+        en el registro nuevo y en el original (cuyo estado pasa a reflejar el
+        resultado). Deja la operación en `audit_log` (`email.resent`). Nunca
+        modifica el pedido ni la solicitud.
+
+        409 si el correo no está fallido o incierto, si ya hay un reenvío en
+        curso, o si es una recuperación de contraseña (se pide de nuevo desde el
+        ingreso al panel).
       x-roles: [admin]
       tags: [Panel - Correos]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/ResourceId"
+        - name: id
+          in: path
+          required: true
+          description: Id del registro de correo (UUID).
+          schema: { type: string, format: uuid }
         - $ref: "#/components/parameters/CsrfTokenHeader"
       responses:
-        "202": { description: Reenvío encolado }
+        "202":
+          description: Reenvío encolado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status, resendOf]
+                properties:
+                  id: { type: string, format: uuid, description: Registro nuevo del reenvío }
+                  status: { type: string, enum: [pending] }
+                  resendOf: { type: string, format: uuid, description: Registro original }
+              example:
+                {
+                  id: 0195f3a0-7c1e-7d2a-9b44-2f1c3a5d6e70,
+                  status: pending,
+                  resendOf: 0195f3a0-1b2c-7d3e-8f40-1a2b3c4d5e6f,
+                }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
 components:
   schemas:
@@ -1572,125 +1877,525 @@ components:
         name: { type: string }
         description: { type: [string, "null"] }
         productCount: { type: integer, minimum: 0 }
-    AddCartItem:
+    PanelUser:
       type: object
-      required: [sku, quantity]
+      required: [id, email, name, role]
       properties:
-        sku: { type: string, maxLength: 60 }
-        quantity: { type: integer, minimum: 1, maximum: 9 }
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { type: string, enum: [admin, operator] }
+    PanelSession:
+      type: object
+      required: [user, expiresAt]
+      properties:
+        user: { $ref: "#/components/schemas/PanelUser" }
+        expiresAt:
+          type: string
+          format: date-time
+          description: Vencimiento absoluto; antes vence si pasan 2 h sin uso.
+    PageMeta:
+      type: object
+      required: [page, pageSize, total, totalPages]
+      properties:
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+    CsrfToken:
+      type: string
+      description: "base64url(nonce).base64url(HMAC-SHA256)"
+      pattern: "^[A-Za-z0-9_-]{43}\\.[A-Za-z0-9_-]{43}$"
+
+    # ── Panel: catálogo e inventario (LN-12) ──
+    AdminCategoryRef:
+      type: object
+      required: [id, slug, name, active]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        active: { type: boolean }
+    AdminVariant:
+      type: object
+      required:
+        [
+          id,
+          sku,
+          optionLabel,
+          color,
+          size,
+          price,
+          compareAtPrice,
+          stockPhysical,
+          stockReserved,
+          available,
+          active,
+          sortOrder,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string, description: En mayúsculas; único sin distinguir mayúsculas. }
+        optionLabel: { type: [string, "null"] }
+        color: { type: [string, "null"] }
+        size: { type: [string, "null"] }
+        price:
+          {
+            type: [integer, "null"],
+            minimum: 0,
+            description: CLP; null = por definir (no se puede publicar).,
+          }
+        compareAtPrice: { type: [integer, "null"], minimum: 0 }
+        stockPhysical: { type: integer, minimum: 0 }
+        stockReserved: { type: integer, minimum: 0 }
+        available:
+          { type: integer, minimum: 0, description: físico − reservado (RN-03); 0 = a pedido. }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+    AdminImage:
+      type: object
+      required: [id, url, alt, width, height, sortOrder, variantId]
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string }
+        alt: { type: string }
+        width: { type: [integer, "null"] }
+        height: { type: [integer, "null"] }
+        sortOrder: { type: integer }
+        variantId: { type: [string, "null"], format: uuid }
+    AdminProductExtra:
+      type: object
+      required:
+        [
+          code,
+          name,
+          requiresText,
+          textLabel,
+          price,
+          textMaxLength,
+          effectivePrice,
+          effectiveTextMaxLength,
+          available,
+          sortOrder,
+        ]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        requiresText: { type: boolean }
+        textLabel: { type: [string, "null"] }
+        price: { type: [integer, "null"], description: Propio del producto; null = el del extra. }
+        textMaxLength:
+          { type: [integer, "null"], description: Propio del producto; null = el del extra. }
+        effectivePrice:
+          { type: [integer, "null"], description: Lo que ve el comprador; null = por confirmar. }
+        effectiveTextMaxLength: { type: [integer, "null"] }
+        available: { type: boolean }
+        sortOrder: { type: integer }
+    AdminProduct:
+      type: object
+      required:
+        [
+          id,
+          slug,
+          name,
+          summary,
+          description,
+          dimensions,
+          ageGroups,
+          materials,
+          specs,
+          optionName,
+          leadTime,
+          status,
+          featured,
+          publishedAt,
+          createdAt,
+          updatedAt,
+          category,
+          additionalCategories,
+          variants,
+          images,
+          extras,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: [string, "null"] }
+        description: { type: string }
+        dimensions: { type: [string, "null"] }
+        ageGroups: { type: array, items: { type: string } }
+        materials: { type: array, items: { type: string } }
+        specs:
+          type: array
+          items:
+            type: object
+            properties: { label: { type: string }, value: { type: string } }
+        optionName: { type: [string, "null"] }
+        leadTime: { type: [string, "null"] }
+        status: { type: string, enum: [draft, active, inactive] }
+        featured: { type: boolean }
+        publishedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        category: { $ref: "#/components/schemas/AdminCategoryRef" }
+        additionalCategories:
+          { type: array, items: { $ref: "#/components/schemas/AdminCategoryRef" } }
+        variants: { type: array, items: { $ref: "#/components/schemas/AdminVariant" } }
+        images: { type: array, items: { $ref: "#/components/schemas/AdminImage" } }
+        extras: { type: array, items: { $ref: "#/components/schemas/AdminProductExtra" } }
+    AdminProductSummary:
+      type: object
+      required:
+        [
+          id,
+          slug,
+          name,
+          status,
+          featured,
+          category,
+          price,
+          variantCount,
+          available,
+          image,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [draft, active, inactive] }
+        featured: { type: boolean }
+        category: { $ref: "#/components/schemas/AdminCategoryRef" }
+        price: { type: [integer, "null"], description: Menor precio entre las variantes activas. }
+        variantCount: { type: integer, description: Variantes activas. }
+        available: { type: integer, description: Unidades disponibles de las variantes activas. }
+        image:
+          oneOf:
+            - type: object
+              required: [url, alt]
+              properties: { url: { type: string }, alt: { type: string } }
+            - type: "null"
+        updatedAt: { type: string, format: date-time }
+    AdminVariantInput:
+      type: object
+      additionalProperties: false
+      required: [sku]
+      properties:
+        id: { type: string, format: uuid, description: Solo al editar una variante existente. }
+        sku: { type: string, maxLength: 40, pattern: "^\\S+$" }
+        optionLabel: { type: [string, "null"], maxLength: 60 }
+        color: { type: [string, "null"], maxLength: 60 }
+        size: { type: [string, "null"], maxLength: 60 }
+        price: { type: [integer, "null"], minimum: 0 }
+        compareAtPrice:
+          type: [integer, "null"]
+          minimum: 0
+          description: Igual o mayor al precio; igual = sin oferta (se guarda null).
+        stockPhysical:
+          type: integer
+          minimum: 0
+          description: Solo en variantes nuevas; las existentes se ajustan con stock-adjustments.
+        active: { type: boolean, default: true }
+    AdminExtraInput:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: { type: string }
+        price: { type: [integer, "null"], minimum: 0 }
+        textMaxLength:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 100
+          description: Solo para extras que piden texto.
+    AdminProductUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        summary: { type: [string, "null"], maxLength: 400 }
+        description: { type: string, minLength: 1, maxLength: 4000 }
+        dimensions: { type: [string, "null"], maxLength: 200 }
+        ageGroups: { type: array, maxItems: 10, items: { type: string } }
+        materials: { type: array, maxItems: 10, items: { type: string } }
+        specs:
+          type: array
+          maxItems: 30
+          items:
+            type: object
+            required: [label, value]
+            properties:
+              label: { type: string, maxLength: 60 }
+              value: { type: string, maxLength: 200 }
+        optionName:
+          type: [string, "null"]
+          maxLength: 40
+          description: Obligatorio con más de una variante activa.
+        leadTime: { type: [string, "null"], maxLength: 60 }
+        featured: { type: boolean }
+        status: { type: string, enum: [draft, active, inactive] }
+        categoryId: { type: string, format: uuid }
+        additionalCategoryIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+        variants:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: "#/components/schemas/AdminVariantInput" }
         extras:
           type: array
-          maxItems: 10
-          description: Extras ofrecidos por el producto; `text` solo en los que piden personalización.
-          items:
-            type: object
-            required: [code]
-            properties:
-              code: { type: string, maxLength: 40 }
-              text: { type: [string, "null"], maxLength: 200 }
-    CreateOrder:
+          maxItems: 20
+          items: { $ref: "#/components/schemas/AdminExtraInput" }
+    AdminProductCreate:
+      allOf:
+        - $ref: "#/components/schemas/AdminProductUpdate"
+        - type: object
+          required: [name, description, categoryId, variants]
+    AdminCategory:
       type: object
-      required: [buyer, delivery, billing, termsAccepted]
+      required: [id, slug, name, description, sortOrder, active, productCount, createdAt, updatedAt]
       properties:
-        buyer:
-          type: object
-          required: [name, rut, email, phone]
-          properties:
-            name: { type: string, maxLength: 120 }
-            rut:
-              {
-                type: string,
-                description: Con o sin puntos y guion; se valida el dígito verificador,
-              }
-            email: { type: string, format: email }
-            phone: { type: string, description: 9 dígitos, con o sin +56 }
-        delivery:
-          oneOf:
-            - type: object
-              required: [method]
-              properties: { method: { const: retiro } }
-            - type: object
-              required: [method, region, commune, street]
-              properties:
-                method: { const: despacho }
-                region:
-                  { type: string, pattern: "^[A-Z]{2}$", description: Código de región (AR, RM…) }
-                commune: { type: string, maxLength: 80 }
-                street: { type: string, maxLength: 160 }
-                unit: { type: [string, "null"], maxLength: 60 }
-                notes: { type: [string, "null"], maxLength: 300 }
-        billing:
-          oneOf:
-            - type: object
-              required: [document]
-              properties: { document: { const: boleta } }
-            - type: object
-              required: [document, rut, businessName, activity, email, address, commune]
-              properties:
-                document: { const: factura }
-                rut: { type: string }
-                businessName: { type: string, maxLength: 160 }
-                activity: { type: string, maxLength: 120 }
-                email: { type: string, format: email }
-                address: { type: string, maxLength: 160 }
-                commune: { type: string, maxLength: 60 }
-                purchaseOrder: { type: boolean, default: false }
-        termsAccepted:
-          { const: true, description: Acepta condiciones de compra, despacho y privacidad (RNF-13) }
-    CreatedOrder:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+        productCount:
+          type: integer
+          minimum: 0
+          description: Productos que la usan como principal o adicional, en cualquier estado.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminCategoryInput:
       type: object
-      required: [orderNumber, status, paymentDueAt, totals, delivery, items, accessToken]
+      additionalProperties: false
+      description: Al crear, `name` es obligatorio. Al editar, campos parciales.
       properties:
-        orderNumber: { type: string, example: TK-1001 }
-        status: { const: pending_payment }
-        paymentDueAt: { type: string, format: date-time, description: La reserva vence ahí (RN-04) }
-        totals:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        description: { type: [string, "null"], maxLength: 500 }
+        sortOrder: { type: integer, minimum: 0 }
+        active: { type: boolean }
+    AdminCategoryDeactivation:
+      type: object
+      required: [category, productsUsingCount, hiddenProductsCount, warning]
+      properties:
+        category: { $ref: "#/components/schemas/AdminCategory" }
+        productsUsingCount: { type: integer, minimum: 0 }
+        hiddenProductsCount:
+          type: integer
+          minimum: 0
+          description: Publicados que la tienen como principal (dejan de verse en la tienda).
+        warning: { type: [string, "null"] }
+    AdminExtra:
+      type: object
+      required: [id, code, name, price, available, requiresText, textLabel, textMaxLength]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        price: { type: [integer, "null"] }
+        available: { type: boolean }
+        requiresText: { type: boolean }
+        textLabel: { type: [string, "null"] }
+        textMaxLength: { type: [integer, "null"] }
+    StockAdjustmentInput:
+      type: object
+      additionalProperties: false
+      required: [variantId, stockPhysical, reason]
+      properties:
+        variantId: { type: string, format: uuid }
+        stockPhysical:
+          type: integer
+          minimum: 0
+          description: Nuevo stock físico (absoluto), no menor que lo reservado.
+        reason: { type: string, minLength: 1, maxLength: 200 }
+    InventoryMovement:
+      type: object
+      required:
+        [
+          id,
+          createdAt,
+          kind,
+          variantId,
+          sku,
+          physicalBefore,
+          physicalAfter,
+          physicalDelta,
+          reservedBefore,
+          reservedAfter,
+          reservedDelta,
+          reason,
+          orderId,
+          actorLabel,
+          actorName,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        kind: { type: string, enum: [reservation, release, sale, adjustment, restock] }
+        variantId: { type: string, format: uuid }
+        sku: { type: string }
+        physicalBefore: { type: integer }
+        physicalAfter: { type: integer }
+        physicalDelta: { type: integer }
+        reservedBefore: { type: integer }
+        reservedAfter: { type: integer }
+        reservedDelta: { type: integer }
+        reason: { type: string }
+        orderId: { type: [string, "null"], format: uuid }
+        actorLabel:
+          type: string
+          description: 'Rol al momento ("Administrador" o "Sistema").'
+        actorName: { type: [string, "null"] }
+    StockAdjustmentResult:
+      type: object
+      required: [variant, movement]
+      properties:
+        variant:
           type: object
-          required: [subtotal, discount, shipping, total]
+          required: [id, sku, stockPhysical, stockReserved, available]
           properties:
-            subtotal: { type: integer }
-            discount: { type: integer }
-            shipping:
-              { type: [integer, "null"], description: null = despacho por confirmar (no suma) }
-            total: { type: integer }
-        delivery:
+            id: { type: string, format: uuid }
+            sku: { type: string }
+            stockPhysical: { type: integer }
+            stockReserved: { type: integer }
+            available: { type: integer }
+        movement: { $ref: "#/components/schemas/InventoryMovement" }
+    # ── Carrito (LN-06) ──
+    CartNotice:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [product_removed, extra_removed, quantity_adjusted, unpriced, coupon_removed]
+        message: { type: string, description: Texto para el comprador (español). }
+    CartLine:
+      type: object
+      required:
+        - id
+        - sku
+        - optionLabel
+        - quantity
+        - status
+        - product
+        - variantPrice
+        - compareAtPrice
+        - unitPrice
+        - lineTotal
+        - extras
+        - availability
+        - notices
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string }
+        optionLabel: { type: [string, "null"] }
+        quantity: { type: integer, minimum: 1, maximum: 9 }
+        status:
+          type: string
+          enum: [ok, unpriced, unavailable]
+          description: |
+            `unavailable`: el producto o la variante ya no se vende (fuera de los
+            totales; se quita en la siguiente escritura). `unpriced`: sin precio
+            definido (bloquea el pago).
+        product:
           type: object
-          required: [method, leadTime]
+          required: [slug, name, leadTime, image]
           properties:
-            method: { type: string, enum: [retiro, despacho] }
-            leadTime: { type: [string, "null"] }
-        items:
+            slug: { type: string }
+            name: { type: string }
+            leadTime:
+              type: [string, "null"]
+              description: Plazo a pedido; null = plazo general de la tienda.
+            image:
+              oneOf:
+                - { $ref: "#/components/schemas/Image" }
+                - { type: "null" }
+        variantPrice: { type: [integer, "null"] }
+        compareAtPrice: { type: [integer, "null"] }
+        unitPrice:
+          type: [integer, "null"]
+          description: Variante + extras con precio, por unidad (CLP).
+        lineTotal: { type: [integer, "null"] }
+        extras:
           type: array
           items:
             type: object
-            required:
-              [
-                sku,
-                productName,
-                optionLabel,
-                quantity,
-                unitPrice,
-                extrasUnitPrice,
-                lineTotal,
-                madeToOrder,
-                leadTime,
-                extras,
-              ]
+            required: [code, name, price, text]
             properties:
-              sku: { type: string }
-              productName: { type: string }
-              optionLabel: { type: [string, "null"] }
-              quantity: { type: integer }
-              unitPrice: { type: integer }
-              extrasUnitPrice: { type: integer }
-              lineTotal: { type: integer }
-              madeToOrder:
-                { type: boolean, description: No alcanzaron las unidades terminadas (UI-11) }
-              leadTime: { type: [string, "null"] }
-              extras: { type: array, items: { type: object } }
-        accessToken:
-          type: string
-          description: Credencial para X-Order-Access (ver orderAccess). Guardarla para ver y pagar el pedido.
+              code: { type: string }
+              name: { type: string }
+              price:
+                type: [integer, "null"]
+                description: null = por confirmar (no suma).
+              text: { type: [string, "null"] }
+        availability:
+          type: object
+          required: [status, inStock, leadTime, message]
+          properties:
+            status: { type: string, enum: [en_stock, mixto, a_pedido] }
+            inStock: { type: integer }
+            leadTime: { type: [string, "null"] }
+            message: { type: string }
+        notices:
+          type: array
+          items: { $ref: "#/components/schemas/CartNotice" }
+    Cart:
+      type: object
+      required: [lines, notices, coupon, totals, freeShipping, canCheckout]
+      properties:
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/CartLine" }
+        notices:
+          type: array
+          description: Ajustes del carrito (productos quitados, cupón que dejó de valer…).
+          items: { $ref: "#/components/schemas/CartNotice" }
+        coupon:
+          oneOf:
+            - type: object
+              required: [code, kind, value, discount, valid, reason]
+              properties:
+                code: { type: string }
+                kind: { type: string, enum: [percent, amount] }
+                value: { type: integer }
+                discount: { type: integer }
+                valid: { type: boolean }
+                reason:
+                  type: [string, "null"]
+                  enum: [inactive, not_started, expired, exhausted, null]
+            - { type: "null" }
+        totals:
+          type: object
+          required: [units, subtotal, discount, totalWithoutShipping, unpriced]
+          properties:
+            units: { type: integer }
+            subtotal:
+              type: integer
+              description: Productos y extras con precio (subtotal elegible).
+            discount: { type: integer }
+            totalWithoutShipping: { type: integer, description: subtotal − descuento. }
+            unpriced:
+              type: array
+              description: Productos o servicios con precio por confirmar (no suman).
+              items: { type: string }
+        freeShipping:
+          description: Avance hacia el despacho gratis sobre subtotal − descuento; null sin umbral.
+          oneOf:
+            - type: object
+              required: [threshold, remaining, percent, reached]
+              properties:
+                threshold: { type: integer }
+                remaining: { type: integer }
+                percent: { type: integer }
+                reached: { type: boolean }
+            - { type: "null" }
+        canCheckout:
+          type: boolean
+          description: Hay algo que comprar y ninguna línea sin precio.
+
     GuestOrder:
       type: object
       required:
@@ -1797,129 +2502,182 @@ components:
               status: { type: string }
               label: { type: string }
               at: { type: string, format: date-time }
-    UpdateCartItem:
+
+    CreatedOrder:
       type: object
-      required: [quantity]
+      required: [orderNumber, status, paymentDueAt, totals, delivery, items, accessToken]
       properties:
-        quantity: { type: integer, minimum: 0, maximum: 9, description: 0 quita la línea }
-    CartLine:
-      type: object
-      required:
-        [
-          id,
-          sku,
-          productSlug,
-          productName,
-          optionLabel,
-          imageUrl,
-          quantity,
-          unitPrice,
-          compareAtPrice,
-          extras,
-          extrasUnitPrice,
-          lineTotal,
-          madeToOrder,
-          leadTime,
-          status,
-          note,
-        ]
-      properties:
-        id: { type: string, format: uuid }
-        sku: { type: string }
-        productSlug: { type: string }
-        productName: { type: string }
-        optionLabel: { type: [string, "null"] }
-        imageUrl: { type: [string, "null"] }
-        quantity: { type: integer, minimum: 1, maximum: 9 }
-        unitPrice:
-          { type: [integer, "null"], description: CLP; null si la línea no se puede comprar }
-        compareAtPrice: { type: [integer, "null"] }
-        extras:
-          type: array
-          items:
-            type: object
-            required: [code, name, unitPrice, text]
-            properties:
-              code: { type: string }
-              name: { type: string }
-              unitPrice: { type: [integer, "null"], description: Por unidad; null = por confirmar }
-              text: { type: [string, "null"] }
-        extrasUnitPrice: { type: integer, minimum: 0 }
-        lineTotal:
-          type: [integer, "null"]
-          description: (precio + extras) × cantidad; null si la línea no se puede comprar
-        madeToOrder:
-          type: boolean
-          description: Hay menos unidades terminadas que las pedidas; se fabrica a pedido (UI-11)
-        leadTime: { type: [string, "null"], description: Plazo a pedido, cuando corresponde }
-        status:
-          type: string
-          enum: [ok, adjusted, unavailable]
-          description: "`unavailable`: retirado o sin precio; bloquea el pago hasta quitarla"
-        note: { type: [string, "null"], description: Qué se ajustó o por qué no se puede comprar }
-    Cart:
-      type: object
-      required: [lines, units, unpriced, coupon, totals, blocked, changed, checkoutReady]
-      properties:
-        lines: { type: array, items: { $ref: "#/components/schemas/CartLine" } }
-        units: { type: integer, minimum: 0 }
-        unpriced:
-          type: array
-          items: { type: string }
-          description: Extras con precio por confirmar (no suman al total)
-        coupon:
-          oneOf:
-            - type: "null"
-            - type: object
-              required: [code, valid, discount, message]
-              properties:
-                code: { type: string }
-                valid: { type: boolean }
-                discount: { type: integer, minimum: 0 }
-                message: { type: [string, "null"] }
+        orderNumber: { type: string, example: TK-1001 }
+        status: { const: pending_payment }
+        paymentDueAt: { type: string, format: date-time, description: La reserva vence ahí (RN-04) }
         totals:
           type: object
           required: [subtotal, discount, shipping, total]
-          description: total = subtotal − descuento + despacho (RN-01)
           properties:
-            subtotal: { type: integer, minimum: 0 }
-            discount: { type: integer, minimum: 0 }
+            subtotal: { type: integer }
+            discount: { type: integer }
             shipping:
-              type: [integer, "null"]
-              description: Siempre null en el carrito; se cotiza en GET /shipping/quote
-            total: { type: integer, minimum: 0 }
-        blocked: { type: boolean }
-        changed: { type: boolean }
-        checkoutReady: { type: boolean, description: Hay líneas y ninguna bloqueada }
-    PanelUser:
-      type: object
-      required: [id, email, name, role]
-      properties:
-        id: { type: string, format: uuid }
-        email: { type: string, format: email }
-        name: { type: string }
-        role: { type: string, enum: [admin, operator] }
-    PanelSession:
-      type: object
-      required: [user, expiresAt]
-      properties:
-        user: { $ref: "#/components/schemas/PanelUser" }
-        expiresAt:
+              { type: [integer, "null"], description: null = despacho por confirmar (no suma) }
+            total: { type: integer }
+        delivery:
+          type: object
+          required: [method, leadTime]
+          properties:
+            method: { type: string, enum: [retiro, despacho] }
+            leadTime: { type: [string, "null"] }
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              [
+                sku,
+                productName,
+                optionLabel,
+                quantity,
+                unitPrice,
+                extrasUnitPrice,
+                lineTotal,
+                madeToOrder,
+                leadTime,
+                extras,
+              ]
+            properties:
+              sku: { type: string }
+              productName: { type: string }
+              optionLabel: { type: [string, "null"] }
+              quantity: { type: integer }
+              unitPrice: { type: integer }
+              extrasUnitPrice: { type: integer }
+              lineTotal: { type: integer }
+              madeToOrder:
+                { type: boolean, description: No alcanzaron las unidades terminadas (UI-11) }
+              leadTime: { type: [string, "null"] }
+              extras: { type: array, items: { type: object } }
+        accessToken:
           type: string
-          format: date-time
-          description: Vencimiento absoluto; antes vence si pasan 2 h sin uso.
-    PageMeta:
+          description: Credencial para X-Order-Access (ver orderAccess). Guardarla para ver y pagar el pedido.
+
+    CreateOrder:
       type: object
-      required: [page, pageSize, total, totalPages]
+      required: [buyer, delivery, billing, expectedTotal, termsAccepted]
       properties:
-        page: { type: integer, minimum: 1 }
-        pageSize: { type: integer, minimum: 1, maximum: 100 }
-        total: { type: integer, minimum: 0 }
-        totalPages: { type: integer, minimum: 0 }
-    CsrfToken:
-      type: string
-      description: "base64url(nonce).base64url(HMAC-SHA256)"
-      pattern: "^[A-Za-z0-9_-]{43}\\.[A-Za-z0-9_-]{43}$"
+        buyer:
+          type: object
+          required: [name, rut, email, phone]
+          properties:
+            name: { type: string, maxLength: 120 }
+            rut:
+              {
+                type: string,
+                description: Con o sin puntos y guion; se valida el dígito verificador,
+              }
+            email: { type: string, format: email }
+            phone: { type: string, description: 9 dígitos, con o sin +56 }
+        delivery:
+          oneOf:
+            - type: object
+              required: [method]
+              properties: { method: { const: retiro } }
+            - type: object
+              required: [method, region, commune, street]
+              properties:
+                method: { const: despacho }
+                region:
+                  { type: string, pattern: "^[A-Z]{2}$", description: Código de región (AR, RM…) }
+                commune: { type: string, maxLength: 80 }
+                street: { type: string, maxLength: 160 }
+                unit: { type: [string, "null"], maxLength: 60 }
+                notes: { type: [string, "null"], maxLength: 300 }
+        billing:
+          oneOf:
+            - type: object
+              required: [document]
+              properties: { document: { const: boleta } }
+            - type: object
+              required: [document, rut, businessName, activity, email, address, commune]
+              properties:
+                document: { const: factura }
+                rut: { type: string }
+                businessName: { type: string, maxLength: 160 }
+                activity: { type: string, maxLength: 120 }
+                email: { type: string, format: email }
+                address: { type: string, maxLength: 160 }
+                commune: { type: string, maxLength: 60 }
+                purchaseOrder: { type: boolean, default: false }
+        expectedTotal:
+          type: integer
+          minimum: 0
+          description: |
+            Total en CLP que vio y confirmó el comprador (`totals.total` de GET
+            /shipping/quote con la misma entrega). El carrito no guarda precios: si
+            el total de hoy es otro, 409 `total_changed` y no se crea el pedido (RN-02).
+        termsAccepted:
+          { const: true, description: Acepta condiciones de compra, despacho y privacidad (RNF-13) }
+    AddCartItemInput:
+      type: object
+      required: [sku, quantity]
+      properties:
+        sku: { type: string, maxLength: 60 }
+        quantity: { type: integer, minimum: 1, maximum: 9 }
+        extras:
+          type: array
+          maxItems: 10
+          description: Códigos de los extras elegidos.
+          items: { type: string, maxLength: 40 }
+        texts:
+          type: object
+          description: Texto de cada extra personalizable, por código.
+          additionalProperties: { type: string, maxLength: 200 }
+    UpdateCartItemInput:
+      type: object
+      required: [quantity]
+      properties:
+        quantity: { type: integer, minimum: 1, maximum: 9 }
+    ApplyCouponInput:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, maxLength: 60 }
+    ShippingQuote:
+      type: object
+      required: [method, cost, reason, leadTime, pickupDetails, zone, freeShipping, message, totals]
+      properties:
+        method: { type: string, enum: [despacho, retiro] }
+        cost:
+          type: [integer, "null"]
+          description: CLP; null = por confirmar o a coordinar (no se suma).
+        reason: { type: string, enum: [pickup, threshold, zone, pending_rate, coordinate] }
+        leadTime: { type: [string, "null"] }
+        pickupDetails: { type: [string, "null"] }
+        zone:
+          oneOf:
+            - type: object
+              required: [region, commune]
+              properties:
+                region: { type: string }
+                commune: { type: string }
+            - { type: "null" }
+        freeShipping:
+          oneOf:
+            - type: object
+              required: [threshold, remaining, reached]
+              properties:
+                threshold: { type: integer }
+                remaining: { type: integer }
+                reached: { type: boolean }
+            - { type: "null" }
+        message: { type: [string, "null"] }
+        totals:
+          type: object
+          required: [subtotal, discount, shipping, total]
+          properties:
+            subtotal: { type: integer }
+            discount: { type: integer }
+            shipping: { type: [integer, "null"] }
+            total:
+              type: integer
+              description: subtotal − descuento + despacho (un despacho null no suma).
 
   parameters:
     Page:
@@ -2060,7 +2818,7 @@ components:
               requestId: 3f0a9c1e,
             }
     PayloadTooLarge:
-      description: Cuerpo demasiado grande (JSON 100 KB; formularios de Flow 16 KB)
+      description: Cuerpo demasiado grande (JSON 100 KB; formularios de Flow 16 KB; imágenes 2 MB)
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorBody" }
@@ -2072,7 +2830,7 @@ components:
               requestId: 3f0a9c1e,
             }
     UnsupportedMediaType:
-      description: Content-Type no permitido (solo JSON; formularios solo en callbacks de Flow)
+      description: Content-Type no permitido (solo JSON; formularios solo en callbacks de Flow; multipart solo en la subida de imágenes)
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorBody" }
@@ -2149,7 +2907,11 @@ components:
       type: apiKey
       in: cookie
       name: tk_carrito
-      description: Sesión opaca de carrito del invitado (LN-06). No contiene líneas ni precios.
+      description: |
+        Sesión opaca de carrito del invitado (LN-06): `tk_carrito`, o
+        `__Host-tk_carrito` en producción. HttpOnly, SameSite=Lax y Secure en
+        producción. Solo un token aleatorio (en la base, su hash); no contiene
+        líneas ni precios. Vence tras `CART_TTL_DAYS` sin uso (30 por defecto).
     orderAccess:
       type: apiKey
       in: header

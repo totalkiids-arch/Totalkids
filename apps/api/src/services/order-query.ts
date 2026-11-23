@@ -2,7 +2,7 @@ import type { Prisma } from "../generated/prisma/client.js";
 import { formatOrderNumber, parseOrderNumber } from "../domain/checkout.js";
 import { errors } from "../lib/errors.js";
 import { issueOrderAccess, verifyOrderAccess } from "../lib/order-access.js";
-import type { Db } from "./cart-store.js";
+import type { Db } from "./orders.js";
 
 /**
  * Consulta del pedido por el comprador invitado (LN-09, RF-23, RF-36). No hay

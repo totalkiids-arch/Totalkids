@@ -10,6 +10,7 @@ import { methodNotAllowed } from "../middleware/method-not-allowed.js";
 import { publicFormLimiter } from "../middleware/rate-limit.js";
 import { getGuestOrder, lookupOrder } from "../services/order-query.js";
 import { createOrder, type CreateOrderInput } from "../services/orders.js";
+import type { ShippingQuoter } from "../services/shipping/quoter.js";
 
 const lookupBody = z.object({
   orderNumber: z.string().trim().min(1).max(20),
@@ -81,6 +82,11 @@ const orderBody = z.object({
       purchaseOrder: z.boolean().default(false),
     }),
   ]),
+  /**
+   * Total que vio y confirmó el comprador (GET /shipping/quote → totals.total). El
+   * carrito no guarda precios: si el de hoy no coincide, 409 y no se cobra (RN-02).
+   */
+  expectedTotal: z.number().int().min(0).max(1_000_000_000),
   /** Aceptación de las condiciones de compra, despacho y privacidad (RNF-13). */
   termsAccepted: z.literal(true, "Debes aceptar las condiciones para comprar"),
 });
@@ -96,11 +102,14 @@ export function ordersRouter({
   prisma,
   isProduction,
   accessSecret,
+  quoter,
 }: {
   prisma: PrismaClient;
   isProduction: boolean;
   /** Secreto del servidor para la credencial X-Order-Access. */
   accessSecret: string;
+  /** Cotización de la entrega (el mismo puerto que GET /shipping/quote). */
+  quoter: ShippingQuoter;
 }): Router {
   const router = Router();
 
@@ -126,6 +135,7 @@ export function ordersRouter({
           idempotencyKey: key,
           input: input as CreateOrderInput,
           accessSecret,
+          quoter,
         });
         res.status(status).json(order);
       }),

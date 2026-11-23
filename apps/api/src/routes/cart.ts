@@ -1,71 +1,107 @@
-import { Router } from "express";
+import { type Request, type Response, Router } from "express";
 import { z } from "zod";
 
-import { MAX_QUANTITY_PER_SKU } from "../domain/cart.js";
+import type { Prisma } from "../generated/prisma/client.js";
+import { csrfCookieName, issueCsrfToken } from "../lib/csrf.js";
 import { errors } from "../lib/errors.js";
 import type { PrismaClient } from "../lib/prisma.js";
 import { validated } from "../lib/validation.js";
-import { cartToken, setCartCookie } from "../middleware/cart-session.js";
+import { cartSessionKeyOf, cartToken, setCartCookie } from "../middleware/cart-session.js";
+import type { CsrfSessionKey } from "../middleware/csrf.js";
 import { methodNotAllowed } from "../middleware/method-not-allowed.js";
+import { panelCsrfSessionKey } from "../middleware/panel-auth.js";
 import {
   addItem,
   applyCoupon,
-  getCart,
-  quoteShippingForCart,
+  LINE_NOT_FOUND,
+  readCart,
   removeCoupon,
   removeItem,
   updateItem,
-} from "../services/cart.js";
+  writeCart,
+} from "../services/cart/cart.js";
+import { MAX_QUANTITY_PER_LINE } from "../services/cart/pricing.js";
+import { createCart, findCart, touchCart } from "../services/cart/session.js";
 
-const couponBody = z.object({ code: z.string().trim().min(1).max(40) });
+export interface CartRouterOptions {
+  prisma: PrismaClient;
+  isProduction: boolean;
+  /** Vida del carrito sin uso (CART_TTL_DAYS), en ms. */
+  ttlMs: number;
+  csrfSecret: string;
+  sessionKey: CsrfSessionKey;
+}
 
-const quoteQuery = z.object({
-  method: z.enum(["despacho", "retiro"]),
-  region: z
-    .string()
-    .trim()
-    .regex(/^[A-Z]{2}$/, "Código de región de 2 letras, p. ej. AR")
-    .optional(),
-  commune: z.string().trim().min(1).max(80).optional(),
-});
-
-const extraChoice = z.object({
-  code: z.string().trim().min(1).max(40),
-  text: z.string().max(200).nullish(),
-});
+const quantity = z
+  .number()
+  .int()
+  .min(1, `Elige entre 1 y ${String(MAX_QUANTITY_PER_LINE)} unidades.`)
+  .max(MAX_QUANTITY_PER_LINE, `Elige entre 1 y ${String(MAX_QUANTITY_PER_LINE)} unidades.`);
 
 const addBody = z.object({
   sku: z.string().trim().min(1).max(60),
-  quantity: z.number().int().min(1).max(MAX_QUANTITY_PER_SKU),
-  extras: z.array(extraChoice).max(10).default([]),
+  quantity,
+  /** Códigos de los extras elegidos («armado», «nombre»). */
+  extras: z.array(z.string().trim().min(1).max(40)).max(10).default([]),
+  /** Texto de cada extra personalizable, por código. */
+  texts: z.record(z.string().max(40), z.string().max(200)).default({}),
 });
 
-const updateBody = z.object({
-  quantity: z.number().int().min(0).max(MAX_QUANTITY_PER_SKU),
-});
+const lineParams = z.object({ id: z.string().max(64) });
+const updateBody = z.object({ quantity });
+const couponBody = z.object({ code: z.string().max(60) });
 
-// Un id mal formado no puede ser una línea del carrito: 404 igual que uno inexistente.
-const lineParams = z.object({ id: z.string().max(60) });
+/** Formato de los ids de línea; otro valor no puede existir (404, como uno ajeno). */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Carrito de invitado (LN-06, RF-05 a RF-08). La sesión es la cookie opaca
- * tk_carrito; no hay cuentas de comprador. Las modificaciones exigen CSRF
- * (middleware global) y renuevan la cookie.
+ * Carrito del invitado (LN-06, RF-05 a RF-08). Solo el carrito propio: la
+ * cookie opaca `tk_carrito` lo identifica y nunca se recibe un id de carrito.
  */
-export function cartRouter({
-  prisma,
-  isProduction,
-}: {
-  prisma: PrismaClient;
-  isProduction: boolean;
-}): Router {
+export function cartRouter(options: CartRouterOptions): Router {
+  const { prisma, isProduction, ttlMs } = options;
+  const panelKey = panelCsrfSessionKey(isProduction);
   const router = Router();
+
+  /** Carrito vigente de la cookie, extendiendo su vida si corresponde. */
+  async function currentCart(req: Request, res: Response) {
+    const token = cartToken(req, isProduction);
+    const cart = token ? await findCart(prisma, token) : null;
+    if (token && cart && (await touchCart(prisma, cart, ttlMs))) {
+      setCartCookie(res, token, isProduction, ttlMs);
+    }
+    return cart;
+  }
+
+  /**
+   * Carrito vigente o uno nuevo. Al crearlo cambia la clave de sesión CSRF, así
+   * que en la misma respuesta va un token nuevo (cookie + cabecera X-CSRF-Token)
+   * y Next.js no necesita volver a pedir /csrf.
+   */
+  async function cartForWrite(req: Request, res: Response) {
+    const existing = await currentCart(req, res);
+    if (existing) return existing;
+    const { cart, token } = await createCart(prisma, ttlMs);
+    setCartCookie(res, token, isProduction, ttlMs);
+    const key = panelKey(req) || cartSessionKeyOf(token);
+    if (key !== options.sessionKey(req)) {
+      const csrfToken = issueCsrfToken(options.csrfSecret, key);
+      res.cookie(csrfCookieName(isProduction), csrfToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: isProduction,
+        path: "/",
+      });
+      res.setHeader("X-CSRF-Token", csrfToken);
+    }
+    return cart;
+  }
 
   router
     .route("/cart")
     .get(async (req, res) => {
-      res.json(await getCart(prisma, cartToken(req, isProduction)));
+      const cart = await currentCart(req, res);
+      res.json(await readCart(prisma, cart?.id ?? null));
     })
     .all(methodNotAllowed("GET"));
 
@@ -73,34 +109,38 @@ export function cartRouter({
     .route("/cart/items")
     .post(
       validated({ body: addBody }, async ({ body }, req, res) => {
-        const token = cartToken(req, isProduction);
-        const { cart, newToken } = await addItem(prisma, token, body);
-        const current = newToken ?? token;
-        if (current) setCartCookie(res, current, isProduction);
-        res.status(201).json(cart);
+        const cart = await cartForWrite(req, res);
+        const view = await writeCart(prisma, cart.id, (tx) => addItem(tx, cart.id, body));
+        res.status(201).json(view);
       }),
     )
     .all(methodNotAllowed("POST"));
 
+  /** Escritura sobre una línea del carrito propio; sin carrito o id inválido, 404. */
+  async function lineWrite(
+    req: Request,
+    res: Response,
+    rawId: string,
+    operation: (tx: Prisma.TransactionClient, cartId: string, id: string) => Promise<void>,
+  ) {
+    const cart = await currentCart(req, res);
+    if (!cart || !UUID.test(rawId)) throw errors.notFound(LINE_NOT_FOUND);
+    res.json(await writeCart(prisma, cart.id, (tx) => operation(tx, cart.id, rawId)));
+  }
+
   router
     .route("/cart/items/:id")
     .patch(
-      validated({ params: lineParams, body: updateBody }, async ({ params, body }, req, res) => {
-        if (!UUID.test(params.id)) throw errors.notFound("Esa línea ya no está en tu carrito");
-        const token = cartToken(req, isProduction);
-        const cart = await updateItem(prisma, token, params.id, body.quantity);
-        if (token) setCartCookie(res, token, isProduction);
-        res.json(cart);
-      }),
+      validated({ params: lineParams, body: updateBody }, ({ params, body }, req, res) =>
+        lineWrite(req, res, params.id, (tx, cartId, id) =>
+          updateItem(tx, cartId, id, body.quantity),
+        ),
+      ),
     )
     .delete(
-      validated({ params: lineParams }, async ({ params }, req, res) => {
-        if (!UUID.test(params.id)) throw errors.notFound("Esa línea ya no está en tu carrito");
-        const token = cartToken(req, isProduction);
-        const cart = await removeItem(prisma, token, params.id);
-        if (token) setCartCookie(res, token, isProduction);
-        res.json(cart);
-      }),
+      validated({ params: lineParams }, ({ params }, req, res) =>
+        lineWrite(req, res, params.id, removeItem),
+      ),
     )
     .all(methodNotAllowed("PATCH", "DELETE"));
 
@@ -108,25 +148,25 @@ export function cartRouter({
     .route("/cart/coupon")
     .post(
       validated({ body: couponBody }, async ({ body }, req, res) => {
-        const token = cartToken(req, isProduction);
-        const cart = await applyCoupon(prisma, token, body.code);
-        if (token) setCartCookie(res, token, isProduction);
-        res.json(cart);
+        const cart = await currentCart(req, res);
+        // Sin carrito no hay a qué aplicarlo: mismas validaciones, sin crear filas.
+        const cartId = cart?.id ?? null;
+        if (!cartId) {
+          await applyCoupon(prisma, null, body.code); // siempre responde 422
+          return;
+        }
+        res.json(await writeCart(prisma, cartId, (tx) => applyCoupon(tx, cartId, body.code)));
       }),
     )
     .delete(async (req, res) => {
-      res.json(await removeCoupon(prisma, cartToken(req, isProduction)));
+      const cart = await currentCart(req, res);
+      if (!cart) {
+        res.json(await readCart(prisma, null));
+        return;
+      }
+      res.json(await writeCart(prisma, cart.id, (tx) => removeCoupon(tx, cart.id)));
     })
     .all(methodNotAllowed("POST", "DELETE"));
-
-  router
-    .route("/shipping/quote")
-    .get(
-      validated({ query: quoteQuery }, async ({ query }, req, res) => {
-        res.json(await quoteShippingForCart(prisma, cartToken(req, isProduction), query));
-      }),
-    )
-    .all(methodNotAllowed("GET"));
 
   return router;
 }

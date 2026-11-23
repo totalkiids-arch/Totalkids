@@ -5,8 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPrismaClient } from "../src/lib/prisma.js";
 import { verifyOrderAccess } from "../src/lib/order-access.js";
-import { hashToken } from "../src/lib/secrets.js";
-import { CART_COOKIE_DEV } from "../src/middleware/cart-session.js";
+import { CART_COOKIE_DEV, cartSessionKeyOf } from "../src/middleware/cart-session.js";
+import { setSettings } from "./cart-helpers.js";
 import { buildTestApp, csrfHeaders, testEnv } from "./helpers.js";
 
 // Creación del pedido (LN-09) contra totalkids_test. Se omite sin
@@ -39,7 +39,7 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
   };
 
   function session(token?: string) {
-    const csrf = csrfHeaders(token ? `|carrito:${hashToken(token)}` : "");
+    const csrf = csrfHeaders(token ? cartSessionKeyOf(token) : "");
     return { ...csrf, cookie: token ? `${csrf.cookie}; ${CART_COOKIE_DEV}=${token}` : csrf.cookie };
   }
 
@@ -56,10 +56,38 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
     return token ?? "";
   }
 
-  const order = (token: string, body: object = BODY, key = randomUUID()) =>
-    request(app).post("/api/v1/orders").set(session(token)).set("Idempotency-Key", key).send(body);
+  /** Total que vería el comprador con esa entrega (como hace el checkout de la tienda). */
+  async function quotedTotal(token: string, delivery: Record<string, unknown>): Promise<number> {
+    const query = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(delivery)
+          .filter(([k]) => ["method", "region", "commune"].includes(k))
+          .map(([k, v]) => [k, String(v)]),
+      ),
+    );
+    const res = await request(app).get(`/api/v1/shipping/quote?${query}`).set(session(token));
+    expect(res.status).toBe(200);
+    return (res.body as { totals: { total: number } }).totals.total;
+  }
+
+  /** Crea el pedido; sin `expectedTotal` en el cuerpo, usa el total cotizado. */
+  async function order(token: string, body: Record<string, unknown> = BODY, key = randomUUID()) {
+    const expectedTotal =
+      body.expectedTotal ?? (await quotedTotal(token, body.delivery as Record<string, unknown>));
+    return request(app)
+      .post("/api/v1/orders")
+      .set(session(token))
+      .set("Idempotency-Key", key)
+      .send({ ...body, expectedTotal });
+  }
+
+  let previousSettings: Awaited<ReturnType<typeof prisma.setting.findUnique>> = null;
 
   beforeAll(async () => {
+    // Otros archivos cambian la configuración única: retiro habilitado y sin umbral.
+    // Al terminar se deja como estaba (db-integrity espera poder crearla).
+    previousSettings = await prisma.setting.findUnique({ where: { id: 1 } });
+    await setSettings(prisma, { pickupEnabled: true, freeShippingThreshold: null });
     const category = await prisma.category.create({
       data: { slug: `pedidos-${id}`, name: "Pedidos" },
     });
@@ -73,11 +101,11 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
           status: "active",
           publishedAt: new Date("2026-01-01"),
           leadTime: "10 días hábiles",
-          variants: { create: { sku: `TK-${slug}-${id}`, price, stockPhysical } },
+          variants: { create: { sku: `TK-${slug}-${id}`.toUpperCase(), price, stockPhysical } },
         },
       });
       created.products.push(row.id);
-      return `TK-${slug}-${id}`;
+      return `TK-${slug}-${id}`.toUpperCase();
     };
     skuStock = await product("mesa", 50_000, 2);
     skuSolo = await product("silla", 20_000, 1);
@@ -114,6 +142,11 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
     await prisma.productVariant.deleteMany({ where: { productId: { in: created.products } } });
     await prisma.product.deleteMany({ where: { id: { in: created.products } } });
     await prisma.category.deleteMany({ where: { id: created.categoryId } });
+    if (previousSettings) {
+      await prisma.setting.update({ where: { id: 1 }, data: previousSettings });
+    } else {
+      await prisma.setting.deleteMany({ where: { id: 1 } });
+    }
     await prisma.$disconnect();
   });
 
@@ -296,6 +329,27 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
       stockPhysical: 1,
       stockReserved: 1,
     });
+  });
+
+  it("si el precio cambió desde que el comprador vio el total, 409 y no se crea nada", async () => {
+    const token = await cartWith({ sku: skuStock, quantity: 1 });
+    const seen = await quotedTotal(token, { method: "retiro" });
+    await prisma.productVariant.update({ where: { sku: skuStock }, data: { price: 55_000 } });
+    try {
+      const before = await prisma.order.count();
+      const res = await order(token, { ...BODY, expectedTotal: seen });
+      expect(res.status).toBe(409);
+      expect(res.body.details).toMatchObject({
+        reason: "total_changed",
+        totals: { subtotal: 55_000, total: 55_000 },
+      });
+      expect(await prisma.order.count()).toBe(before);
+      expect(
+        (await prisma.productVariant.findUniqueOrThrow({ where: { sku: skuStock } })).stockReserved,
+      ).toBe(0);
+    } finally {
+      await prisma.productVariant.update({ where: { sku: skuStock }, data: { price: 50_000 } });
+    }
   });
 
   it("un carrito con productos retirados no se puede pedir", async () => {

@@ -11,6 +11,7 @@ import {
 } from "../lib/passwords.js";
 import type { PrismaClient } from "../lib/prisma.js";
 import { hashToken, randomToken } from "../lib/secrets.js";
+import { enqueueEmail } from "./email/enqueue.js";
 
 /**
  * Autenticación del equipo del panel (LN-04, RF-31, RNF-01). Los compradores no
@@ -54,7 +55,7 @@ export interface PanelSession {
 
 type Db = Pick<
   PrismaClient,
-  "$transaction" | "user" | "session" | "authToken" | "auditLog" | "outboxJob"
+  "$transaction" | "user" | "session" | "authToken" | "auditLog" | "outboxJob" | "emailLog"
 >;
 
 export function normalizeEmail(email: string): string {
@@ -213,20 +214,22 @@ export async function logout(
 
 /**
  * Pide la recuperación. Si el correo es de una cuenta activa, encola el correo
- * en outbox (lo envía el worker de LN-14, que llama a `issuePasswordResetToken`).
+ * `password_recovery` (outbox + email_log, LN-14); el worker lo envía y llama a
+ * `issuePasswordResetToken` en ese momento.
  * El payload no lleva el token: el secreto nunca queda guardado en claro.
  * Responde igual exista o no la cuenta.
  */
 export async function requestPasswordReset(db: Db, rawEmail: string): Promise<void> {
   const user = await db.user.findUnique({ where: { email: normalizeEmail(rawEmail) } });
   if (!user || user.status !== "active") return;
-  await db.outboxJob.create({
-    data: {
-      type: "email.password_recovery",
+  await db.$transaction((tx) =>
+    enqueueEmail(tx, {
+      event: "password_recovery",
+      recipient: user.email,
       eventKey: `password_recovery:${user.id}:${randomUUID()}`,
-      payload: { userId: user.id },
-    },
-  });
+      data: { userId: user.id },
+    }),
+  );
 }
 
 /**

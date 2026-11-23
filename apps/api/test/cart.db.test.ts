@@ -1,268 +1,426 @@
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
+import type { PrismaClient } from "../src/lib/prisma.js";
 import { createPrismaClient } from "../src/lib/prisma.js";
 import { hashToken } from "../src/lib/secrets.js";
 import { CART_COOKIE_DEV } from "../src/middleware/cart-session.js";
+import { CartClient, setSettings, shopFixture } from "./cart-helpers.js";
 import { buildTestApp, csrfHeaders } from "./helpers.js";
+import { inRollback } from "./panel-helpers.js";
 
-// API del carrito (LN-06) contra totalkids_test. Requiere docker compose up y
-// pnpm db:migrate:test; se omite sin TEST_DATABASE_URL. Crea su propio catálogo
-// y lo borra al terminar.
+// Carrito (LN-06, RF-05 a RF-08) contra totalkids_test. Cada caso corre en una
+// transacción que se deshace: no altera los conteos de catalog.db.test.ts.
+// Se omite sin TEST_DATABASE_URL.
 const url = process.env.TEST_DATABASE_URL;
 
-describe.skipIf(!url)("carrito de invitado (PostgreSQL real)", () => {
+interface CartBody {
+  lines: {
+    id: string;
+    sku: string;
+    quantity: number;
+    status: string;
+    unitPrice: number | null;
+    lineTotal: number | null;
+    extras: { code: string; price: number | null; text: string | null }[];
+    availability: { status: string; inStock: number; leadTime: string | null; message: string };
+    notices: { code: string; message: string }[];
+  }[];
+  notices: { code: string; message: string }[];
+  totals: {
+    units: number;
+    subtotal: number;
+    discount: number;
+    totalWithoutShipping: number;
+    unpriced: string[];
+  };
+  freeShipping: { threshold: number; remaining: number; percent: number; reached: boolean } | null;
+  canCheckout: boolean;
+}
+
+const body = (res: { body: unknown }) => res.body as CartBody;
+
+describe.skipIf(!url)("carrito /cart (PostgreSQL real)", () => {
   const prisma = createPrismaClient(url ?? "");
-  const app = buildTestApp({ prisma });
-  const created = { categories: [] as string[], products: [] as string[], extras: [] as string[] };
-  let skuCuna = "";
-  let skuMesa = "";
-  let mesaProductId = "";
-
-  /** Cabeceras para modificar: cookie del carrito (si hay) y CSRF atado a esa sesión. */
-  function session(token?: string) {
-    const csrf = csrfHeaders(token ? `|carrito:${hashToken(token)}` : "");
-    return {
-      ...csrf,
-      cookie: token ? `${csrf.cookie}; ${CART_COOKIE_DEV}=${token}` : csrf.cookie,
-    };
-  }
-
-  /** Token del carrito en el Set-Cookie de la respuesta. */
-  function tokenFrom(res: request.Response): string | undefined {
-    const cookies = ([] as string[]).concat(res.headers["set-cookie"] ?? []);
-    const line = cookies.find((c) => c.startsWith(`${CART_COOKIE_DEV}=`));
-    return line?.split(";")[0]?.split("=")[1];
-  }
-
-  const add = (body: object, token?: string) =>
-    request(app).post("/api/v1/cart/items").set(session(token)).send(body);
-
-  beforeAll(async () => {
-    const id = Math.random().toString(36).slice(2, 8);
-    const category = await prisma.category.create({
-      data: { slug: `cart-${id}`, name: "Carrito" },
-    });
-    created.categories.push(category.id);
-    const armado = await prisma.extra.create({
-      data: { code: `cart-armado-${id}`, name: "Armado a domicilio", price: 15_000 },
-    });
-    const nombre = await prisma.extra.create({
-      data: {
-        code: `cart-nombre-${id}`,
-        name: "Nombre grabado",
-        price: null,
-        requiresText: true,
-        textLabel: "Nombre",
-        textMaxLength: 12,
-      },
-    });
-    created.extras.push(armado.id, nombre.id);
-
-    const product = async (slug: string, price: number, stockPhysical: number) => {
-      const row = await prisma.product.create({
-        data: {
-          categoryId: category.id,
-          slug: `${slug}-${id}`,
-          name: slug,
-          status: "active",
-          publishedAt: new Date("2026-01-01"),
-          leadTime: "10 días hábiles",
-          variants: { create: { sku: `TK-${slug}-${id}`, price, stockPhysical } },
-          extras: {
-            create: [
-              { extraId: armado.id, sortOrder: 0 },
-              { extraId: nombre.id, sortOrder: 1 },
-            ],
-          },
-        },
-      });
-      created.products.push(row.id);
-      return { id: row.id, sku: `TK-${slug}-${id}` };
-    };
-    skuCuna = (await product("cuna", 245_990, 0)).sku;
-    const mesa = await product("mesa", 69_990, 5);
-    skuMesa = mesa.sku;
-    mesaProductId = mesa.id;
-  });
 
   afterAll(async () => {
-    // Los carritos de prueba referencian las variantes: se borran primero.
-    await prisma.cart.deleteMany({
-      where: { items: { some: { variant: { productId: { in: created.products } } } } },
-    });
-    await prisma.productExtra.deleteMany({ where: { productId: { in: created.products } } });
-    await prisma.extra.deleteMany({ where: { id: { in: created.extras } } });
-    await prisma.productVariant.deleteMany({ where: { productId: { in: created.products } } });
-    await prisma.product.deleteMany({ where: { id: { in: created.products } } });
-    await prisma.category.deleteMany({ where: { id: { in: created.categories } } });
     await prisma.$disconnect();
   });
 
-  it("GET /cart sin cookie responde un carrito vacío y no lo crea", async () => {
-    const res = await request(app).get("/api/v1/cart");
-    expect(res.status).toBe(200);
-    expect(res.headers["set-cookie"]).toBeUndefined();
-    expect(res.body).toMatchObject({
-      lines: [],
-      units: 0,
-      coupon: null,
-      totals: { subtotal: 0, discount: 0, shipping: null, total: 0 },
-      checkoutReady: false,
-    });
-  });
-
-  it("modificar exige el token CSRF", async () => {
-    const res = await request(app).post("/api/v1/cart/items").send({ sku: skuCuna, quantity: 1 });
-    expect(res.status).toBe(403);
-    expect(res.body.code).toBe("CSRF_FAILED");
-  });
-
-  it("el primer agregado crea el carrito con cookie opaca y valoriza en el servidor", async () => {
-    const res = await add({ sku: skuCuna, quantity: 2 });
-    expect(res.status).toBe(201);
-    const token = tokenFrom(res);
-    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(([] as string[]).concat(res.headers["set-cookie"] ?? []).join(";")).toMatch(/HttpOnly/i);
-    expect(res.body.lines).toHaveLength(1);
-    expect(res.body.lines[0]).toMatchObject({
-      sku: skuCuna,
-      quantity: 2,
-      unitPrice: 245_990,
-      lineTotal: 491_980,
-      // Sin unidades terminadas: a pedido, con el plazo del producto, sin bloquear.
-      madeToOrder: true,
-      leadTime: "10 días hábiles",
-      status: "ok",
-    });
-    expect(res.body).toMatchObject({
-      units: 2,
-      totals: { subtotal: 491_980, total: 491_980 },
-      checkoutReady: true,
-    });
-
-    // La base guarda el hash, nunca el token.
-    const cart = await prisma.cart.findUnique({
-      where: { guestTokenHash: hashToken(token ?? "") },
-    });
-    expect(cart).not.toBeNull();
-  });
-
-  it("al crearse el carrito, el CSRF anterior ya no sirve (hay que pedir uno nuevo)", async () => {
-    const first = await add({ sku: skuMesa, quantity: 1 });
-    const token = tokenFrom(first) ?? "";
-    const stale = csrfHeaders("");
-    const res = await request(app)
-      .post("/api/v1/cart/items")
-      .set({ ...stale, cookie: `${stale.cookie}; ${CART_COOKIE_DEV}=${token}` })
-      .send({ sku: skuMesa, quantity: 1 });
-    expect(res.status).toBe(403);
-    expect((await add({ sku: skuMesa, quantity: 1 }, token)).status).toBe(201);
-  });
-
-  it("la misma combinación suma; otro extra o texto es otra línea", async () => {
-    const [armado, nombre] = await prisma.extra.findMany({
-      where: { id: { in: created.extras } },
-      orderBy: { name: "asc" },
-    });
-    const token = tokenFrom(await add({ sku: skuMesa, quantity: 1 })) ?? "";
-    await add({ sku: skuMesa, quantity: 2 }, token);
-    await add({ sku: skuMesa, quantity: 1, extras: [{ code: armado?.code }] }, token);
-    const res = await add(
-      { sku: skuMesa, quantity: 1, extras: [{ code: nombre?.code, text: " Sofía " }] },
-      token,
-    );
-    expect(res.status).toBe(201);
-    const lines = res.body.lines as {
-      quantity: number;
-      extras: { name: string; text: string | null }[];
-      extrasUnitPrice: number;
-    }[];
-    expect(lines.map((l) => l.quantity)).toEqual([3, 1, 1]);
-    expect(lines[1]).toMatchObject({ extrasUnitPrice: 15_000 });
-    expect(lines[2]?.extras).toEqual([
-      { code: nombre?.code, name: "Nombre grabado", unitPrice: null, text: "Sofía" },
-    ]);
-    // El nombre grabado tiene precio por confirmar: se informa y no suma.
-    expect(res.body.unpriced).toEqual(["Nombre grabado"]);
-    // Mesa con 5 unidades terminadas: 3 no son a pedido.
-    expect(res.body.lines[0].madeToOrder).toBe(false);
-  });
-
-  it("respeta el máximo por SKU y valida el pedido", async () => {
-    const token = tokenFrom(await add({ sku: skuCuna, quantity: 8 })) ?? "";
-    const over = await add({ sku: skuCuna, quantity: 2 }, token);
-    expect(over.status).toBe(409);
-    expect(over.body.message).toBe("Solo puedes agregar 1 unidad más.");
-
-    expect((await add({ sku: "TK-NO-EXISTE", quantity: 1 }, token)).status).toBe(404);
-    const invalid = await add({ sku: skuCuna, quantity: 0 }, token);
-    expect(invalid.status).toBe(422);
-    expect(invalid.body.code).toBe("VALIDATION_ERROR");
-    const badText = await add(
-      { sku: skuCuna, quantity: 1, extras: [{ code: "no-se-ofrece" }] },
-      token,
-    );
-    expect(badText.status).toBe(422);
-  });
-
-  it("cambia la cantidad, quita líneas y no toca líneas de otro carrito", async () => {
-    const mine = tokenFrom(await add({ sku: skuMesa, quantity: 1 })) ?? "";
-    const other = tokenFrom(await add({ sku: skuMesa, quantity: 1 })) ?? "";
-    const lineId = (
-      await request(app).get("/api/v1/cart").set("cookie", `${CART_COOKIE_DEV}=${mine}`)
-    ).body.lines[0].id as string;
-
-    const foreign = await request(app)
-      .patch(`/api/v1/cart/items/${lineId}`)
-      .set(session(other))
-      .send({ quantity: 4 });
-    expect(foreign.status).toBe(404);
-
-    const updated = await request(app)
-      .patch(`/api/v1/cart/items/${lineId}`)
-      .set(session(mine))
-      .send({ quantity: 4 });
-    expect(updated.status).toBe(200);
-    expect(updated.body.lines[0].quantity).toBe(4);
-
-    const tooMany = await request(app)
-      .patch(`/api/v1/cart/items/${lineId}`)
-      .set(session(mine))
-      .send({ quantity: 10 });
-    expect(tooMany.status).toBe(422);
-
-    const removed = await request(app).delete(`/api/v1/cart/items/${lineId}`).set(session(mine));
-    expect(removed.status).toBe(200);
-    expect(removed.body.lines).toEqual([]);
-    expect(
-      (await request(app).delete(`/api/v1/cart/items/${lineId}`).set(session(mine))).status,
-    ).toBe(404);
-    expect(
-      (await request(app).delete("/api/v1/cart/items/no-es-uuid").set(session(mine))).status,
-    ).toBe(404);
-  });
-
-  it("revalida: un producto retirado bloquea el pago hasta quitarlo", async () => {
-    const token = tokenFrom(await add({ sku: skuMesa, quantity: 1 })) ?? "";
-    await prisma.product.update({ where: { id: mesaProductId }, data: { status: "inactive" } });
-    try {
-      const res = await request(app)
-        .get("/api/v1/cart")
-        .set("cookie", `${CART_COOKIE_DEV}=${token}`);
-      expect(res.body.lines[0]).toMatchObject({ status: "unavailable", lineTotal: null });
-      expect(res.body).toMatchObject({
-        blocked: true,
-        checkoutReady: false,
-        totals: { subtotal: 0 },
+  /** Caso aislado: app sobre una transacción que se deshace, con producto de prueba. */
+  function scenario(
+    fn: (ctx: {
+      db: PrismaClient;
+      client: CartClient;
+      app: ReturnType<typeof buildTestApp>;
+      shop: Awaited<ReturnType<typeof shopFixture>>;
+    }) => Promise<void>,
+  ) {
+    return () =>
+      inRollback(prisma, async (db) => {
+        const app = buildTestApp({ prisma: db });
+        const shop = await shopFixture(db);
+        await fn({ db, app, shop, client: new CartClient(app) });
       });
-    } finally {
-      await prisma.product.update({ where: { id: mesaProductId }, data: { status: "active" } });
-    }
-  });
+  }
 
-  it("las rutas del carrito declaran sus métodos (405)", async () => {
-    const res = await request(app).put("/api/v1/cart").set(session());
-    expect(res.status).toBe(405);
-  });
+  it(
+    "GET sin cookie: carrito vacío y no crea filas",
+    scenario(async ({ db, client }) => {
+      const before = await db.cart.count();
+      const res = await client.get("/cart");
+      expect(res.status).toBe(200);
+      expect(res.headers["set-cookie"]).toBeUndefined();
+      expect(body(res).lines).toEqual([]);
+      expect(body(res).totals).toMatchObject({ units: 0, subtotal: 0, discount: 0 });
+      expect(body(res).canCheckout).toBe(false);
+      expect(await db.cart.count()).toBe(before);
+    }),
+  );
+
+  it(
+    "el primer POST crea la cookie opaca (HttpOnly, solo el hash en la base) y un CSRF nuevo",
+    scenario(async ({ db, app, client, shop }) => {
+      const res = await client.post("/cart/items", { sku: shop.skuA, quantity: 1 });
+      expect(res.status).toBe(201);
+      const setCookie = (res.headers["set-cookie"] as unknown as string[]).find((c) =>
+        c.startsWith(`${CART_COOKIE_DEV}=`),
+      );
+      expect(setCookie).toMatch(/HttpOnly/);
+      expect(setCookie).toMatch(/SameSite=Lax/);
+      expect(setCookie).toMatch(/Path=\//);
+      expect(client.cart).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(res.headers["x-csrf-token"]).toBe(client.csrf);
+
+      const cart = await db.cart.findUniqueOrThrow({
+        where: { guestTokenHash: hashToken(client.cart ?? "") },
+      });
+      expect(cart.guestTokenHash).not.toContain(client.cart);
+      expect(cart.expiresAt.getTime()).toBeGreaterThan(Date.now() + 29 * 24 * 3600_000);
+
+      // Con la cookie del carrito, el CSRF anterior (sin sesión) ya no vale.
+      const stale = await request(app)
+        .post("/api/v1/cart/items")
+        .set({
+          ...csrfHeaders(),
+          cookie: `${csrfHeaders().cookie}; ${CART_COOKIE_DEV}=${client.cart ?? ""}`,
+        })
+        .send({ sku: shop.skuA, quantity: 1 });
+      expect(stale.status).toBe(403);
+      // El nuevo sí, sin pedir /csrf otra vez.
+      const again = await client.post("/cart/items", { sku: shop.skuA, quantity: 1 });
+      expect(again.status).toBe(201);
+      expect(again.headers["set-cookie"]).toBeUndefined();
+      expect(body(again).lines[0]?.quantity).toBe(2);
+    }),
+  );
+
+  it(
+    "la misma combinación suma; otro extra u otro texto es otra línea",
+    scenario(async ({ client, shop }) => {
+      await client.post("/cart/items", { sku: shop.skuA, quantity: 1, extras: [shop.armado] });
+      let res = await client.post("/cart/items", {
+        sku: shop.skuA.toLowerCase(),
+        quantity: 2,
+        extras: [shop.armado, shop.armado],
+      });
+      expect(body(res).lines).toHaveLength(1);
+      expect(body(res).lines[0]).toMatchObject({
+        quantity: 3,
+        unitPrice: 15_000,
+        lineTotal: 45_000,
+      });
+
+      res = await client.post("/cart/items", {
+        sku: shop.skuA,
+        quantity: 1,
+        extras: [shop.nombre],
+        texts: { [shop.nombre]: "Sofía" },
+      });
+      expect(body(res).lines).toHaveLength(2);
+      // Mismo texto con espacios de más: misma línea.
+      res = await client.post("/cart/items", {
+        sku: shop.skuA,
+        quantity: 1,
+        extras: [shop.nombre],
+        texts: { [shop.nombre]: "  Sofía " },
+      });
+      expect(body(res).lines).toHaveLength(2);
+      const named = body(res).lines.find((l) => l.extras.some((e) => e.code === shop.nombre));
+      expect(named).toMatchObject({ quantity: 2, unitPrice: 10_000 });
+      expect(named?.extras[0]).toMatchObject({ text: "Sofía", price: null });
+      // Otro nombre: otra línea.
+      res = await client.post("/cart/items", {
+        sku: shop.skuA,
+        quantity: 1,
+        extras: [shop.nombre],
+        texts: { [shop.nombre]: "Tomás" },
+      });
+      expect(body(res).lines).toHaveLength(3);
+      expect(body(res).totals).toMatchObject({ units: 6, subtotal: 75_000 });
+      // El extra con precio por confirmar no suma y se informa, sin bloquear.
+      expect(body(res).totals.unpriced).toEqual(["Nombre grabado"]);
+      expect(body(res).canCheckout).toBe(true);
+    }),
+  );
+
+  it(
+    "extras no ofrecidos, texto faltante o largo, y cantidades fuera de rango → 422",
+    scenario(async ({ client, shop }) => {
+      let res = await client.post("/cart/items", {
+        sku: shop.skuA,
+        quantity: 1,
+        extras: [shop.barniz],
+      });
+      expect(res.status).toBe(422);
+      expect(res.body).toMatchObject({
+        message: "Uno de los servicios elegidos ya no está disponible.",
+      });
+
+      res = await client.post("/cart/items", {
+        sku: shop.skuA,
+        quantity: 1,
+        extras: [shop.nombre],
+      });
+      expect(res.status).toBe(422);
+      expect(res.body).toMatchObject({
+        message: "Revisa el nombre del niño (máximo 12 caracteres).",
+      });
+      res = await client.post("/cart/items", {
+        sku: shop.skuA,
+        quantity: 1,
+        extras: [shop.nombre],
+        texts: { [shop.nombre]: "Maximiliano José" },
+      });
+      expect(res.status).toBe(422);
+
+      for (const quantity of [0, 10, 1.5]) {
+        res = await client.post("/cart/items", { sku: shop.skuA, quantity });
+        expect(res.status).toBe(422);
+      }
+
+      res = await client.post("/cart/items", { sku: shop.skuA, quantity: 8 });
+      expect(res.status).toBe(201);
+      res = await client.post("/cart/items", {
+        sku: shop.skuA,
+        quantity: 2,
+        extras: [shop.armado],
+      });
+      expect(res.status).toBe(422);
+      expect(res.body).toMatchObject({ message: "Solo puedes agregar 1 unidad más." });
+      await client.post("/cart/items", { sku: shop.skuA, quantity: 1 });
+      res = await client.post("/cart/items", { sku: shop.skuA, quantity: 1 });
+      expect(res.body).toMatchObject({
+        message: "Ya tienes 9 unidades en el carrito. Para más, escríbenos y lo cotizamos.",
+      });
+
+      res = await client.post("/cart/items", { sku: "NO-EXISTE", quantity: 1 });
+      expect(res.status).toBe(404);
+      expect(res.body).toMatchObject({ message: "Este producto ya no está disponible." });
+    }),
+  );
+
+  it(
+    "tope de 30 líneas por carrito",
+    scenario(async ({ db, client, shop }) => {
+      await db.productVariant.createMany({
+        data: Array.from({ length: 30 }, (_, i) => ({
+          productId: shop.productId,
+          sku: `${shop.skuA}-${String(i)}`,
+          optionLabel: `Opción ${String(i)}`,
+          price: 1_000,
+          sortOrder: 10 + i,
+        })),
+      });
+      for (let i = 0; i < 30; i += 1) {
+        const res = await client.post("/cart/items", {
+          sku: `${shop.skuA}-${String(i)}`,
+          quantity: 1,
+        });
+        expect(res.status).toBe(201);
+      }
+      const res = await client.post("/cart/items", { sku: shop.skuA, quantity: 1 });
+      expect(res.status).toBe(422);
+      expect(res.body).toMatchObject({
+        message: "El carrito admite hasta 30 productos distintos.",
+      });
+    }),
+  );
+
+  it(
+    "editar una línea no pasa el tope de 9 unidades del SKU entre todas sus líneas",
+    scenario(async ({ client, shop }) => {
+      await client.post("/cart/items", { sku: shop.skuA, quantity: 5 });
+      const added = await client.post("/cart/items", {
+        sku: shop.skuA,
+        quantity: 4,
+        extras: [shop.armado],
+      });
+      expect(added.status).toBe(201);
+      const plain = body(added).lines.find((l) => l.extras.length === 0)?.id ?? "";
+
+      const over = await client.patch(`/cart/items/${plain}`, { quantity: 6 });
+      expect(over.status).toBe(422);
+      expect(over.body).toMatchObject({
+        message: "Puedes tener hasta 9 unidades de este producto: en esta línea, como máximo 5.",
+      });
+      expect((await client.patch(`/cart/items/${plain}`, { quantity: 5 })).status).toBe(200);
+    }),
+  );
+
+  it(
+    "solo el carrito propio: una línea ajena o un id inválido → 404",
+    scenario(async ({ app, client, shop }) => {
+      const mine = await client.post("/cart/items", { sku: shop.skuA, quantity: 1 });
+      const lineId = body(mine).lines[0]?.id ?? "";
+      const other = new CartClient(app);
+      await other.post("/cart/items", { sku: shop.skuB, quantity: 1 });
+
+      expect((await other.patch(`/cart/items/${lineId}`, { quantity: 2 })).status).toBe(404);
+      expect((await other.delete(`/cart/items/${lineId}`)).status).toBe(404);
+      expect((await other.delete("/cart/items/no-es-uuid")).status).toBe(404);
+      // Sin cookie de carrito.
+      expect(
+        (await new CartClient(app).patch(`/cart/items/${lineId}`, { quantity: 2 })).status,
+      ).toBe(404);
+
+      const updated = await client.patch(`/cart/items/${lineId}`, { quantity: 4 });
+      expect(updated.status).toBe(200);
+      expect(body(updated).lines[0]?.quantity).toBe(4);
+      expect((await client.patch(`/cart/items/${lineId}`, { quantity: 0 })).status).toBe(422);
+      const removed = await client.delete(`/cart/items/${lineId}`);
+      expect(removed.status).toBe(200);
+      expect(body(removed).lines).toEqual([]);
+    }),
+  );
+
+  it(
+    "revalida en cada lectura: precio actual, stock 0 «a pedido» con plazo, y en stock parcial",
+    scenario(async ({ db, client, shop }) => {
+      await client.post("/cart/items", { sku: shop.skuA, quantity: 7 });
+      await client.post("/cart/items", { sku: shop.skuB, quantity: 1 });
+      await db.productVariant.update({ where: { id: shop.variantA }, data: { price: 12_000 } });
+
+      const res = await client.get("/cart");
+      const [a, b] = body(res).lines;
+      expect(a).toMatchObject({ unitPrice: 12_000, lineTotal: 84_000 });
+      expect(a?.availability).toMatchObject({
+        status: "mixto",
+        inStock: 5,
+        message: "Reserva: 5 en stock, el resto a pedido",
+      });
+      expect(b?.availability).toEqual({
+        status: "a_pedido",
+        inStock: 0,
+        leadTime: "10 días hábiles",
+        message: "Reserva a pedido: se fabrica al confirmar",
+      });
+      expect(body(res).totals.subtotal).toBe(104_000);
+      expect(body(res).canCheckout).toBe(true);
+    }),
+  );
+
+  it(
+    "producto desactivado: se marca y sale de los totales; la siguiente escritura lo quita con aviso",
+    scenario(async ({ db, client, shop }) => {
+      const other = await shopFixture(db);
+      await client.post("/cart/items", { sku: shop.skuA, quantity: 1 });
+      const added = await client.post("/cart/items", { sku: other.skuA, quantity: 2 });
+      const keepId = body(added).lines[1]?.id ?? "";
+      await db.product.update({ where: { id: shop.productId }, data: { status: "inactive" } });
+
+      const res = await client.get("/cart");
+      expect(body(res).lines[0]).toMatchObject({ status: "unavailable", unitPrice: null });
+      expect(body(res).lines[0]?.notices[0]?.code).toBe("product_removed");
+      expect(body(res).totals).toMatchObject({ units: 2, subtotal: 20_000 });
+      // Leer no borra: el aviso sigue en la siguiente lectura.
+      expect(body(await client.get("/cart")).lines).toHaveLength(2);
+
+      const written = await client.patch(`/cart/items/${keepId}`, { quantity: 3 });
+      expect(body(written).lines).toHaveLength(1);
+      expect(body(written).notices).toContainEqual({
+        code: "product_removed",
+        message: "Un producto ya no está a la venta y lo quitamos.",
+      });
+      expect(body(await client.get("/cart")).notices).toEqual([]);
+    }),
+  );
+
+  it(
+    "extra retirado: se informa, deja de sumar y al escribir se junta con su línea gemela",
+    scenario(async ({ db, client, shop }) => {
+      await client.post("/cart/items", { sku: shop.skuA, quantity: 5 });
+      await client.post("/cart/items", { sku: shop.skuA, quantity: 3, extras: [shop.armado] });
+      await db.productExtra.delete({
+        where: { productId_extraId: { productId: shop.productId, extraId: shop.extraIds.armado } },
+      });
+
+      const res = await client.get("/cart");
+      expect(body(res).lines[1]).toMatchObject({ unitPrice: 10_000, extras: [] });
+      expect(body(res).lines[1]?.notices[0]?.code).toBe("extra_removed");
+
+      const lineId = body(res).lines[0]?.id ?? "";
+      // 6 + 3 = 9: el tope por SKU ya se valida al editar, así que al juntarse no se pasa.
+      const written = await client.patch(`/cart/items/${lineId}`, { quantity: 6 });
+      expect(body(written).lines).toHaveLength(1);
+      expect(body(written).lines[0]?.quantity).toBe(9);
+      expect(body(written).notices.map((n) => n.message)).toEqual([
+        "Quitamos un servicio que ya no está disponible.",
+      ]);
+    }),
+  );
+
+  it(
+    "precio por definir: no se puede agregar; si queda sin precio, la línea bloquea el pago",
+    scenario(async ({ db, client, shop }) => {
+      await client.post("/cart/items", { sku: shop.skuA, quantity: 1 });
+      await db.productVariant.update({ where: { id: shop.variantB }, data: { price: null } });
+      const res = await client.post("/cart/items", { sku: shop.skuB, quantity: 1 });
+      expect(res.status).toBe(422);
+      expect(res.body).toMatchObject({
+        message: "Este producto aún no tiene precio. Escríbenos y lo cotizamos.",
+      });
+
+      await db.productVariant.update({ where: { id: shop.variantA }, data: { price: null } });
+      const cart = body(await client.get("/cart"));
+      expect(cart.lines[0]).toMatchObject({ status: "unpriced", lineTotal: null });
+      expect(cart.totals.unpriced).toEqual([expect.stringContaining("Silla")]);
+      expect(cart.canCheckout).toBe(false);
+    }),
+  );
+
+  it(
+    "monto faltante para despacho gratis (RF-08)",
+    scenario(async ({ db, client, shop }) => {
+      await setSettings(db, { freeShippingThreshold: 50_000 });
+      let res = await client.post("/cart/items", { sku: shop.skuA, quantity: 2 });
+      expect(body(res).freeShipping).toEqual({
+        threshold: 50_000,
+        remaining: 30_000,
+        percent: 40,
+        reached: false,
+      });
+      res = await client.post("/cart/items", { sku: shop.skuB, quantity: 2 });
+      expect(body(res).freeShipping).toMatchObject({ remaining: 0, percent: 100, reached: true });
+      await setSettings(db, { freeShippingThreshold: null });
+      expect(body(await client.get("/cart")).freeShipping).toBeNull();
+    }),
+  );
+
+  it(
+    "carrito vencido: se ignora y el siguiente POST crea otro",
+    scenario(async ({ db, client, shop }) => {
+      await client.post("/cart/items", { sku: shop.skuA, quantity: 1 });
+      const first = client.cart;
+      await db.cart.update({
+        where: { guestTokenHash: hashToken(first ?? "") },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+      expect(body(await client.get("/cart")).lines).toEqual([]);
+      const res = await client.post("/cart/items", { sku: shop.skuA, quantity: 1 });
+      expect(res.status).toBe(201);
+      expect(client.cart).not.toBe(first);
+      expect(body(res).lines[0]?.quantity).toBe(1);
+    }),
+  );
 });

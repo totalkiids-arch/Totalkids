@@ -12,6 +12,21 @@ const spec = parse(readFileSync(new URL("../openapi.yaml", import.meta.url), "ut
 const paths = spec.paths as Record<string, Json>;
 const HTTP_METHODS = ["get", "post", "put", "patch", "delete"] as const;
 const MUTATING = new Set(["post", "put", "patch", "delete"]);
+/** Catálogo e inventario del panel (LN-12): solo Administrador. */
+const LN12_PATHS = [
+  "/admin/products",
+  "/admin/products/{id}",
+  "/admin/products/{id}/images",
+  "/admin/products/{id}/images/order",
+  "/admin/products/{id}/images/{imageId}",
+  "/admin/products/{id}/stock-adjustments",
+  "/admin/products/{id}/stock-movements",
+  "/admin/categories",
+  "/admin/categories/{id}",
+  "/admin/extras",
+];
+/** Carrito, cupón y cotización de entrega (LN-06). */
+const LN06_PATHS = ["/cart", "/cart/items", "/cart/items/{id}", "/cart/coupon", "/shipping/quote"];
 /** Paths ya implementados; todo lo demás debe estar marcado como pendiente. */
 const IMPLEMENTED = new Set([
   // LN-02
@@ -27,12 +42,12 @@ const IMPLEMENTED = new Set([
   "/products",
   "/products/{slug}",
   "/categories",
+  // LN-14
+  "/admin/emails/{id}/resend",
+  // LN-12
+  ...LN12_PATHS,
   // LN-06
-  "/cart",
-  "/cart/items",
-  "/cart/items/{id}",
-  "/cart/coupon",
-  "/shipping/quote",
+  ...LN06_PATHS,
   // LN-09
   "/orders",
   "/orders/lookup",
@@ -122,6 +137,39 @@ describe("contrato OpenAPI", () => {
       const op = paths[path]?.post as Json | undefined;
       expect(op, path).toBeDefined();
       expect(collectRefs(op?.requestBody)).toEqual(["#/components/requestBodies/FlowCallback"]);
+    }
+  });
+
+  it("solo la subida de imágenes del panel acepta multipart/form-data", () => {
+    const multipart = operations()
+      .filter(({ op }) => JSON.stringify(op.requestBody ?? {}).includes("multipart/form-data"))
+      .map(({ path, method }) => `${method.toUpperCase()} ${path}`);
+    expect(multipart).toEqual(["POST /admin/products/{id}/images"]);
+  });
+
+  it("el catálogo del panel (LN-12) es solo para Administrador y declara sus cuerpos", () => {
+    for (const path of LN12_PATHS) {
+      const item = paths[path];
+      expect(item, path).toBeDefined();
+      for (const { method, op } of operations().filter((o) => o.path === path)) {
+        expect(op["x-roles"], `${method} ${path}`).toEqual(["admin"]);
+        expect(JSON.stringify(op.requestBody ?? {}), `${method} ${path}`).not.toContain(
+          "PendingJson",
+        );
+      }
+    }
+  });
+
+  it("el carrito (LN-06) declara sus cuerpos y responde el esquema Cart", () => {
+    for (const path of LN06_PATHS) {
+      for (const { method, op } of operations().filter((o) => o.path === path)) {
+        expect(JSON.stringify(op.requestBody ?? {}), `${method} ${path}`).not.toContain(
+          "PendingJson",
+        );
+        const ok = JSON.stringify((op.responses as Json)["200"] ?? (op.responses as Json)["201"]);
+        const schema = path === "/shipping/quote" ? "ShippingQuote" : "Cart";
+        expect(ok, `${method} ${path}`).toContain(`#/components/schemas/${schema}`);
+      }
     }
   });
 
