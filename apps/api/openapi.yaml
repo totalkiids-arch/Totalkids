@@ -128,7 +128,9 @@ paths:
         y se compra como reserva).
 
         Búsqueda (`q`): sin tildes ni mayúsculas; todas las palabras (máx. 8) deben
-        aparecer en el nombre, el resumen o la categoría. Los filtros de lista
+        aparecer en el nombre, el resumen, la descripción, la categoría o una
+        categoría adicional activa. `color` coincide si alguna variante activa
+        tiene ese color (sin tildes ni mayúsculas). Los filtros de lista
         aceptan el parámetro repetido o separado por comas y coinciden con
         cualquiera de los valores. Un filtro de precio excluye los productos sin
         precio. `best_selling` ordena por unidades de pedidos con pago confirmado,
@@ -159,6 +161,12 @@ paths:
           style: form
           explode: true
           schema: { type: array, maxItems: 10, items: { type: string } }
+        - name: color
+          in: query
+          description: Color de alguna variante activa (`Blanco`, `azul marino`), sin tildes ni mayúsculas. Repetible.
+          style: form
+          explode: true
+          schema: { type: array, maxItems: 10, items: { type: string, maxLength: 60 } }
         - { name: priceMin, in: query, schema: { type: integer, minimum: 0 } }
         - name: priceMax
           in: query
@@ -1771,6 +1779,7 @@ components:
           category,
           ageGroups,
           materials,
+          colors,
           price,
           compareAtPrice,
           onSale,
@@ -1791,6 +1800,10 @@ components:
             name: { type: string }
         ageGroups: { type: array, items: { type: string } }
         materials: { type: array, items: { type: string } }
+        colors:
+          type: array
+          items: { type: string }
+          description: Colores de las variantes activas, sin repetir y en su orden.
         price:
           type: [integer, "null"]
           description: Menor precio en CLP entre las variantes; null mientras no esté definido.
