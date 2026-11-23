@@ -33,6 +33,8 @@ const IMPLEMENTED = new Set([
   "/cart/items/{id}",
   "/cart/coupon",
   "/shipping/quote",
+  // LN-09
+  "/orders",
 ]);
 
 function operations() {

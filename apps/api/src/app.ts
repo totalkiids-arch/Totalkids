@@ -16,6 +16,7 @@ import { globalLimiter } from "./middleware/rate-limit.js";
 import { requestId } from "./middleware/request-id.js";
 import { authRouter } from "./routes/auth.js";
 import { cartRouter } from "./routes/cart.js";
+import { ordersRouter } from "./routes/orders.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { csrfRouter } from "./routes/csrf.js";
 import { docsRouter } from "./routes/docs.js";
@@ -99,6 +100,7 @@ export function createApp({
   v1.use(authRouter({ prisma, isProduction }));
   v1.use(catalogRouter(prisma));
   v1.use(cartRouter({ prisma, isProduction }));
+  v1.use(ordersRouter({ prisma, isProduction, accessSecret: csrfSecret }));
   // Panel: todo /admin exige sesión del equipo (denegar por defecto, RF-31). Cada
   // ruta agrega el rol que necesita con requireRole.
   v1.use("/admin", requirePanel(prisma, isProduction));

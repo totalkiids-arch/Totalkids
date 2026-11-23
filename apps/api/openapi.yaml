@@ -457,23 +457,61 @@ paths:
   /orders:
     post:
       operationId: createOrder
-      summary: "[Pendiente LN-09] Crear el pedido desde el carrito"
+      summary: Crear el pedido desde el carrito
       description: |
-        Compra como invitado con el correo del checkout. Reserva stock, incluso de
-        productos a pedido. `document` es `boleta` (el comprobante de Flow la
+        Compra como invitado con el correo del checkout. En una sola transacción,
+        con el carrito bloqueado: revalida el carrito, el cupón y el despacho;
+        guarda una foto de comprador, entrega, factura, líneas e importes (RN-02);
+        reserva atómicamente las unidades terminadas (RN-03, RN-04) y lo que falta
+        queda `madeToOrder` con su plazo (UI-11); reserva el uso del cupón; registra
+        el historial y encola el correo "pedido recibido". Totales calculados en el
+        servidor (RNF-03). `document` es `boleta` (el comprobante de Flow la
         reemplaza) o `factura` (la emite Total Kids con folio tras el pago).
-        Entrega `retiro` o `despacho`. Totales calculados en el servidor (RNF-03).
-      x-pending-task: LN-09
+
+        Idempotente (RF-13): repetir la misma `Idempotency-Key` con el mismo cuerpo
+        responde 200 con el mismo pedido; con otro cuerpo, 409. El carrito se
+        conserva hasta que el pago se confirme (LN-10).
       tags: [Pedidos]
       security: [{ cartSession: [], csrfCookie: [] }]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfTokenHeader"
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOrder" }
+            example:
+              buyer:
+                {
+                  name: María González,
+                  rut: 12.345.678-5,
+                  email: maria@correo.cl,
+                  phone: "+56 9 1234 5678",
+                }
+              delivery: { method: retiro }
+              billing: { document: boleta }
+              termsAccepted: true
       responses:
-        "201": { description: Pedido creado en pendiente_pago con su credencial de acceso }
+        "200":
+          description: Reintento con la misma Idempotency-Key y el mismo cuerpo (mismo pedido)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatedOrder" }
+        "201":
+          description: Pedido creado en pending_payment con su credencial de acceso
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatedOrder" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { $ref: "#/components/responses/Conflict" }
+        "409":
+          description: |
+            No se creó el pedido. `details.reason`: `empty_cart`, `cart_blocked`,
+            `cart_changed` (revisar el carrito antes de pagar), `coupon_invalid`,
+            `coupon_exhausted`, `pickup_disabled`, `idempotency_mismatch` o `in_progress`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
@@ -1533,6 +1571,109 @@ components:
             properties:
               code: { type: string, maxLength: 40 }
               text: { type: [string, "null"], maxLength: 200 }
+    CreateOrder:
+      type: object
+      required: [buyer, delivery, billing, termsAccepted]
+      properties:
+        buyer:
+          type: object
+          required: [name, rut, email, phone]
+          properties:
+            name: { type: string, maxLength: 120 }
+            rut:
+              {
+                type: string,
+                description: Con o sin puntos y guion; se valida el dígito verificador,
+              }
+            email: { type: string, format: email }
+            phone: { type: string, description: 9 dígitos, con o sin +56 }
+        delivery:
+          oneOf:
+            - type: object
+              required: [method]
+              properties: { method: { const: retiro } }
+            - type: object
+              required: [method, region, commune, street]
+              properties:
+                method: { const: despacho }
+                region:
+                  { type: string, pattern: "^[A-Z]{2}$", description: Código de región (AR, RM…) }
+                commune: { type: string, maxLength: 80 }
+                street: { type: string, maxLength: 160 }
+                unit: { type: [string, "null"], maxLength: 60 }
+                notes: { type: [string, "null"], maxLength: 300 }
+        billing:
+          oneOf:
+            - type: object
+              required: [document]
+              properties: { document: { const: boleta } }
+            - type: object
+              required: [document, rut, businessName, activity, email, address, commune]
+              properties:
+                document: { const: factura }
+                rut: { type: string }
+                businessName: { type: string, maxLength: 160 }
+                activity: { type: string, maxLength: 120 }
+                email: { type: string, format: email }
+                address: { type: string, maxLength: 160 }
+                commune: { type: string, maxLength: 60 }
+                purchaseOrder: { type: boolean, default: false }
+        termsAccepted:
+          { const: true, description: Acepta condiciones de compra, despacho y privacidad (RNF-13) }
+    CreatedOrder:
+      type: object
+      required: [orderNumber, status, paymentDueAt, totals, delivery, items, accessToken]
+      properties:
+        orderNumber: { type: string, example: TK-1001 }
+        status: { const: pending_payment }
+        paymentDueAt: { type: string, format: date-time, description: La reserva vence ahí (RN-04) }
+        totals:
+          type: object
+          required: [subtotal, discount, shipping, total]
+          properties:
+            subtotal: { type: integer }
+            discount: { type: integer }
+            shipping:
+              { type: [integer, "null"], description: null = despacho por confirmar (no suma) }
+            total: { type: integer }
+        delivery:
+          type: object
+          required: [method, leadTime]
+          properties:
+            method: { type: string, enum: [retiro, despacho] }
+            leadTime: { type: [string, "null"] }
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              [
+                sku,
+                productName,
+                optionLabel,
+                quantity,
+                unitPrice,
+                extrasUnitPrice,
+                lineTotal,
+                madeToOrder,
+                leadTime,
+                extras,
+              ]
+            properties:
+              sku: { type: string }
+              productName: { type: string }
+              optionLabel: { type: [string, "null"] }
+              quantity: { type: integer }
+              unitPrice: { type: integer }
+              extrasUnitPrice: { type: integer }
+              lineTotal: { type: integer }
+              madeToOrder:
+                { type: boolean, description: No alcanzaron las unidades terminadas (UI-11) }
+              leadTime: { type: [string, "null"] }
+              extras: { type: array, items: { type: object } }
+        accessToken:
+          type: string
+          description: Credencial para X-Order-Access (ver orderAccess). Guardarla para ver y pagar el pedido.
     UpdateCartItem:
       type: object
       required: [quantity]
@@ -1892,7 +2033,9 @@ components:
       name: X-Order-Access
       description: |
         Credencial no adivinable y de acceso limitado a un pedido de invitado
-        (RF-36), entregada al crearlo y por POST /orders/lookup. Forma final: LN-09.
+        (RF-36), entregada al crearlo y por POST /orders/lookup. Es un HMAC-SHA256
+        del pedido con una clave del servidor (43 caracteres base64url): no se guarda
+        en la base y deja de servir si se rota el secreto de la API.
     csrfCookie:
       type: apiKey
       in: cookie
