@@ -4,6 +4,11 @@ import { z } from "zod";
 /** Una variable presente pero vacía (`CSRF_SECRET=`) cuenta como no definida. */
 const blankAsUndefined = (value: unknown) => (value === "" ? undefined : value);
 
+/** Valores por defecto fuera de producción, sin dominios reales (example.com, RFC 2606). */
+export const DEV_SENDER_EMAIL = "no-reply@example.com";
+export const DEV_ADMIN_TO = "equipo@example.com";
+export const DEV_SITE_URL = "http://localhost:3000";
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -36,19 +41,61 @@ const envSchema = z
     ),
     /** /api/docs: por defecto activo salvo en producción (SRS 4.4.2). */
     API_DOCS: z.preprocess(blankAsUndefined, z.enum(["enabled", "disabled"]).optional()),
+
+    // ── Correos transaccionales y worker (LN-14) ──
+    /** fake (por defecto): no usa la red. brevo: API transaccional de Brevo. */
+    EMAIL_PROVIDER: z.preprocess(blankAsUndefined, z.enum(["fake", "brevo"]).default("fake")),
+    BREVO_API_KEY: z.preprocess(blankAsUndefined, z.string().min(1).optional()),
+    BREVO_API_URL: z.preprocess(blankAsUndefined, z.url().optional()),
+    /** Remitente autorizado en Brevo. Obligatorio en producción con Brevo. */
+    BREVO_SENDER_EMAIL: z.preprocess(blankAsUndefined, z.email().optional()),
+    BREVO_SENDER_NAME: z.preprocess(blankAsUndefined, z.string().max(70).default("Total Kids")),
+    /** Casilla del equipo: "nueva venta" y copia de "solicitud de servicio". */
+    EMAIL_ADMIN_TO: z.preprocess(blankAsUndefined, z.email().optional()),
+    /** Origen público del sitio (Next.js) para los enlaces de los correos. */
+    PUBLIC_SITE_URL: z.preprocess(blankAsUndefined, z.url().optional()),
+    EMAIL_SEND_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+    EMAIL_WORKER_POLL_MS: z.coerce.number().int().min(100).default(5_000),
+    EMAIL_WORKER_BATCH: z.coerce.number().int().min(1).max(100).default(10),
+    EMAIL_WORKER_LOCK_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(5 * 60_000),
   })
   .superRefine((env, ctx) => {
-    if (env.NODE_ENV === "production" && !env.CSRF_SECRET) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["CSRF_SECRET"],
-        message: "CSRF_SECRET es obligatorio en producción",
-      });
+    const production = env.NODE_ENV === "production";
+    const required = (path: string, message: string) => {
+      ctx.addIssue({ code: "custom", path: [path], message });
+    };
+    if (production && !env.CSRF_SECRET) {
+      required("CSRF_SECRET", "CSRF_SECRET es obligatorio en producción");
+    }
+    if (production && env.EMAIL_PROVIDER === "brevo") {
+      if (!env.BREVO_API_KEY)
+        required("BREVO_API_KEY", "BREVO_API_KEY es obligatorio en producción con Brevo");
+      if (!env.BREVO_SENDER_EMAIL) {
+        required("BREVO_SENDER_EMAIL", "BREVO_SENDER_EMAIL es obligatorio en producción con Brevo");
+      }
+      if (!env.EMAIL_ADMIN_TO)
+        required("EMAIL_ADMIN_TO", "EMAIL_ADMIN_TO es obligatorio en producción con Brevo");
+    }
+    if (production && !env.PUBLIC_SITE_URL?.startsWith("https://")) {
+      required("PUBLIC_SITE_URL", "PUBLIC_SITE_URL es obligatorio en producción y debe usar https");
+    }
+    if (env.EMAIL_WORKER_LOCK_TIMEOUT_MS <= env.EMAIL_SEND_TIMEOUT_MS) {
+      required(
+        "EMAIL_WORKER_LOCK_TIMEOUT_MS",
+        "EMAIL_WORKER_LOCK_TIMEOUT_MS debe ser mayor que EMAIL_SEND_TIMEOUT_MS",
+      );
     }
   })
   .transform((env) => ({
     ...env,
     API_DOCS: env.API_DOCS ?? (env.NODE_ENV === "production" ? "disabled" : "enabled"),
+    BREVO_SENDER_EMAIL: env.BREVO_SENDER_EMAIL ?? DEV_SENDER_EMAIL,
+    EMAIL_ADMIN_TO: env.EMAIL_ADMIN_TO ?? DEV_ADMIN_TO,
+    PUBLIC_SITE_URL: (env.PUBLIC_SITE_URL ?? DEV_SITE_URL).replace(/\/+$/, ""),
   }));
 
 export type Env = z.output<typeof envSchema>;

@@ -21,6 +21,9 @@ const REDACT_PATHS = [
   "*.apiKey",
   "*.secretKey",
   "*.email",
+  // Correos transaccionales (LN-14): destinatarios.
+  "*.recipient",
+  "*.to",
 ];
 
 export function createLogger(level: string, pretty: boolean, destination?: DestinationStream) {

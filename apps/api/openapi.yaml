@@ -1254,20 +1254,53 @@ paths:
   /admin/emails/{id}/resend:
     post:
       operationId: adminResendEmail
-      summary: "[Pendiente LN-14] Reenvío manual auditado de un correo fallido o incierto"
-      x-pending-task: LN-14
+      summary: Reenvío manual auditado de un correo fallido o incierto
+      description: |
+        Solo Administrador (RF-21). Solo sobre un correo `failed` o `uncertain`.
+        Crea un registro nuevo vinculado al original (`resendOf`) y lo encola: el
+        worker hace un único intento y registra el intento manual con el actor,
+        en el registro nuevo y en el original (cuyo estado pasa a reflejar el
+        resultado). Deja la operación en `audit_log` (`email.resent`). Nunca
+        modifica el pedido ni la solicitud.
+
+        409 si el correo no está fallido o incierto, si ya hay un reenvío en
+        curso, o si es una recuperación de contraseña (se pide de nuevo desde el
+        ingreso al panel).
       x-roles: [admin]
       tags: [Panel - Correos]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/ResourceId"
+        - name: id
+          in: path
+          required: true
+          description: Id del registro de correo (UUID).
+          schema: { type: string, format: uuid }
         - $ref: "#/components/parameters/CsrfTokenHeader"
       responses:
-        "202": { description: Reenvío encolado }
+        "202":
+          description: Reenvío encolado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status, resendOf]
+                properties:
+                  id: { type: string, format: uuid, description: Registro nuevo del reenvío }
+                  status: { type: string, enum: [pending] }
+                  resendOf: { type: string, format: uuid, description: Registro original }
+              example:
+                {
+                  id: 0195f3a0-7c1e-7d2a-9b44-2f1c3a5d6e70,
+                  status: pending,
+                  resendOf: 0195f3a0-1b2c-7d3e-8f40-1a2b3c4d5e6f,
+                }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
 components:
   schemas:

@@ -7,6 +7,7 @@ pnpm --filter @totalkids/api dev         # http://localhost:4000/api/v1/health
 pnpm --filter @totalkids/api test
 pnpm --filter @totalkids/api lint
 pnpm --filter @totalkids/api typecheck
+pnpm --filter @totalkids/api worker:dev  # worker de correos (LN-14), en otra terminal
 ```
 
 ## Qué recorre cada petición
@@ -145,7 +146,7 @@ Solo el equipo del taller (Administrador y Operador) tiene cuenta: los comprador
 
   Fuera de `/admin`, usa `requirePanel(prisma, isProduction, ...roles)`. La sesión queda en `req.panel` (`user.id`, `user.role`, `user.name`).
 
-- **Recuperación:** `POST /auth/password-reset/request` responde 202 siempre y, si la cuenta existe y está activa, encola `email.password_recovery` en `outbox_jobs` con `{ userId }`. El worker de correos (LN-14) llama a `issuePasswordResetToken(prisma, userId)` al enviar: así el token en claro nunca queda guardado. El token es de un solo uso, vence a los 30 min y solo vale el último. `POST /auth/password-reset/confirm` lo consume, cambia la contraseña y revoca todas las sesiones.
+- **Recuperación:** `POST /auth/password-reset/request` responde 202 siempre y, si la cuenta existe y está activa, encola el correo `password_recovery` con `enqueueEmail` (`outbox_jobs` con `{ userId }` y su `email_log`). El worker de correos (LN-14) llama a `issuePasswordResetToken(prisma, userId)` al enviar: así el token en claro nunca queda guardado. El token es de un solo uso, vence a los 30 min y solo vale el último. `POST /auth/password-reset/confirm` lo consume, cambia la contraseña y revoca todas las sesiones.
 - **Contraseñas:** argon2id (OWASP: 19 MiB, t=2), mínimo 12 y máximo 128 caracteres (`passwordSchema`). Al ingresar se rehace el hash si los parámetros cambiaron.
 - **Alta de cuentas:** el CRUD de usuarios del panel llega en LN-16. Mientras tanto:
 
@@ -167,6 +168,101 @@ Solo el equipo del taller (Administrador y Operador) tiene cuenta: los comprador
 - **Filtros:** `category`, `ageGroup`, `material` (repetibles o separados por coma), `priceMin`/`priceMax` (excluyen productos sin precio), `onSale` y `availability`.
 - **Orden:** `best_selling` (por defecto) suma las unidades de pedidos `confirmed` en adelante; empata por destacado y novedad. También `price_asc`, `price_desc` (sin precio al final) y `newest`.
 - **Consultas:** el listado arma un solo `WHERE` parametrizado con `Prisma.sql` (RNF-04) para el conteo y la página, y luego carga los productos de la página con Prisma.
+
+## Correos y worker (LN-14)
+
+Correos transaccionales de la SRS 4.4.3 (RF-20, RF-21). El código está en [`src/services/email/`](src/services/email/) y el proceso del worker en [`src/worker.ts`](src/worker.ts).
+
+### Cómo encolar
+
+El correo nace **dentro de la misma transacción** que la operación de negocio, con `enqueueEmail(tx, …)`. Crea el `outbox_jobs` y el `email_log` con la misma `eventKey`; si la clave ya existe no duplica nada (`ON CONFLICT DO NOTHING`, no aborta tu transacción) y devuelve `{ enqueued: false }`. Si tu transacción hace rollback, el correo tampoco existe.
+
+```ts
+import { enqueueEmail } from "../services/email/enqueue.js";
+import { emailEventKey } from "../services/email/events.js";
+
+await prisma.$transaction(async (tx) => {
+  const order = await tx.order.update({
+    where: { id },
+    data: { status: "confirmed", paidAt: now },
+  });
+  await enqueueEmail(tx, {
+    event: "purchase_confirmed",
+    recipient: order.buyerEmail,
+    eventKey: emailEventKey("purchase_confirmed", order.id),
+    orderId: order.id,
+    data: {
+      orderNumber: order.number,
+      buyerName: order.buyerName,
+      items,
+      subtotal,
+      discount,
+      shippingCost,
+      total,
+      delivery,
+      taxDocument,
+    },
+  });
+  await enqueueEmail(tx, {
+    event: "new_sale",
+    recipient: env.EMAIL_ADMIN_TO,
+    eventKey: emailEventKey("new_sale", order.id),
+    orderId: order.id,
+    data: { orderNumber: order.number, total, itemCount, deliveryMethod, taxDocument },
+  });
+});
+```
+
+`data` se valida con el esquema del evento (`EMAIL_DATA_SCHEMAS` en `events.ts`): si falta un campo, lanza (es un error de programación). Es una foto del momento y **nunca** lleva contraseñas, tokens ni datos de pago.
+
+| Tarea | Evento                                             | Destinatario     | `eventKey`                          | Referencia         |
+| ----- | -------------------------------------------------- | ---------------- | ----------------------------------- | ------------------ |
+| LN-09 | `order_received` (pendiente de pago)               | comprador        | `order_received:<orderId>`          | `orderId`          |
+| LN-09 | `purchase_confirmed` (solo tras verificar el pago) | comprador        | `purchase_confirmed:<orderId>`      | `orderId`          |
+| LN-09 | `new_sale` (sin datos del comprador)               | `EMAIL_ADMIN_TO` | `new_sale:<orderId>`                | `orderId`          |
+| LN-09 | `payment_rejected` (`outcome: rejected/cancelled`) | comprador        | `payment_rejected:<paymentId>`      | `orderId`          |
+| LN-10 | `order_shipped` (transportista y seguimiento)      | comprador        | `order_shipped:<orderId>`           | `orderId`          |
+| LN-10 | `order_delivered` (cuidados del producto)          | comprador        | `order_delivered:<orderId>`         | `orderId`          |
+| LN-08 | `service_request` (`audience: requester`)          | solicitante      | `service_request:<id>:requester`    | `serviceRequestId` |
+| LN-08 | `service_request` (`audience: admin`)              | `EMAIL_ADMIN_TO` | `service_request:<id>:admin`        | `serviceRequestId` |
+| LN-04 | `password_recovery` (ya conectado)                 | cuenta del panel | `password_recovery:<userId>:<uuid>` | —                  |
+
+### Plantillas
+
+`templates/` arma asunto, HTML de marca y texto plano de cada evento (los asuntos coinciden con la vista previa del panel). Todo texto se escapa; importes en CLP y fechas en America/Santiago. Los enlaces son absolutos desde `PUBLIC_SITE_URL` y sin identificadores predecibles: el comprador va a `/seguimiento` (consulta con número y correo); el equipo, a `/admin/pedidos/TK-<n>` y `/admin/solicitudes` (con sesión). La recuperación enlaza a `/admin/restablecer?token=…`: el worker emite el token (`issuePasswordResetToken`) justo al enviar, así nunca queda guardado ni en logs. **Pendiente en apps/web:** la página `/admin/restablecer` (leer `token` de la query, no registrarlo y responder con `Referrer-Policy: no-referrer`).
+
+### El worker
+
+Proceso aparte; puede haber varias instancias. En cada vuelta:
+
+1. Libera los bloqueos vencidos (`processing` más viejo que `EMAIL_WORKER_LOCK_TIMEOUT_MS`): el worker se cayó a mitad del envío y no se sabe si el correo salió, así que queda **incierto**. Nunca se reenvía a ciegas.
+2. Reclama hasta `EMAIL_WORKER_BATCH` trabajos `pending` vencidos con `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)`: dos instancias nunca toman el mismo.
+3. Envía cada uno y registra en una transacción el `email_attempts`, el estado del correo y el del trabajo:
+
+| Resultado del proveedor                                       | Intento   | Correo      | Trabajo                                                       |
+| ------------------------------------------------------------- | --------- | ----------- | ------------------------------------------------------------- |
+| 2xx                                                           | `sent`    | `sent`      | `done` (con `provider_message_id`)                            |
+| 400, 404, 422 y otros 4xx (destinatario o contenido inválido) | `failed`  | `failed`    | `failed`, sin reintento                                       |
+| 401 o 403 (API key o remitente), con alerta de configuración  | `failed`  | `pending`   | reintento, como el caso siguiente                             |
+| 429, 500, 502, 503 o sin conexión (ECONNREFUSED, ENOTFOUND…)  | `failed`  | `pending`   | reintento a **1, 5 y 15 min**; luego `dead` y correo `failed` |
+| timeout, 504 o conexión cortada después de enviar             | `timeout` | `uncertain` | `failed`, sin reintento                                       |
+
+Un correo `failed`, `dead` o `uncertain` deja un `logger.error` (sin destinatario) como alerta (RNF-15). Al corregir una API key mala, los correos que siguen en reintento salen solos. `SIGINT` y `SIGTERM` terminan el lote en curso y cierran limpio.
+
+### Reenvío manual
+
+`POST /admin/emails/{id}/resend`, solo Administrador y con CSRF. Solo sobre `failed` o `uncertain` (409 si no lo está, si ya hay un reenvío en curso o si es `password_recovery`). En una transacción crea un `email_log` nuevo con `resend_of_id`, su trabajo (un solo intento, con el actor en el payload) y la entrada `email.resent` en `audit_log`, y responde 202. El worker registra el intento **manual con actor** en el registro nuevo y en el original, cuyo estado pasa a reflejar el resultado. Nunca toca el pedido.
+
+### Correr en local
+
+```bash
+docker compose up -d                              # PostgreSQL
+pnpm --filter @totalkids/api worker:dev           # EMAIL_PROVIDER=fake por defecto
+```
+
+Con el adaptador falso (`EMAIL_PROVIDER=fake`, por defecto) no se usa la red: el worker deja el correo `sent` con un `provider_message_id` `fake-…` y registra su intento; en el log aparece `Correo simulado (EMAIL_PROVIDER=fake)`. Revisa `email_log` y `email_attempts` con `pnpm --filter @totalkids/api exec prisma studio`. Los tests siempre usan el falso, aunque se configure Brevo.
+
+Para probar Brevo de verdad (solo con una cuenta de pruebas): `EMAIL_PROVIDER=brevo`, `BREVO_API_KEY` y un `BREVO_SENDER_EMAIL` autorizado en Brevo. **Antes de producción hay que autenticar en Brevo el dominio nuevo del cliente (SPF, DKIM y DMARC).** Ese dominio aún no está definido, por eso el repositorio solo usa `example.com`.
 
 ## Crear un endpoint nuevo (ejemplo completo)
 
@@ -227,3 +323,19 @@ Están en `.env.example`. Las nuevas de LN-02:
 | `RATE_LIMIT_MAX`       | `300`                                           | peticiones por IP en la ventana                |
 | `CSRF_SECRET`          | aleatorio por arranque (dev/test)               | **obligatorio en producción**, ≥ 32 caracteres |
 | `API_DOCS`             | `enabled` (`disabled` si `NODE_ENV=production`) | `/api/docs` y `/api/docs/openapi.json`         |
+
+Las de LN-14 (correos y worker):
+
+| Variable                       | Por defecto                           | Notas                                                                 |
+| ------------------------------ | ------------------------------------- | --------------------------------------------------------------------- |
+| `EMAIL_PROVIDER`               | `fake`                                | `fake` o `brevo`; en tests siempre `fake`                             |
+| `BREVO_API_KEY`                | —                                     | **obligatoria en producción con Brevo**                               |
+| `BREVO_API_URL`                | `https://api.brevo.com/v3/smtp/email` |                                                                       |
+| `BREVO_SENDER_EMAIL`           | `no-reply@example.com`                | **obligatorio en producción con Brevo**; dominio autenticado en Brevo |
+| `BREVO_SENDER_NAME`            | `Total Kids`                          |                                                                       |
+| `EMAIL_ADMIN_TO`               | `equipo@example.com`                  | casilla del equipo; **obligatoria en producción con Brevo**           |
+| `PUBLIC_SITE_URL`              | `http://localhost:3000`               | enlaces de los correos; **obligatoria y con https en producción**     |
+| `EMAIL_SEND_TIMEOUT_MS`        | `10000`                               | sin respuesta = resultado incierto                                    |
+| `EMAIL_WORKER_POLL_MS`         | `5000`                                | pausa entre vueltas sin trabajo                                       |
+| `EMAIL_WORKER_BATCH`           | `10`                                  | trabajos por vuelta                                                   |
+| `EMAIL_WORKER_LOCK_TIMEOUT_MS` | `300000`                              | bloqueo vencido; debe ser mayor que `EMAIL_SEND_TIMEOUT_MS`           |

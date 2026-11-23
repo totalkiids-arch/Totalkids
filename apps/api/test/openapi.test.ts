@@ -27,6 +27,8 @@ const IMPLEMENTED = new Set([
   "/products",
   "/products/{slug}",
   "/categories",
+  // LN-14
+  "/admin/emails/{id}/resend",
 ]);
 
 function operations() {

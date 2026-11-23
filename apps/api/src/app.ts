@@ -13,6 +13,7 @@ import { createErrorHandler, notFound } from "./middleware/error-handler.js";
 import { panelCsrfSessionKey, requirePanel } from "./middleware/panel-auth.js";
 import { globalLimiter } from "./middleware/rate-limit.js";
 import { requestId } from "./middleware/request-id.js";
+import { adminEmailsRouter } from "./routes/admin-emails.js";
 import { authRouter } from "./routes/auth.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { csrfRouter } from "./routes/csrf.js";
@@ -99,6 +100,7 @@ export function createApp({
   // Panel: todo /admin exige sesión del equipo (denegar por defecto, RF-31). Cada
   // ruta agrega el rol que necesita con requireRole.
   v1.use("/admin", requirePanel(prisma, isProduction));
+  v1.use(adminEmailsRouter(prisma));
   registerRoutes?.(v1);
   app.use("/api/v1", v1);
 
