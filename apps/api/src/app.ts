@@ -8,20 +8,26 @@ import { DEV_IMAGES_URL, parseTrustProxy, type Env } from "./config/env.js";
 import { httpLogger, type Logger } from "./lib/logger.js";
 import type { PrismaClient } from "./lib/prisma.js";
 import { bodyParsers, isFlowCallbackPath, requireContentType } from "./middleware/body.js";
+import { combinedCsrfSessionKey } from "./middleware/cart-session.js";
 import { csrfProtection, type CsrfSessionKey } from "./middleware/csrf.js";
 import { createErrorHandler, notFound } from "./middleware/error-handler.js";
-import { panelCsrfSessionKey, requirePanel } from "./middleware/panel-auth.js";
+import { requirePanel } from "./middleware/panel-auth.js";
 import { globalLimiter } from "./middleware/rate-limit.js";
 import { requestId } from "./middleware/request-id.js";
 import { adminCatalogRouter } from "./routes/admin-catalog.js";
 import { adminEmailsRouter } from "./routes/admin-emails.js";
 import { authRouter } from "./routes/auth.js";
+import { cartRouter } from "./routes/cart.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { csrfRouter } from "./routes/csrf.js";
 import { docsRouter } from "./routes/docs.js";
 import { healthRouter } from "./routes/health.js";
+import { shippingRouter } from "./routes/shipping.js";
+import { cartTtlMs } from "./services/cart/session.js";
 import { LocalDiskImageStorage } from "./services/images/local-disk.js";
 import type { ImageStorage } from "./services/images/storage.js";
+import type { ShippingQuoter } from "./services/shipping/quoter.js";
+import { ZoneShippingQuoter } from "./services/shipping/zone-quoter.js";
 
 export interface AppDeps {
   env: Pick<
@@ -34,7 +40,7 @@ export interface AppDeps {
     | "CSRF_SECRET"
     | "API_DOCS"
   > &
-    Partial<Pick<Env, "IMAGES_DIR" | "IMAGES_PUBLIC_URL">>;
+    Partial<Pick<Env, "IMAGES_DIR" | "IMAGES_PUBLIC_URL" | "CART_TTL_DAYS">>;
   logger: Logger;
   prisma: PrismaClient;
   /**
@@ -43,8 +49,8 @@ export interface AppDeps {
    */
   registerRoutes?: (v1: Router) => void;
   /**
-   * Clave de la sesión actual a la que se ata el token CSRF. Por defecto, el hash
-   * de la cookie del panel (LN-04); LN-06 le suma la del carrito.
+   * Clave de la sesión actual a la que se ata el token CSRF. Por defecto, la del
+   * panel si hay sesión (LN-04) y si no, la del carrito (LN-06).
    */
   csrfSessionKey?: CsrfSessionKey;
   /**
@@ -52,6 +58,11 @@ export interface AppDeps {
    * local en IMAGES_DIR; los tests inyectan uno en una carpeta temporal.
    */
   imageStorage?: ImageStorage;
+  /**
+   * Cotización de entrega (LN-06). Por defecto, zonas y tarifas del panel; un
+   * courier se enchufa aquí con otro adaptador del puerto.
+   */
+  shippingQuoter?: ShippingQuoter;
 }
 
 /** CSRF_SECRET es obligatorio en producción (env.ts); fuera de ella se genera uno. */
@@ -69,10 +80,11 @@ export function createApp({
   registerRoutes,
   csrfSessionKey,
   imageStorage,
+  shippingQuoter,
 }: AppDeps): Express {
   const app = express();
   const isProduction = env.NODE_ENV === "production";
-  const sessionKey = csrfSessionKey ?? panelCsrfSessionKey(isProduction);
+  const sessionKey = csrfSessionKey ?? combinedCsrfSessionKey(isProduction);
   const csrfSecret = resolveCsrfSecret(env, logger);
   const storage =
     imageStorage ??
@@ -110,6 +122,22 @@ export function createApp({
   v1.use(csrfRouter({ secret: csrfSecret, isProduction, sessionKey }));
   v1.use(authRouter({ prisma, isProduction }));
   v1.use(catalogRouter(prisma));
+  v1.use(
+    cartRouter({
+      prisma,
+      isProduction,
+      ttlMs: cartTtlMs(env.CART_TTL_DAYS ?? 30),
+      csrfSecret,
+      sessionKey,
+    }),
+  );
+  v1.use(
+    shippingRouter({
+      prisma,
+      isProduction,
+      quoter: shippingQuoter ?? new ZoneShippingQuoter(prisma),
+    }),
+  );
   // Panel: todo /admin exige sesión del equipo (denegar por defecto, RF-31). Cada
   // ruta agrega el rol que necesita con requireRole.
   v1.use("/admin", requirePanel(prisma, isProduction));

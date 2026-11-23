@@ -7,7 +7,7 @@ pnpm --filter @totalkids/api dev         # http://localhost:4000/api/v1/health
 pnpm --filter @totalkids/api test
 pnpm --filter @totalkids/api lint
 pnpm --filter @totalkids/api typecheck
-pnpm --filter @totalkids/api worker:dev  # worker de correos (LN-14), en otra terminal
+pnpm --filter @totalkids/api worker:dev  # worker de correos (LN-14) y limpieza de carritos (LN-06), en otra terminal
 ```
 
 ## Qué recorre cada petición
@@ -127,7 +127,7 @@ Las cookies del navegador viven en el dominio de Next.js. Next se las reenvía a
    - `X-CSRF-Token`: el valor del campo oculto.
    - `X-Forwarded-For` y `X-Request-Id`, como ya hace `apiFetch`.
 4. **Verificación.** En POST/PUT/PATCH/DELETE, la cabecera y la cookie deben ser iguales y la firma debe valer para la sesión actual. Si no, responde 403 `CSRF_FAILED`. Una petición con `Origin` fuera de `CORS_ORIGINS` también se rechaza.
-5. **Sesión.** El token está atado a la clave de sesión que entrega `csrfSessionKey(req)` en `createApp`. Por defecto es el hash de la cookie del panel (`panelCsrfSessionKey`, LN-04), o `""` sin sesión. **LN-06** le suma la cookie opaca del carrito. Después de iniciar o cerrar sesión, Next vuelve a pedir `/csrf`.
+5. **Sesión.** El token está atado a la clave de sesión que entrega `csrfSessionKey(req)` en `createApp`. Por defecto es el hash de la cookie del panel (`panelCsrfSessionKey`, LN-04); si no hay sesión del panel, la del carrito (`cart:<hash>`, LN-06); o `""` sin ninguna. Al crear el carrito la API ya devuelve un token nuevo (ver «Carrito (LN-06)»). Después de iniciar o cerrar sesión, Next vuelve a pedir `/csrf`.
 6. **Exenciones**, declaradas en un solo lugar (`FLOW_CALLBACK_PATHS` en `middleware/body.ts`): `POST /payments/flow/confirm` y `POST /payments/flow/return`. Flow no tiene sesión ni token. **Estas rutas no tienen autoridad para acreditar pagos** (RNF-04): solo reciben `token` y la API consulta el estado real a Flow (`getStatus`) antes de confirmar nada (RF-16).
 
 No hace falta hacer nada por endpoint: la protección cubre todo `/api/v1`. En el contrato, agrega `CsrfTokenHeader` a cada operación que modifique (un test lo comprueba).
@@ -231,6 +231,96 @@ La SRS deja el almacenamiento de imágenes como dependencia externa (PR-05). Nad
 - **Opción principal (hosting en VPS):** usar el mismo `LocalDiskImageStorage` en producción, con `IMAGES_DIR` en un **volumen persistente** del VPS (fuera de la carpeta de la app, para que un deploy no lo borre). Lo sirve el proxy (Caddy o Nginx) bajo `/uploads` (la API no lo sirve en producción) con caché larga (los nombres no se reutilizan), `X-Content-Type-Options: nosniff`, sin listado de carpetas y sin ejecutar nada de esa carpeta. `IMAGES_PUBLIC_URL` pasa a ser la URL https pública (p. ej. `https://<dominio>/uploads`; obligatoria con https en producción). La carpeta entra en el **respaldo diario cifrado** junto con la base (DE-07, RNF-07).
 - **Alternativa:** si el hosting final no tiene disco persistente, un adaptador externo (S3, R2 o Cloudinary) que implemente `ImageStorage` (`save`, `delete`, `keyFromUrl`) y se pase en `createApp({ imageStorage })`. Las validaciones de la ruta no cambian.
 - **En ambos casos:** permitir el dominio de las imágenes en `next/image` (`remotePatterns`) al conectar el panel (LN-16), y una limpieza periódica de archivos huérfanos (p. ej. si se cae el proceso entre guardar el archivo y la fila).
+
+## Carrito (LN-06)
+
+Carrito del invitado en servidor (RF-05 a RF-08, RN-01, RN-04). Rutas en [`src/routes/cart.ts`](src/routes/cart.ts) y [`src/routes/shipping.ts`](src/routes/shipping.ts); reglas en [`src/services/cart/`](src/services/cart/), [`src/services/coupons.ts`](src/services/coupons.ts) y [`src/services/shipping/`](src/services/shipping/). No hay cuentas de comprador, así que tampoco hay fusión de carritos al iniciar sesión.
+
+### Endpoints
+
+| Método y ruta             | Qué hace                                                                                              |
+| ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GET /cart`               | Carrito calculado. Sin cookie (o vencido) responde vacío **sin crear filas**.                         |
+| `POST /cart/items`        | `{ sku, quantity, extras?: [código], texts?: { código: texto } }`. Crea el carrito si no existe. 201. |
+| `PATCH /cart/items/{id}`  | `{ quantity }` de 1 a 9. Para quitar, `DELETE`.                                                       |
+| `DELETE /cart/items/{id}` | Quita la línea.                                                                                       |
+| `POST /cart/coupon`       | `{ code }`. Uno por carrito: aplicar otro lo reemplaza.                                               |
+| `DELETE /cart/coupon`     | Quita el cupón.                                                                                       |
+| `GET /shipping/quote`     | `?method=retiro` o `?method=despacho&region=RM&commune=Ñuñoa`. Cotiza sobre el carrito propio.        |
+
+Todas las respuestas del carrito tienen la misma forma (`Cart` en el contrato): `lines` (con `status`, precios, extras, `availability` y `notices`), `notices` del carrito, `coupon`, `totals` (`units`, `subtotal`, `discount`, `totalWithoutShipping`, `unpriced`), `freeShipping` y `canCheckout`. **Los importes salen solo de aquí** (RNF-03).
+
+### Sesión
+
+- Cookie `tk_carrito` (`__Host-tk_carrito` en producción): HttpOnly, SameSite=Lax, `Path=/` y Secure en producción. Lleva un token aleatorio de 256 bits; en `carts.guest_token_hash` queda solo su SHA-256. Un valor con otro formato (como la cookie JSON que usa hoy la tienda) se ignora.
+- Se crea con el primer `POST /cart/items`. `GET /cart`, la cotización y un cupón sin carrito no crean filas.
+- **Expiración deslizante:** `CART_TTL_DAYS` (30 por defecto) desde el último uso. Para no escribir en cada lectura, la fecha y la cookie se renuevan como mucho una vez por hora. Un carrito vencido se trata como inexistente; el worker borra los vencidos cada hora (`purgeExpiredCarts`, líneas y extras en cascada).
+- **Solo el carrito propio:** nunca se recibe un id de carrito. Un id de línea de otro carrito, inexistente o mal formado responde 404 igual.
+
+### CSRF con carrito
+
+La clave de sesión del CSRF (`combinedCsrfSessionKey` en [`middleware/cart-session.ts`](src/middleware/cart-session.ts)) es la del panel si hay sesión del panel (sin cambios respecto de LN-04) y si no `cart:<hash>` del carrito, o `""` sin ninguna. Al **crear** el carrito la clave pasa de `""` a la del carrito, así que esa misma respuesta trae un token nuevo: `Set-Cookie: tk_csrf` y la cabecera `X-CSRF-Token`. Con sesión del panel abierta no cambia nada.
+
+### Reglas
+
+- **Líneas (RF-05):** variante activa de un producto visible en la tienda (misma condición que LN-05, `visibleProduct`); si no, 404 «Este producto ya no está disponible.». Los extras se piden por código y deben estar ofrecidos por el producto (`product_extras`) y disponibles. Si el extra pide texto, es obligatorio y respeta el largo efectivo (el del producto o el del extra; 422 «Revisa el nombre del niño (máximo 12 caracteres).»). Precio efectivo del extra: el del producto o el del extra; `null` = por confirmar (no suma, se lista en `totals.unpriced`, no bloquea).
+- **Combinación:** `line_key` = SKU + hash de los extras ordenados y sus textos normalizados (NFC, sin espacios al borde ni repetidos; se conservan mayúsculas y tildes). La misma combinación suma cantidad; otra es otra línea.
+- **Límites (422, con los textos de la tienda):** 1 a 9 unidades por línea y 9 por SKU sumando líneas («Solo puedes agregar N unidades más.», «Ya tienes 9 unidades…»); 30 líneas («El carrito admite hasta 30 productos distintos.»). Una variante sin precio no se puede agregar.
+- **Revalidación (RF-06) en cada lectura:** precio actual de variante y extras; producto o variante inactivos → `status: unavailable`, fuera de los totales y aviso; variante que perdió el precio → `unpriced` y `canCheckout: false`; extras retirados → aviso y dejan de sumar. **Leer no borra nada** (si Next lee dos veces, el aviso no se pierde): la siguiente escritura limpia (borra las líneas no vendibles, quita extras retirados juntando líneas que quedan iguales con el tope de 9, y quita el cupón que dejó de valer) y devuelve los avisos en `notices` («Un producto ya no está a la venta y lo quitamos.», «Quitamos un servicio…», «Ajustamos la cantidad a 9…»). No hay aviso de «cambió el precio» (el carrito no guarda precios): siempre se muestra el precio y el total actuales, y LN-09 compara con el total que confirmó el comprador.
+- **Disponibilidad:** no bloquea (cambio del cliente: stock 0 se vende a pedido). `availability.status` es `en_stock`, `mixto` («Reserva: N en stock, el resto a pedido») o `a_pedido` («Reserva a pedido: se fabrica al confirmar»), con el plazo del producto. Agregar al carrito **no reserva stock** (RN-04).
+- **Despacho gratis (RF-08):** `freeShipping` compara el umbral (`settings.free_shipping_threshold`) con **subtotal − descuento**; `null` sin umbral. En la cotización solo aplica a zonas activas y elegibles, nunca al retiro.
+
+### Cupón (RF-07, RN-01)
+
+- Código normalizado (mayúsculas, sin espacios). Válido si está activo, vigente **hoy en días de Chile** (America/Santiago, ambos extremos inclusive) y con cupo (`usesCount < maxUses`).
+- Descuento solo sobre el subtotal elegible (productos y extras con precio, nunca el despacho). Porcentaje redondeado al peso más cercano (0,5 hacia arriba); nunca mayor que ese subtotal. No se acumulan.
+- Rechazos 422 con los textos de la tienda: «Escribe el código de tu cupón.» y «El cupón «X» no existe o ya no está vigente.» (para inexistente, inactivo, futuro, vencido o agotado; el motivo va en `details.reason`), y «Agrega productos antes de aplicar un cupón.» (`empty_cart`).
+- Se revalida en cada lectura: si deja de valer, `coupon.valid: false`, descuento 0 y aviso «El cupón «X» ya no está vigente y no se aplica.»; la siguiente escritura lo quita.
+- **En el carrito no se reserva uso.** Para los pedidos (LN-09, LN-15), en la misma transacción del pedido:
+
+  ```ts
+  import {
+    consumeCouponUse,
+    CouponUnavailableError,
+    releaseCouponUse,
+    reserveCouponUse,
+  } from "../services/coupons.js";
+
+  await prisma.$transaction(async (tx) => {
+    const order = await tx.order.create({ data: {/* …, couponId, couponCode, discount */} });
+    if (cart.coupon?.valid) {
+      // Lanza CouponUnavailableError si otro pedido se llevó el último uso → 409 al comprador.
+      await reserveCouponUse(tx, { couponId, orderId: order.id, discount: cart.totals.discount });
+    }
+  });
+  await prisma.$transaction((tx) => consumeCouponUse(tx, orderId)); // al confirmar el pago
+  await prisma.$transaction((tx) => releaseCouponUse(tx, orderId)); // al vencer o cancelar sin pagar
+  ```
+
+  `reserveCouponUse` hace un `UPDATE coupons SET uses_count = uses_count + 1 WHERE … AND uses_count < max_uses AND vigente` y crea `coupon_redemptions` (`reserved`): con compras simultáneas PostgreSQL bloquea la fila y reevalúa la condición, así que nunca se pasa de `max_uses` (además de la restricción `uses_count ≤ max_uses` de la base). `consumeCouponUse` (`reserved → consumed`) y `releaseCouponUse` (`reserved → released` y devuelve el cupo) son idempotentes y devuelven `true` solo si cambiaron algo; un uso consumido no se libera.
+
+### Cotización de entrega
+
+`GET /shipping/quote` responde `{ method, cost, reason, leadTime, pickupDetails, zone, freeShipping, message, totals }`:
+
+| Caso                                                  | `cost` | `reason`       |
+| ----------------------------------------------------- | ------ | -------------- |
+| Retiro en taller habilitado (`pickupDetails`)         | 0      | `pickup`       |
+| Zona activa y elegible, subtotal − descuento ≥ umbral | 0      | `threshold`    |
+| Zona activa con tarifa                                | tarifa | `zone`         |
+| Zona activa sin tarifa («por confirmar»)              | null   | `pending_rate` |
+| Comuna sin zona activa («a coordinar»)                | null   | `coordinate`   |
+
+Retiro deshabilitado → 422. La comuna se compara sin tildes ni mayúsculas. `totals.total` = subtotal − descuento + despacho; un `cost: null` no se suma (RF-11).
+
+La cotización pasa por el **puerto `ShippingQuoter`** ([`services/shipping/quoter.ts`](src/services/shipping/quoter.ts)). Hoy lo implementa `ZoneShippingQuoter` (zonas y configuración del panel) y se puede reemplazar en `createApp({ shippingQuoter })`. Existe para poder sumar más adelante un adaptador de courier (p. ej. Blue Express) **sin cambiar el carrito ni la ruta**; no hay nada de courier implementado.
+
+### Cómo lo conecta LN-07 desde Next.js
+
+1. En cada llamada al carrito, el servidor de Next reenvía la cabecera `Cookie` del navegador (con `tk_carrito` y `tk_csrf`), `X-Forwarded-For` y `X-Request-Id`, como ya hace `apiFetch`.
+2. Releva al navegador **todos** los `Set-Cookie` que responde la API (`tk_carrito` al crear o renovar; `tk_csrf` al crear el carrito) con `cookies().set(...)` en la Server Action o Route Handler.
+3. En las escrituras envía `X-CSRF-Token`. Si la respuesta trae la cabecera `X-CSRF-Token`, ese es el token para el siguiente formulario.
+4. Reemplaza la cookie JSON actual (`CookieCartStore`) por estas llamadas: la API ya no acepta ese formato. Los ids de línea pasan a ser `CartLine.id` (uuid). Los textos de avisos, cupón, disponibilidad y despacho gratis ya vienen en español desde la API; el aviso de despacho gratis debe usar `freeShipping.remaining` (después del descuento).
 
 ## Correos y worker (LN-14)
 
@@ -409,3 +499,9 @@ Las de LN-12 (imágenes del catálogo):
 | ------------------- | --------------------------------- | ----------------------------------------------------------------------- |
 | `IMAGES_DIR`        | `uploads` (relativa a `apps/api`) | carpeta del adaptador de disco local                                    |
 | `IMAGES_PUBLIC_URL` | `http://localhost:4000/uploads`   | base de `product_images.url`; **obligatoria y con https en producción** |
+
+La de LN-06 (carrito):
+
+| Variable        | Por defecto | Notas                                                          |
+| --------------- | ----------- | -------------------------------------------------------------- |
+| `CART_TTL_DAYS` | `30`        | días sin uso tras los que vence el carrito del invitado (1–90) |

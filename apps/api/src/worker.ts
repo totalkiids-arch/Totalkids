@@ -1,6 +1,7 @@
 import { loadEnv } from "./config/env.js";
 import { createLogger } from "./lib/logger.js";
 import { createPrismaClient } from "./lib/prisma.js";
+import { purgeExpiredCarts } from "./services/cart/session.js";
 import { createEmailSender } from "./services/email/create-sender.js";
 import { createEmailWorker } from "./services/email/worker.js";
 
@@ -36,11 +37,27 @@ const worker = createEmailWorker({
 
 worker.start();
 
+// Limpieza de carritos vencidos (LN-06), aparte del bucle de correos. Si hay
+// varias instancias, todas pueden borrar: el DELETE es idempotente.
+const CART_PURGE_INTERVAL_MS = 60 * 60 * 1000;
+async function purgeCarts() {
+  try {
+    const count = await purgeExpiredCarts(prisma);
+    if (count > 0) logger.info({ count }, "Carritos vencidos borrados");
+  } catch (err) {
+    logger.error({ err }, "No se pudieron borrar los carritos vencidos");
+  }
+}
+void purgeCarts();
+const cartPurgeTimer = setInterval(() => void purgeCarts(), CART_PURGE_INTERVAL_MS);
+cartPurgeTimer.unref();
+
 let shuttingDown = false;
 
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
+  clearInterval(cartPurgeTimer);
   logger.info(`${signal} recibido, deteniendo el worker de correos`);
   // Termina el lote en curso (no deja envíos a medias) y no toma más.
   await worker.stop();

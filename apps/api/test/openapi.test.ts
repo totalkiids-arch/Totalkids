@@ -25,6 +25,8 @@ const LN12_PATHS = [
   "/admin/categories/{id}",
   "/admin/extras",
 ];
+/** Carrito, cupón y cotización de entrega (LN-06). */
+const LN06_PATHS = ["/cart", "/cart/items", "/cart/items/{id}", "/cart/coupon", "/shipping/quote"];
 /** Paths ya implementados; todo lo demás debe estar marcado como pendiente. */
 const IMPLEMENTED = new Set([
   // LN-02
@@ -44,6 +46,8 @@ const IMPLEMENTED = new Set([
   "/admin/emails/{id}/resend",
   // LN-12
   ...LN12_PATHS,
+  // LN-06
+  ...LN06_PATHS,
 ]);
 
 function operations() {
@@ -148,6 +152,19 @@ describe("contrato OpenAPI", () => {
         expect(JSON.stringify(op.requestBody ?? {}), `${method} ${path}`).not.toContain(
           "PendingJson",
         );
+      }
+    }
+  });
+
+  it("el carrito (LN-06) declara sus cuerpos y responde el esquema Cart", () => {
+    for (const path of LN06_PATHS) {
+      for (const { method, op } of operations().filter((o) => o.path === path)) {
+        expect(JSON.stringify(op.requestBody ?? {}), `${method} ${path}`).not.toContain(
+          "PendingJson",
+        );
+        const ok = JSON.stringify((op.responses as Json)["200"] ?? (op.responses as Json)["201"]);
+        const schema = path === "/shipping/quote" ? "ShippingQuote" : "Cart";
+        expect(ok, `${method} ${path}`).toContain(`#/components/schemas/${schema}`);
       }
     }
   });

@@ -254,7 +254,7 @@ export async function listProducts(
 }
 
 /** Condición de producto visible en la tienda, para las consultas con Prisma. */
-function visibleProduct(now = new Date()): Prisma.ProductWhereInput {
+export function visibleProduct(now = new Date()): Prisma.ProductWhereInput {
   return {
     status: "active",
     publishedAt: { lte: now },

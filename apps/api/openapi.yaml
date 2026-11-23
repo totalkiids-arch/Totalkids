@@ -258,56 +258,102 @@ paths:
   /cart:
     get:
       operationId: getCart
-      summary: "[Pendiente LN-06] Carrito propio"
+      summary: Carrito propio con precios, avisos y totales calculados en el servidor
       description: |
-        Solo sesión opaca de invitado (no hay cuentas de comprador). Precios y
-        totales calculados en el servidor (RNF-03). Las líneas sin stock se marcan
-        "a pedido" y no bloquean la compra.
-      x-pending-task: LN-06
+        Solo sesión opaca de invitado (no hay cuentas de comprador). Sin cookie, o
+        con un carrito vencido, responde un carrito vacío y **no crea filas**.
+        Revalida en cada lectura (RF-06): precio actual de variante y extras,
+        productos o variantes inactivos (`status: unavailable`, fuera de los
+        totales), precio por definir (`unpriced`, bloquea el pago), extras
+        retirados y cupón que dejó de valer, con su aviso. Leer no borra nada: la
+        siguiente escritura del carrito los limpia. Stock 0 no es «agotado»: la
+        línea se vende a pedido con su plazo. Extiende la vida del carrito
+        (`CART_TTL_DAYS`) y renueva la cookie como mucho una vez por hora.
       tags: [Carrito]
-      security: [{ cartSession: [] }]
+      security: [{ cartSession: [] }, {}]
       responses:
-        "200": { description: Carrito con líneas y totales (esquema en LN-06) }
+        "200":
+          description: Carrito
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
   /cart/items:
     post:
       operationId: addCartItem
-      summary: "[Pendiente LN-06] Agregar una variante al carrito"
-      description: Crea la sesión opaca de carrito si no existe.
-      x-pending-task: LN-06
+      summary: Agregar una variante al carrito
+      description: |
+        Crea la sesión opaca de carrito si no existe (`Set-Cookie: tk_carrito`,
+        HttpOnly, SameSite=Lax; `__Host-tk_carrito` y Secure en producción). Al
+        crearla cambia la clave de sesión del CSRF, así que la misma respuesta trae
+        un token nuevo en `Set-Cookie: tk_csrf` y en la cabecera `X-CSRF-Token`
+        (Next.js lo usa en el siguiente formulario sin pedir `/csrf`).
+
+        Variante activa de un producto visible (404 si no). Los extras deben estar
+        ofrecidos por el producto; los que piden texto lo exigen con su largo
+        máximo efectivo. La misma combinación SKU + extras + textos (normalizados)
+        suma cantidad; otra combinación es otra línea. Máximo 9 unidades por SKU
+        y 30 líneas (422). Agregar NO reserva stock (RN-04).
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }, { csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddCartItemInput" }
       responses:
-        "201": { description: Carrito actualizado }
+        "201":
+          description: Carrito actualizado
+          headers:
+            X-CSRF-Token:
+              description: Solo al crear el carrito; token CSRF atado a la nueva sesión.
+              schema: { $ref: "#/components/schemas/CsrfToken" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /cart/items/{id}:
     parameters:
-      - { name: id, in: path, required: true, schema: { type: string } }
+      - name: id
+        in: path
+        required: true
+        description: Id de la línea (`CartLine.id`). Una línea de otro carrito responde 404.
+        schema: { type: string, format: uuid }
       - $ref: "#/components/parameters/CsrfTokenHeader"
     patch:
       operationId: updateCartItem
-      summary: "[Pendiente LN-06] Cambiar la cantidad de una línea"
-      x-pending-task: LN-06
+      summary: Cambiar la cantidad de una línea (1 a 9)
+      description: Para quitarla se usa DELETE. Responde el carrito con los avisos de la limpieza.
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCartItemInput" }
       responses:
-        "200": { description: Carrito actualizado }
+        "200":
+          description: Carrito actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: deleteCartItem
-      summary: "[Pendiente LN-06] Quitar una línea"
-      x-pending-task: LN-06
+      summary: Quitar una línea
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
       responses:
-        "200": { description: Carrito actualizado }
+        "200":
+          description: Carrito actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
   /cart/coupon:
@@ -315,60 +361,84 @@ paths:
       - $ref: "#/components/parameters/CsrfTokenHeader"
     post:
       operationId: applyCartCoupon
-      summary: "[Pendiente LN-06] Aplicar un cupón"
-      x-pending-task: LN-06
+      summary: Aplicar un cupón (reemplaza al anterior)
+      description: |
+        Uno por carrito (no se acumulan, RN-01). El código se normaliza (mayúsculas,
+        sin espacios). Debe estar activo, vigente hoy en días de Chile (ambos
+        extremos inclusive) y con cupo (`usesCount < maxUses`). El descuento se
+        calcula solo sobre el subtotal elegible (productos y extras, nunca el
+        despacho); el porcentaje se redondea al peso y nunca supera ese subtotal.
+        **No reserva usos**: eso ocurre al crear el pedido (LN-09).
+
+        Rechazos (422, `details.reason`): `empty` («Escribe el código de tu
+        cupón.»), `not_found`, `inactive`, `not_started`, `expired`, `exhausted`
+        (todos «El cupón «X» no existe o ya no está vigente.») y `empty_cart`
+        («Agrega productos antes de aplicar un cupón.»). Sin carrito no crea filas.
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApplyCouponInput" }
       responses:
-        "200": { description: Carrito con descuento }
+        "200":
+          description: Carrito con descuento
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: removeCartCoupon
-      summary: "[Pendiente LN-06] Quitar el cupón"
-      x-pending-task: LN-06
+      summary: Quitar el cupón
       tags: [Carrito]
       security: [{ cartSession: [], csrfCookie: [] }]
       responses:
-        "200": { description: Carrito sin cupón }
+        "200":
+          description: Carrito sin cupón
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /shipping/quote:
     get:
       operationId: quoteShipping
-      summary: "[Pendiente LN-06] Costo de entrega del carrito"
+      summary: Costo de entrega del carrito
       description: |
         Cambio del cliente: no hay despacho a todo Chile. `retiro` (en taller) es
-        siempre gratis. `despacho` (a coordinar) es gratis desde el umbral
-        configurado; si no, la tarifa depende de la zona y puede venir `cost: null`
-        ("por confirmar"), que no se suma al total (RF-08, RF-11).
-      x-pending-task: LN-06
+        siempre gratis (422 si está deshabilitado). `despacho` (a coordinar) exige
+        `region` y `commune` (la comuna se compara sin tildes ni mayúsculas):
+        - zona activa y elegible con el umbral alcanzado → `cost: 0`, `threshold`;
+        - zona con tarifa → `cost`, `zone`;
+        - zona sin tarifa → `cost: null`, `pending_rate` («por confirmar»);
+        - comuna sin zona activa → `cost: null`, `coordinate` («a coordinar»).
+
+        El umbral se calcula sobre subtotal elegible − descuento del carrito
+        (RF-08) y solo en zonas habilitadas y elegibles. El descuento nunca se
+        aplica al despacho, y un `cost: null` no se suma al total (RF-11). La
+        cotización sale del puerto `ShippingQuoter` (hoy, zonas del panel).
       tags: [Carrito]
-      security: [{ cartSession: [] }]
+      security: [{ cartSession: [] }, {}]
       parameters:
-        - {
-            name: method,
-            in: query,
-            required: true,
-            schema: { type: string, enum: [despacho, retiro] },
-          }
-        - { name: region, in: query, schema: { type: string } }
-        - { name: commune, in: query, schema: { type: string } }
+        - name: method
+          in: query
+          required: true
+          schema: { type: string, enum: [despacho, retiro] }
+        - name: region
+          in: query
+          description: Código de región ("RM"). Obligatorio con despacho.
+          schema: { type: string, maxLength: 4 }
+        - name: commune
+          in: query
+          description: Comuna. Obligatoria con despacho.
+          schema: { type: string, maxLength: 80 }
       responses:
         "200":
           description: Cotización
           content:
             application/json:
-              schema:
-                type: object
-                required: [method, cost]
-                properties:
-                  method: { type: string, enum: [despacho, retiro] }
-                  cost:
-                    type: [integer, "null"]
-                    description: CLP; null = por confirmar
-                  reason: { type: string, enum: [pickup, threshold, zone] }
+              schema: { $ref: "#/components/schemas/ShippingQuote" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
   # ───────────────────────── Pedidos de invitado (LN-09) ─────────────────────────
@@ -2132,6 +2202,202 @@ components:
             stockReserved: { type: integer }
             available: { type: integer }
         movement: { $ref: "#/components/schemas/InventoryMovement" }
+    # ── Carrito (LN-06) ──
+    CartNotice:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [product_removed, extra_removed, quantity_adjusted, unpriced, coupon_removed]
+        message: { type: string, description: Texto para el comprador (español). }
+    CartLine:
+      type: object
+      required:
+        - id
+        - sku
+        - optionLabel
+        - quantity
+        - status
+        - product
+        - variantPrice
+        - compareAtPrice
+        - unitPrice
+        - lineTotal
+        - extras
+        - availability
+        - notices
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string }
+        optionLabel: { type: [string, "null"] }
+        quantity: { type: integer, minimum: 1, maximum: 9 }
+        status:
+          type: string
+          enum: [ok, unpriced, unavailable]
+          description: |
+            `unavailable`: el producto o la variante ya no se vende (fuera de los
+            totales; se quita en la siguiente escritura). `unpriced`: sin precio
+            definido (bloquea el pago).
+        product:
+          type: object
+          required: [slug, name, leadTime, image]
+          properties:
+            slug: { type: string }
+            name: { type: string }
+            leadTime:
+              type: [string, "null"]
+              description: Plazo a pedido; null = plazo general de la tienda.
+            image:
+              oneOf:
+                - { $ref: "#/components/schemas/Image" }
+                - { type: "null" }
+        variantPrice: { type: [integer, "null"] }
+        compareAtPrice: { type: [integer, "null"] }
+        unitPrice:
+          type: [integer, "null"]
+          description: Variante + extras con precio, por unidad (CLP).
+        lineTotal: { type: [integer, "null"] }
+        extras:
+          type: array
+          items:
+            type: object
+            required: [code, name, price, text]
+            properties:
+              code: { type: string }
+              name: { type: string }
+              price:
+                type: [integer, "null"]
+                description: null = por confirmar (no suma).
+              text: { type: [string, "null"] }
+        availability:
+          type: object
+          required: [status, inStock, leadTime, message]
+          properties:
+            status: { type: string, enum: [en_stock, mixto, a_pedido] }
+            inStock: { type: integer }
+            leadTime: { type: [string, "null"] }
+            message: { type: string }
+        notices:
+          type: array
+          items: { $ref: "#/components/schemas/CartNotice" }
+    Cart:
+      type: object
+      required: [lines, notices, coupon, totals, freeShipping, canCheckout]
+      properties:
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/CartLine" }
+        notices:
+          type: array
+          description: Ajustes del carrito (productos quitados, cupón que dejó de valer…).
+          items: { $ref: "#/components/schemas/CartNotice" }
+        coupon:
+          oneOf:
+            - type: object
+              required: [code, kind, value, discount, valid, reason]
+              properties:
+                code: { type: string }
+                kind: { type: string, enum: [percent, amount] }
+                value: { type: integer }
+                discount: { type: integer }
+                valid: { type: boolean }
+                reason:
+                  type: [string, "null"]
+                  enum: [inactive, not_started, expired, exhausted, null]
+            - { type: "null" }
+        totals:
+          type: object
+          required: [units, subtotal, discount, totalWithoutShipping, unpriced]
+          properties:
+            units: { type: integer }
+            subtotal:
+              type: integer
+              description: Productos y extras con precio (subtotal elegible).
+            discount: { type: integer }
+            totalWithoutShipping: { type: integer, description: subtotal − descuento. }
+            unpriced:
+              type: array
+              description: Productos o servicios con precio por confirmar (no suman).
+              items: { type: string }
+        freeShipping:
+          description: Avance hacia el despacho gratis sobre subtotal − descuento; null sin umbral.
+          oneOf:
+            - type: object
+              required: [threshold, remaining, percent, reached]
+              properties:
+                threshold: { type: integer }
+                remaining: { type: integer }
+                percent: { type: integer }
+                reached: { type: boolean }
+            - { type: "null" }
+        canCheckout:
+          type: boolean
+          description: Hay algo que comprar y ninguna línea sin precio.
+    AddCartItemInput:
+      type: object
+      required: [sku, quantity]
+      properties:
+        sku: { type: string, maxLength: 60 }
+        quantity: { type: integer, minimum: 1, maximum: 9 }
+        extras:
+          type: array
+          maxItems: 10
+          description: Códigos de los extras elegidos.
+          items: { type: string, maxLength: 40 }
+        texts:
+          type: object
+          description: Texto de cada extra personalizable, por código.
+          additionalProperties: { type: string, maxLength: 200 }
+    UpdateCartItemInput:
+      type: object
+      required: [quantity]
+      properties:
+        quantity: { type: integer, minimum: 1, maximum: 9 }
+    ApplyCouponInput:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, maxLength: 60 }
+    ShippingQuote:
+      type: object
+      required: [method, cost, reason, leadTime, pickupDetails, zone, freeShipping, message, totals]
+      properties:
+        method: { type: string, enum: [despacho, retiro] }
+        cost:
+          type: [integer, "null"]
+          description: CLP; null = por confirmar o a coordinar (no se suma).
+        reason: { type: string, enum: [pickup, threshold, zone, pending_rate, coordinate] }
+        leadTime: { type: [string, "null"] }
+        pickupDetails: { type: [string, "null"] }
+        zone:
+          oneOf:
+            - type: object
+              required: [region, commune]
+              properties:
+                region: { type: string }
+                commune: { type: string }
+            - { type: "null" }
+        freeShipping:
+          oneOf:
+            - type: object
+              required: [threshold, remaining, reached]
+              properties:
+                threshold: { type: integer }
+                remaining: { type: integer }
+                reached: { type: boolean }
+            - { type: "null" }
+        message: { type: [string, "null"] }
+        totals:
+          type: object
+          required: [subtotal, discount, shipping, total]
+          properties:
+            subtotal: { type: integer }
+            discount: { type: integer }
+            shipping: { type: [integer, "null"] }
+            total:
+              type: integer
+              description: subtotal − descuento + despacho (un despacho null no suma).
 
   parameters:
     Page:
@@ -2361,7 +2627,11 @@ components:
       type: apiKey
       in: cookie
       name: tk_carrito
-      description: Sesión opaca de carrito del invitado (LN-06). No contiene líneas ni precios.
+      description: |
+        Sesión opaca de carrito del invitado (LN-06): `tk_carrito`, o
+        `__Host-tk_carrito` en producción. HttpOnly, SameSite=Lax y Secure en
+        producción. Solo un token aleatorio (en la base, su hash); no contiene
+        líneas ni precios. Vence tras `CART_TTL_DAYS` sin uso (30 por defecto).
     orderAccess:
       type: apiKey
       in: header

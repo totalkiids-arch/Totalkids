@@ -70,6 +70,13 @@ const envSchema = z
     IMAGES_DIR: z.preprocess(blankAsUndefined, z.string().min(1).default("uploads")),
     /** Base pública de las imágenes guardadas en IMAGES_DIR (sin barra final). */
     IMAGES_PUBLIC_URL: z.preprocess(blankAsUndefined, z.url().optional()),
+
+    // ── Carrito (LN-06) ──
+    /** Días sin uso tras los que vence el carrito del invitado (expiración deslizante). */
+    CART_TTL_DAYS: z.preprocess(
+      blankAsUndefined,
+      z.coerce.number().int().min(1).max(90).default(30),
+    ),
   })
   .superRefine((env, ctx) => {
     const production = env.NODE_ENV === "production";
