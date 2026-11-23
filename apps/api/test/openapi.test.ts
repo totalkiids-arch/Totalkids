@@ -35,6 +35,8 @@ const IMPLEMENTED = new Set([
   "/shipping/quote",
   // LN-09
   "/orders",
+  "/orders/lookup",
+  "/orders/{orderNumber}",
 ]);
 
 function operations() {

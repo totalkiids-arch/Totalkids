@@ -7,7 +7,17 @@ import type { PrismaClient } from "../lib/prisma.js";
 import { validated } from "../lib/validation.js";
 import { cartToken } from "../middleware/cart-session.js";
 import { methodNotAllowed } from "../middleware/method-not-allowed.js";
+import { publicFormLimiter } from "../middleware/rate-limit.js";
+import { getGuestOrder, lookupOrder } from "../services/order-query.js";
 import { createOrder, type CreateOrderInput } from "../services/orders.js";
+
+const lookupBody = z.object({
+  orderNumber: z.string().trim().min(1).max(20),
+  email: z.string().trim().max(254).pipe(z.email("Correo inválido")),
+});
+
+// Un número mal formado responde 404 igual que uno inexistente (lo resuelve el servicio).
+const orderParams = z.object({ orderNumber: z.string().max(40) });
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 const optionalText = (max: number) =>
@@ -121,6 +131,28 @@ export function ordersRouter({
       }),
     )
     .all(methodNotAllowed("POST"));
+
+  // POST (no GET) para que el correo no quede en URLs ni logs. Límite por IP:
+  // dificulta probar combinaciones de número y correo.
+  router
+    .route("/orders/lookup")
+    .post(
+      publicFormLimiter({ name: "order-lookup" }),
+      validated({ body: lookupBody }, async ({ body }, _req, res) => {
+        res.json(await lookupOrder(prisma, body, accessSecret));
+      }),
+    )
+    .all(methodNotAllowed("POST"));
+
+  router
+    .route("/orders/:orderNumber")
+    .get(
+      validated({ params: orderParams }, async ({ params }, req, res) => {
+        const credential = req.get("x-order-access") || undefined;
+        res.json(await getGuestOrder(prisma, params.orderNumber, credential, accessSecret));
+      }),
+    )
+    .all(methodNotAllowed("GET"));
 
   return router;
 }

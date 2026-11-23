@@ -119,3 +119,42 @@ describe("POST /orders (sin base)", () => {
     expect(res.body.details.reason).toBe("empty_cart");
   });
 });
+
+describe("consulta de pedido de invitado (sin base)", () => {
+  it("GET /orders/{n} sin credencial responde 401 sin tocar la base", async () => {
+    const res = await request(buildTestApp()).get("/api/v1/orders/TK-1001");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("UNAUTHORIZED");
+  });
+
+  it("POST /orders/lookup exige CSRF y valida número y correo", async () => {
+    const app = buildTestApp();
+    expect(
+      (
+        await request(app)
+          .post("/api/v1/orders/lookup")
+          .send({ orderNumber: "TK-1", email: "a@b.cl" })
+      ).status,
+    ).toBe(403);
+    const res = await request(app)
+      .post("/api/v1/orders/lookup")
+      .set(csrfHeaders())
+      .send({ orderNumber: "", email: "no-es-correo" });
+    expect(res.status).toBe(422);
+    const paths = (res.body.details.issues as { path: string }[]).map((i) => i.path).sort();
+    expect(paths).toEqual(["email", "orderNumber"]);
+  });
+
+  it("limita las consultas por IP: 10 cada 15 minutos", async () => {
+    const app = buildTestApp();
+    const send = () =>
+      request(app)
+        .post("/api/v1/orders/lookup")
+        .set(csrfHeaders())
+        .send({ orderNumber: "", email: "" });
+    for (let i = 0; i < 10; i++) expect((await send()).status).toBe(422);
+    const blocked = await send();
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.code).toBe("RATE_LIMITED");
+  });
+});

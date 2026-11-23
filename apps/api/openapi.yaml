@@ -519,13 +519,14 @@ paths:
   /orders/lookup:
     post:
       operationId: lookupGuestOrder
-      summary: "[Pendiente LN-09] Consultar un pedido con número y correo"
+      summary: Consultar un pedido con número y correo
       description: |
         Reemplaza a `/me/orders` (no hay cuentas de comprador). Va por POST para que
         el correo no quede en URLs ni logs. Responde el mismo 404 genérico si el
         número no existe o el correo no coincide, para no revelar pedidos (RF-36).
-        Límite estricto por IP. Entrega la credencial `orderAccess` del pedido.
-      x-pending-task: LN-09
+        Límite por IP: 10 consultas cada 15 minutos. Entrega el pedido y la
+        credencial `orderAccess` (la misma que se entregó al crearlo). El número
+        acepta "TK-1048", "tk-1048" o "1048"; el correo no distingue mayúsculas.
       tags: [Pedidos]
       security: [{ csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
@@ -540,7 +541,16 @@ paths:
                 orderNumber: { type: string, example: TK-1048 }
                 email: { type: string, format: email }
       responses:
-        "200": { description: Resumen del pedido y credencial de acceso (esquema en LN-09) }
+        "200":
+          description: Pedido y credencial de acceso
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [order, accessToken]
+                properties:
+                  order: { $ref: "#/components/schemas/GuestOrder" }
+                  accessToken: { type: string, description: Credencial para X-Order-Access }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
@@ -548,9 +558,12 @@ paths:
   /orders/{orderNumber}:
     get:
       operationId: getGuestOrder
-      summary: "[Pendiente LN-09] Detalle y seguimiento de un pedido"
-      description: Solo con la credencial específica del pedido (RF-36). Sin sesión de cliente.
-      x-pending-task: LN-09
+      summary: Detalle y seguimiento de un pedido
+      description: |
+        Solo con la credencial específica del pedido en `X-Order-Access` (RF-36).
+        Sin credencial, 401; con una que no corresponde a ese pedido (o un número
+        inexistente), el mismo 404. El historial muestra estados y fechas, sin
+        actores ni notas internas.
       tags: [Pedidos]
       security: [{ orderAccess: [] }]
       parameters:
@@ -561,7 +574,11 @@ paths:
             schema: { type: string, example: TK-1048 },
           }
       responses:
-        "200": { description: Pedido (esquema en LN-09) }
+        "200":
+          description: Pedido con su seguimiento
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuestOrder" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -1674,6 +1691,112 @@ components:
         accessToken:
           type: string
           description: Credencial para X-Order-Access (ver orderAccess). Guardarla para ver y pagar el pedido.
+    GuestOrder:
+      type: object
+      required:
+        [
+          orderNumber,
+          status,
+          statusLabel,
+          createdAt,
+          paymentDueAt,
+          paidAt,
+          buyer,
+          delivery,
+          billing,
+          items,
+          totals,
+          couponCode,
+          paymentStatus,
+          history,
+        ]
+      properties:
+        orderNumber: { type: string, example: TK-1001 }
+        status:
+          type: string
+          enum:
+            [
+              pending_payment,
+              in_review,
+              confirmed,
+              preparing,
+              shipped,
+              delivered,
+              cancelled,
+              expired,
+            ]
+        statusLabel: { type: string, example: Pendiente de pago }
+        createdAt: { type: string, format: date-time }
+        paymentDueAt: { type: string, format: date-time }
+        paidAt: { type: [string, "null"], format: date-time }
+        buyer:
+          type: object
+          required: [name, email]
+          properties:
+            name: { type: string }
+            email: { type: string, format: email }
+        delivery:
+          oneOf:
+            - type: object
+              required: [method, pickupDetails]
+              properties:
+                method: { const: retiro }
+                pickupDetails: { type: [string, "null"] }
+            - type: object
+              required: [method, address, region, commune, notes, leadTime, tracking]
+              properties:
+                method: { const: despacho }
+                address: { type: string }
+                region: { type: [string, "null"] }
+                commune: { type: [string, "null"] }
+                notes: { type: [string, "null"] }
+                leadTime: { type: [string, "null"] }
+                tracking:
+                  oneOf:
+                    - type: "null"
+                    - type: object
+                      required: [carrier, code]
+                      properties:
+                        carrier: { type: string }
+                        code: { type: string }
+        billing:
+          type: object
+          required: [document, businessName, invoice]
+          properties:
+            document: { type: string, enum: [boleta, factura] }
+            businessName: { type: [string, "null"] }
+            invoice:
+              oneOf:
+                - type: "null"
+                - type: object
+                  required: [folio, issuedAt]
+                  properties:
+                    folio: { type: string }
+                    issuedAt: { type: string, format: date-time }
+        items:
+          type: array
+          items: { type: object, description: Igual que CreatedOrder.items }
+        totals:
+          type: object
+          required: [subtotal, discount, shipping, total]
+          properties:
+            subtotal: { type: integer }
+            discount: { type: integer }
+            shipping: { type: [integer, "null"] }
+            total: { type: integer }
+        couponCode: { type: [string, "null"] }
+        paymentStatus:
+          type: [string, "null"]
+          description: Estado del último intento en Flow (pending, paid, rejected, voided, in_review, expired)
+        history:
+          type: array
+          items:
+            type: object
+            required: [status, label, at]
+            properties:
+              status: { type: string }
+              label: { type: string }
+              at: { type: string, format: date-time }
     UpdateCartItem:
       type: object
       required: [quantity]

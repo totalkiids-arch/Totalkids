@@ -310,4 +310,93 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
       await prisma.product.update({ where: { id: productId }, data: { status: "active" } });
     }
   });
+
+  // ── Consulta del pedido (RF-23, RF-36) ─────────────────────────────────────
+
+  const lookup = (orderNumber: string, email: string) =>
+    request(app).post("/api/v1/orders/lookup").set(csrfHeaders()).send({ orderNumber, email });
+
+  const detail = (orderNumber: string, credential?: string) => {
+    const req = request(app).get(`/api/v1/orders/${orderNumber}`);
+    return credential ? req.set("X-Order-Access", credential) : req;
+  };
+
+  it("número + correo entregan el pedido y la misma credencial de la creación", async () => {
+    const token = await cartWith({ sku: skuStock, quantity: 1 });
+    const created_ = await order(token);
+    const number = created_.body.orderNumber as string;
+
+    // El número y el correo no distinguen formato ni mayúsculas.
+    const res = await lookup(number.toLowerCase(), "MARIA@correo.cl");
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBe(created_.body.accessToken);
+    expect(res.body.order).toMatchObject({
+      orderNumber: number,
+      status: "pending_payment",
+      statusLabel: "Pendiente de pago",
+      buyer: { name: "María González", email: "maria@correo.cl" },
+      delivery: { method: "retiro" },
+      billing: { document: "boleta", invoice: null },
+      totals: { subtotal: 50_000, total: 50_000 },
+      paymentStatus: null,
+      history: [{ status: "pending_payment", label: "Pendiente de pago" }],
+    });
+    expect(res.body.order.items).toHaveLength(1);
+    await prisma.productVariant.update({ where: { sku: skuStock }, data: { stockReserved: 0 } });
+  });
+
+  it("número inexistente o correo equivocado: el mismo 404 genérico", async () => {
+    const token = await cartWith({ sku: skuStock, quantity: 1 });
+    const number = (await order(token)).body.orderNumber as string;
+    const wrongEmail = await lookup(number, "otra@correo.cl");
+    const missing = await lookup("TK-999999999", "maria@correo.cl");
+    expect([wrongEmail.status, missing.status]).toEqual([404, 404]);
+    expect(wrongEmail.body.message).toBe(missing.body.message);
+    await prisma.productVariant.update({ where: { sku: skuStock }, data: { stockReserved: 0 } });
+  });
+
+  it("el detalle exige la credencial de ESE pedido y muestra seguimiento y factura", async () => {
+    const [first, second] = [
+      await order(await cartWith({ sku: skuStock, quantity: 1 })),
+      await order(await cartWith({ sku: skuStock, quantity: 1 })),
+    ];
+    const number = first.body.orderNumber as string;
+    expect((await detail(number)).status).toBe(401);
+    // La credencial de otro pedido no sirve: mismo 404 que un pedido inexistente.
+    expect((await detail(number, second.body.accessToken as string)).status).toBe(404);
+    expect((await detail("TK-999999999", first.body.accessToken as string)).status).toBe(404);
+
+    // Confirmado por el sistema, con una nota interna que el comprador no debe ver.
+    const saved = await prisma.order.findUniqueOrThrow({
+      where: { number: Number(number.slice(3)) },
+    });
+    await prisma.order.update({
+      where: { id: saved.id },
+      data: { status: "confirmed", paidAt: new Date() },
+    });
+    await prisma.orderStatusHistory.create({
+      data: {
+        orderId: saved.id,
+        fromStatus: "pending_payment",
+        toStatus: "confirmed",
+        actorLabel: "Sistema",
+        reason: "Nota interna",
+      },
+    });
+    const res = await detail(number, first.body.accessToken as string);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      orderNumber: number,
+      status: "confirmed",
+      statusLabel: "Confirmado",
+    });
+    expect(res.body.paidAt).not.toBeNull();
+    expect(res.body.history.map((h: { status: string }) => h.status)).toEqual([
+      "pending_payment",
+      "confirmed",
+    ]);
+    // El historial del comprador no expone actores ni notas internas.
+    expect(JSON.stringify(res.body.history)).not.toContain("Nota interna");
+    await prisma.productVariant.update({ where: { sku: skuStock }, data: { stockReserved: 0 } });
+  });
 });
