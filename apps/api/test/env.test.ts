@@ -4,8 +4,14 @@ import { parseEnv } from "../src/config/env.js";
 
 const base = { DATABASE_URL: "postgresql://u:p@localhost:5432/db" };
 const secret = "s".repeat(32);
-/** En producción los correos necesitan el origen público del sitio (LN-14). */
-const productionSite = { PUBLIC_SITE_URL: "https://tienda.example.com" };
+/**
+ * En producción los correos necesitan el origen público del sitio (LN-14) y las
+ * imágenes del catálogo su base pública (LN-12).
+ */
+const productionSite = {
+  PUBLIC_SITE_URL: "https://tienda.example.com",
+  IMAGES_PUBLIC_URL: "https://tienda.example.com/uploads",
+};
 
 describe("variables de entorno", () => {
   it("usa valores por defecto seguros en desarrollo", () => {
@@ -97,6 +103,24 @@ describe("variables de entorno", () => {
     expect(parseEnv(prod).success).toBe(false);
     expect(parseEnv({ ...prod, PUBLIC_SITE_URL: "http://tienda.example.com" }).success).toBe(false);
     expect(parseEnv({ ...prod, ...productionSite }).success).toBe(true);
+  });
+
+  it("imágenes: carpeta y URL por defecto en desarrollo; https obligatorio en producción", () => {
+    const dev = parseEnv(base);
+    expect(dev.data).toMatchObject({
+      IMAGES_DIR: "uploads",
+      IMAGES_PUBLIC_URL: "http://localhost:4000/uploads",
+    });
+    expect(
+      parseEnv({ ...base, IMAGES_PUBLIC_URL: "https://cdn.example.com/img/" }).data
+        ?.IMAGES_PUBLIC_URL,
+    ).toBe("https://cdn.example.com/img");
+    const prod = { ...base, ...productionSite, NODE_ENV: "production", CSRF_SECRET: secret };
+    expect(parseEnv(prod).success).toBe(true);
+    expect(parseEnv({ ...prod, IMAGES_PUBLIC_URL: "" }).success).toBe(false);
+    expect(parseEnv({ ...prod, IMAGES_PUBLIC_URL: "http://tienda.example.com/u" }).success).toBe(
+      false,
+    );
   });
 
   it("el bloqueo del worker debe durar más que el timeout de envío", () => {

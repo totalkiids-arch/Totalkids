@@ -12,6 +12,19 @@ const spec = parse(readFileSync(new URL("../openapi.yaml", import.meta.url), "ut
 const paths = spec.paths as Record<string, Json>;
 const HTTP_METHODS = ["get", "post", "put", "patch", "delete"] as const;
 const MUTATING = new Set(["post", "put", "patch", "delete"]);
+/** Catálogo e inventario del panel (LN-12): solo Administrador. */
+const LN12_PATHS = [
+  "/admin/products",
+  "/admin/products/{id}",
+  "/admin/products/{id}/images",
+  "/admin/products/{id}/images/order",
+  "/admin/products/{id}/images/{imageId}",
+  "/admin/products/{id}/stock-adjustments",
+  "/admin/products/{id}/stock-movements",
+  "/admin/categories",
+  "/admin/categories/{id}",
+  "/admin/extras",
+];
 /** Paths ya implementados; todo lo demás debe estar marcado como pendiente. */
 const IMPLEMENTED = new Set([
   // LN-02
@@ -29,6 +42,8 @@ const IMPLEMENTED = new Set([
   "/categories",
   // LN-14
   "/admin/emails/{id}/resend",
+  // LN-12
+  ...LN12_PATHS,
 ]);
 
 function operations() {
@@ -114,6 +129,26 @@ describe("contrato OpenAPI", () => {
       const op = paths[path]?.post as Json | undefined;
       expect(op, path).toBeDefined();
       expect(collectRefs(op?.requestBody)).toEqual(["#/components/requestBodies/FlowCallback"]);
+    }
+  });
+
+  it("solo la subida de imágenes del panel acepta multipart/form-data", () => {
+    const multipart = operations()
+      .filter(({ op }) => JSON.stringify(op.requestBody ?? {}).includes("multipart/form-data"))
+      .map(({ path, method }) => `${method.toUpperCase()} ${path}`);
+    expect(multipart).toEqual(["POST /admin/products/{id}/images"]);
+  });
+
+  it("el catálogo del panel (LN-12) es solo para Administrador y declara sus cuerpos", () => {
+    for (const path of LN12_PATHS) {
+      const item = paths[path];
+      expect(item, path).toBeDefined();
+      for (const { method, op } of operations().filter((o) => o.path === path)) {
+        expect(op["x-roles"], `${method} ${path}`).toEqual(["admin"]);
+        expect(JSON.stringify(op.requestBody ?? {}), `${method} ${path}`).not.toContain(
+          "PendingJson",
+        );
+      }
     }
   });
 

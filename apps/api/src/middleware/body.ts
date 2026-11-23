@@ -12,6 +12,17 @@ export const FLOW_CALLBACK_PATHS = ["/payments/flow/confirm", "/payments/flow/re
 
 /** Límite del cuerpo JSON. Las imágenes no viajan como JSON (PR-05). */
 export const JSON_BODY_LIMIT = "100kb";
+
+/**
+ * Subida de imágenes del panel (LN-12): la única ruta que acepta
+ * multipart/form-data. El cuerpo lo lee la propia ruta (lib/multipart.ts) con su
+ * tope de 2 MB; la protección CSRF no cambia (va en cabecera + cookie).
+ */
+const IMAGE_UPLOAD_PATH = /^\/admin\/products\/[^/]+\/images\/?$/;
+
+export function isImageUploadPath(path: string): boolean {
+  return IMAGE_UPLOAD_PATH.test(path);
+}
 /** Los callbacks de Flow solo traen `token`. */
 export const FORM_BODY_LIMIT = "16kb";
 
@@ -31,8 +42,9 @@ function hasBody(req: Parameters<RequestHandler>[0]): boolean {
 
 /**
  * 415 si un método que modifica trae cuerpo con un Content-Type no permitido:
- * JSON en todas las rutas; formulario solo en los callbacks de Flow. Un POST sin
- * cuerpo (p. ej. logout) no necesita Content-Type. Montar bajo /api/v1.
+ * JSON en todas las rutas; formulario solo en los callbacks de Flow; multipart
+ * solo en la subida de imágenes del panel. Un POST sin cuerpo (p. ej. logout) no
+ * necesita Content-Type. Montar bajo /api/v1.
  */
 export const requireContentType: RequestHandler = (req, _res, next) => {
   if (!METHODS_WITH_BODY.has(req.method) || !hasBody(req)) {
@@ -40,7 +52,12 @@ export const requireContentType: RequestHandler = (req, _res, next) => {
     return;
   }
   const flow = isFlowCallbackPath(req.path);
-  const allowed = flow ? "application/x-www-form-urlencoded" : "application/json";
+  const upload = req.method === "POST" && isImageUploadPath(req.path);
+  const allowed = flow
+    ? "application/x-www-form-urlencoded"
+    : upload
+      ? "multipart/form-data"
+      : "application/json";
   if (req.is(allowed)) {
     next();
     return;

@@ -7,7 +7,8 @@ info:
 
     - Base `/api/v1`. El navegador nunca la llama directo: Next.js (BFF) intermedia
       y la autorización se verifica siempre aquí.
-    - Operaciones en JSON. Solo los callbacks de Flow aceptan formularios.
+    - Operaciones en JSON. Solo los callbacks de Flow aceptan formularios y solo la
+      subida de imágenes del panel acepta multipart/form-data (máximo 2 MB).
     - Errores con el formato `ErrorBody` y el catálogo de códigos de abajo.
     - Métodos que modifican (POST/PUT/PATCH/DELETE) exigen CSRF de doble envío:
       cookie `tk_csrf` (`__Host-tk_csrf` en producción) y cabecera `X-CSRF-Token`
@@ -689,32 +690,74 @@ paths:
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
   # ───────────────────────── Panel: catálogo e inventario (LN-12) ─────────────────────────
+  # Solo Administrador (RF-26, RF-31: el Operador no modifica ni consulta el catálogo
+  # del panel). Cada cambio queda en audit_log con actor, antes/después y requestId.
   /admin/products:
     get:
       operationId: adminListProducts
-      summary: "[Pendiente LN-12] Productos del panel"
-      x-pending-task: LN-12
-      x-roles: [admin, operator]
+      summary: Productos del panel (todos los estados)
+      description: |
+        Búsqueda por nombre o SKU (sin distinguir mayúsculas), filtro por estado y
+        por categoría (principal o adicional), paginado. Más recientes primero.
+      x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [] }]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PageSize"
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, active, inactive] } }
+        - { name: categoryId, in: query, schema: { type: string, format: uuid } }
       responses:
-        "200": { description: Página de productos }
+        "200":
+          description: Página de productos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta]
+                properties:
+                  items:
+                    { type: array, items: { $ref: "#/components/schemas/AdminProductSummary" } }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
     post:
       operationId: adminCreateProduct
-      summary: "[Pendiente LN-12] Crear producto con variantes e imágenes"
-      x-pending-task: LN-12
+      summary: Crear producto con variantes, categorías y extras
+      description: |
+        El slug se deriva del nombre y se hace único ("silla", "silla-2"). El SKU se
+        guarda en mayúsculas y es único sin distinguir mayúsculas (RF-26). Importes
+        enteros ≥ 0 (RN-01); el precio anterior debe ser igual o mayor al precio, y
+        si es igual se guarda null (sin oferta). `stockPhysical` de una variante
+        nueva queda como movimiento "Stock inicial". Las imágenes se suben después
+        (`POST /admin/products/{id}/images`), así que un producto nuevo normalmente
+        nace como `draft`.
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminProductCreate" }
+            example:
+              name: Mesa Pikler
+              description: Mesa de madera para sala cuna.
+              categoryId: 0195f3a0-1b2c-7d3e-8f40-1a2b3c4d5e6f
+              optionName: Tamaño
+              variants:
+                - { sku: TK-MESA-S, optionLabel: Chica, price: 59990, stockPhysical: 2 }
+                - { sku: TK-MESA-L, optionLabel: Grande, price: 79990, compareAtPrice: 89990 }
+              extras: [{ code: nombre, price: 5000, textMaxLength: 12 }]
       responses:
-        "201": { description: Producto creado }
+        "201":
+          description: Producto creado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminProduct" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
@@ -724,27 +767,48 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     get:
       operationId: adminGetProduct
-      summary: "[Pendiente LN-12] Producto con variantes, imágenes y stock"
-      x-pending-task: LN-12
-      x-roles: [admin, operator]
+      summary: Producto con variantes (activas e inactivas), imágenes, categorías, extras y stock
+      x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [] }]
       responses:
-        "200": { description: Producto }
+        "200":
+          description: Producto
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminProduct" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       operationId: adminUpdateProduct
-      summary: "[Pendiente LN-12] Editar producto, variantes e imágenes"
-      x-pending-task: LN-12
+      summary: Editar producto, variantes, categorías y extras
+      description: |
+        Campos parciales. `variants` y `extras`, si vienen, son la lista completa:
+        - Variante con `id`: se actualiza. Sin `id`: se crea.
+        - Variante que no viene: con unidades reservadas → 409; con historial
+          (pedidos, carritos, reservas o movimientos) → se desactiva; sin nada → se borra.
+        - El stock físico de una variante existente no se cambia aquí: se usa
+          `POST /admin/products/{id}/stock-adjustments` (con motivo, RF-34).
+        Publicar (`status: active`) exige categoría principal activa, al menos una
+        variante activa, precio en todas las activas y una imagen con texto
+        alternativo; la primera vez fija `publishedAt`. El slug no cambia. Editar no
+        modifica pedidos anteriores (RN-02).
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminProductUpdate" }
       responses:
-        "200": { description: Producto actualizado }
+        "200":
+          description: Producto actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminProduct" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -752,8 +816,8 @@ paths:
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: adminDeactivateProduct
-      summary: "[Pendiente LN-12] Desactivar producto (no borra el historial)"
-      x-pending-task: LN-12
+      summary: Desactivar producto (no borra el historial)
+      description: Pasa a `inactive`. No borra el producto, sus variantes ni sus pedidos (RF-26).
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
@@ -763,51 +827,231 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /admin/products/{id}/images:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: adminUploadProductImage
+      summary: Subir una imagen del producto (multipart)
+      description: |
+        Única operación que acepta `multipart/form-data`. JPG, PNG o WebP
+        verificados por sus bytes iniciales (no por la extensión), máximo 2 MB
+        (413). El nombre del archivo lo genera el servidor; el ancho y alto se leen
+        del encabezado. Sin `sortOrder`, queda al final.
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, alt]
+              properties:
+                file: { type: string, format: binary, description: JPG, PNG o WebP de hasta 2 MB }
+                alt: { type: string, maxLength: 160, description: Texto alternativo (obligatorio) }
+                sortOrder: { type: integer, minimum: 0 }
+                variantId: { type: string, format: uuid, description: Variante de este producto }
+      responses:
+        "201":
+          description: Imagen guardada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminImage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/products/{id}/images/order:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    put:
+      operationId: adminReorderProductImages
+      summary: Reordenar las imágenes del producto
+      description: "`imageIds` debe traer todas las imágenes del producto, una vez cada una."
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [imageIds]
+              properties:
+                imageIds:
+                  { type: array, minItems: 1, maxItems: 100, items: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Imágenes en el nuevo orden
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminImage" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/products/{id}/images/{imageId}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+      - { name: imageId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: adminUpdateProductImage
+      summary: Editar el texto alternativo o la variante de una imagen
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                alt: { type: string, minLength: 1, maxLength: 160 }
+                variantId: { type: [string, "null"], format: uuid }
+      responses:
+        "200":
+          description: Imagen actualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminImage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: adminDeleteProductImage
+      summary: Borrar una imagen (y su archivo)
+      description: 409 si es la última imagen de un producto publicado.
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      responses:
+        "204": { description: Imagen borrada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /admin/products/{id}/stock-adjustments:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
     post:
       operationId: adminAdjustStock
-      summary: "[Pendiente LN-12] Ajuste de inventario de una variante"
+      summary: Ajuste de inventario de una variante
       description: |
-        Stock cargado en el inventario del panel (parte en 0 = "a pedido"). Cada
-        ajuste queda en el historial con actor, fecha y motivo (RF-34).
-      x-pending-task: LN-12
+        Fija el nuevo stock físico con un motivo obligatorio (RF-34). Bloquea la
+        fila de la variante (SELECT … FOR UPDATE): un ajuste y una reserva
+        simultáneos se aplican uno tras otro. No puede dejar el físico por debajo
+        de lo reservado (RN-03) ni repetir el valor actual (422). Stock 0 = se vende
+        a pedido. Crea un `InventoryMovement` (`adjustment`) y una fila de audit_log.
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StockAdjustmentInput" }
+            example:
+              {
+                variantId: 0195f3a0-7c1e-7d2a-9b44-2f1c3a5d6e70,
+                stockPhysical: 8,
+                reason: Conteo de bodega,
+              }
       responses:
-        "201": { description: Ajuste registrado }
+        "201":
+          description: Ajuste registrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StockAdjustmentResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/products/{id}/stock-movements:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: adminListStockMovements
+      summary: Historial de movimientos de inventario del producto o de una variante
+      description: Todos los tipos (ajustes, reservas, ventas…), más recientes primero.
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - { name: variantId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Página de movimientos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/InventoryMovement" } }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /admin/categories:
     get:
       operationId: adminListCategories
-      summary: "[Pendiente LN-12] Categorías del panel"
-      x-pending-task: LN-12
-      x-roles: [admin, operator]
+      summary: Categorías del panel (activas e inactivas) con su conteo de productos
+      x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [] }]
       responses:
-        "200": { description: Categorías }
+        "200":
+          description: Categorías
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminCategory" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
       operationId: adminCreateCategory
-      summary: "[Pendiente LN-12] Crear categoría"
-      x-pending-task: LN-12
+      summary: Crear categoría
+      description: |
+        Nombre único sin distinguir mayúsculas, tildes ni espacios de más; el slug
+        se deriva del nombre y también debe ser único.
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminCategoryInput" }
       responses:
-        "201": { description: Categoría creada }
+        "201":
+          description: Categoría creada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCategory" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
@@ -818,28 +1062,63 @@ paths:
       - $ref: "#/components/parameters/CsrfTokenHeader"
     patch:
       operationId: adminUpdateCategory
-      summary: "[Pendiente LN-12] Editar categoría"
-      x-pending-task: LN-12
+      summary: Editar categoría (el slug no cambia)
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminCategoryInput" }
       responses:
-        "200": { description: Categoría actualizada }
+        "200":
+          description: Categoría actualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: adminDeactivateCategory
-      summary: "[Pendiente LN-12] Desactivar categoría"
-      x-pending-task: LN-12
+      summary: Desactivar categoría (avisa si hay productos que la usan)
+      description: |
+        La categoría pasa a inactiva; los productos no cambian. Responde 200 con el
+        conteo de productos que la usan y un aviso: los publicados que la tienen
+        como principal dejan de verse en la tienda hasta reasignarlos o reactivarla.
       x-roles: [admin]
       tags: [Panel - Catálogo]
       security: [{ panelSession: [], csrfCookie: [] }]
       responses:
-        "204": { description: Categoría desactivada }
+        "200":
+          description: Categoría desactivada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCategoryDeactivation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /admin/extras:
+    get:
+      operationId: adminListExtras
+      summary: Extras que se pueden ofrecer en un producto
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [] }]
+      responses:
+        "200":
+          description: Extras
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminExtra" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   # ───────────────────────── Panel: pedidos (LN-13) ─────────────────────────
   /admin/orders:
@@ -1497,6 +1776,363 @@ components:
       description: "base64url(nonce).base64url(HMAC-SHA256)"
       pattern: "^[A-Za-z0-9_-]{43}\\.[A-Za-z0-9_-]{43}$"
 
+    # ── Panel: catálogo e inventario (LN-12) ──
+    AdminCategoryRef:
+      type: object
+      required: [id, slug, name, active]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        active: { type: boolean }
+    AdminVariant:
+      type: object
+      required:
+        [
+          id,
+          sku,
+          optionLabel,
+          color,
+          size,
+          price,
+          compareAtPrice,
+          stockPhysical,
+          stockReserved,
+          available,
+          active,
+          sortOrder,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string, description: En mayúsculas; único sin distinguir mayúsculas. }
+        optionLabel: { type: [string, "null"] }
+        color: { type: [string, "null"] }
+        size: { type: [string, "null"] }
+        price:
+          {
+            type: [integer, "null"],
+            minimum: 0,
+            description: CLP; null = por definir (no se puede publicar).,
+          }
+        compareAtPrice: { type: [integer, "null"], minimum: 0 }
+        stockPhysical: { type: integer, minimum: 0 }
+        stockReserved: { type: integer, minimum: 0 }
+        available:
+          { type: integer, minimum: 0, description: físico − reservado (RN-03); 0 = a pedido. }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+    AdminImage:
+      type: object
+      required: [id, url, alt, width, height, sortOrder, variantId]
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string }
+        alt: { type: string }
+        width: { type: [integer, "null"] }
+        height: { type: [integer, "null"] }
+        sortOrder: { type: integer }
+        variantId: { type: [string, "null"], format: uuid }
+    AdminProductExtra:
+      type: object
+      required:
+        [
+          code,
+          name,
+          requiresText,
+          textLabel,
+          price,
+          textMaxLength,
+          effectivePrice,
+          effectiveTextMaxLength,
+          available,
+          sortOrder,
+        ]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        requiresText: { type: boolean }
+        textLabel: { type: [string, "null"] }
+        price: { type: [integer, "null"], description: Propio del producto; null = el del extra. }
+        textMaxLength:
+          { type: [integer, "null"], description: Propio del producto; null = el del extra. }
+        effectivePrice:
+          { type: [integer, "null"], description: Lo que ve el comprador; null = por confirmar. }
+        effectiveTextMaxLength: { type: [integer, "null"] }
+        available: { type: boolean }
+        sortOrder: { type: integer }
+    AdminProduct:
+      type: object
+      required:
+        [
+          id,
+          slug,
+          name,
+          summary,
+          description,
+          dimensions,
+          ageGroups,
+          materials,
+          specs,
+          optionName,
+          leadTime,
+          status,
+          featured,
+          publishedAt,
+          createdAt,
+          updatedAt,
+          category,
+          additionalCategories,
+          variants,
+          images,
+          extras,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: [string, "null"] }
+        description: { type: string }
+        dimensions: { type: [string, "null"] }
+        ageGroups: { type: array, items: { type: string } }
+        materials: { type: array, items: { type: string } }
+        specs:
+          type: array
+          items:
+            type: object
+            properties: { label: { type: string }, value: { type: string } }
+        optionName: { type: [string, "null"] }
+        leadTime: { type: [string, "null"] }
+        status: { type: string, enum: [draft, active, inactive] }
+        featured: { type: boolean }
+        publishedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        category: { $ref: "#/components/schemas/AdminCategoryRef" }
+        additionalCategories:
+          { type: array, items: { $ref: "#/components/schemas/AdminCategoryRef" } }
+        variants: { type: array, items: { $ref: "#/components/schemas/AdminVariant" } }
+        images: { type: array, items: { $ref: "#/components/schemas/AdminImage" } }
+        extras: { type: array, items: { $ref: "#/components/schemas/AdminProductExtra" } }
+    AdminProductSummary:
+      type: object
+      required:
+        [
+          id,
+          slug,
+          name,
+          status,
+          featured,
+          category,
+          price,
+          variantCount,
+          available,
+          image,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [draft, active, inactive] }
+        featured: { type: boolean }
+        category: { $ref: "#/components/schemas/AdminCategoryRef" }
+        price: { type: [integer, "null"], description: Menor precio entre las variantes activas. }
+        variantCount: { type: integer, description: Variantes activas. }
+        available: { type: integer, description: Unidades disponibles de las variantes activas. }
+        image:
+          oneOf:
+            - type: object
+              required: [url, alt]
+              properties: { url: { type: string }, alt: { type: string } }
+            - type: "null"
+        updatedAt: { type: string, format: date-time }
+    AdminVariantInput:
+      type: object
+      additionalProperties: false
+      required: [sku]
+      properties:
+        id: { type: string, format: uuid, description: Solo al editar una variante existente. }
+        sku: { type: string, maxLength: 40, pattern: "^\\S+$" }
+        optionLabel: { type: [string, "null"], maxLength: 60 }
+        color: { type: [string, "null"], maxLength: 60 }
+        size: { type: [string, "null"], maxLength: 60 }
+        price: { type: [integer, "null"], minimum: 0 }
+        compareAtPrice:
+          type: [integer, "null"]
+          minimum: 0
+          description: Igual o mayor al precio; igual = sin oferta (se guarda null).
+        stockPhysical:
+          type: integer
+          minimum: 0
+          description: Solo en variantes nuevas; las existentes se ajustan con stock-adjustments.
+        active: { type: boolean, default: true }
+    AdminExtraInput:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: { type: string }
+        price: { type: [integer, "null"], minimum: 0 }
+        textMaxLength:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 100
+          description: Solo para extras que piden texto.
+    AdminProductUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        summary: { type: [string, "null"], maxLength: 400 }
+        description: { type: string, minLength: 1, maxLength: 4000 }
+        dimensions: { type: [string, "null"], maxLength: 200 }
+        ageGroups: { type: array, maxItems: 10, items: { type: string } }
+        materials: { type: array, maxItems: 10, items: { type: string } }
+        specs:
+          type: array
+          maxItems: 30
+          items:
+            type: object
+            required: [label, value]
+            properties:
+              label: { type: string, maxLength: 60 }
+              value: { type: string, maxLength: 200 }
+        optionName:
+          type: [string, "null"]
+          maxLength: 40
+          description: Obligatorio con más de una variante activa.
+        leadTime: { type: [string, "null"], maxLength: 60 }
+        featured: { type: boolean }
+        status: { type: string, enum: [draft, active, inactive] }
+        categoryId: { type: string, format: uuid }
+        additionalCategoryIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+        variants:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: "#/components/schemas/AdminVariantInput" }
+        extras:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/AdminExtraInput" }
+    AdminProductCreate:
+      allOf:
+        - $ref: "#/components/schemas/AdminProductUpdate"
+        - type: object
+          required: [name, description, categoryId, variants]
+    AdminCategory:
+      type: object
+      required: [id, slug, name, description, sortOrder, active, productCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+        productCount:
+          type: integer
+          minimum: 0
+          description: Productos que la usan como principal o adicional, en cualquier estado.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminCategoryInput:
+      type: object
+      additionalProperties: false
+      description: Al crear, `name` es obligatorio. Al editar, campos parciales.
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        description: { type: [string, "null"], maxLength: 500 }
+        sortOrder: { type: integer, minimum: 0 }
+        active: { type: boolean }
+    AdminCategoryDeactivation:
+      type: object
+      required: [category, productsUsingCount, hiddenProductsCount, warning]
+      properties:
+        category: { $ref: "#/components/schemas/AdminCategory" }
+        productsUsingCount: { type: integer, minimum: 0 }
+        hiddenProductsCount:
+          type: integer
+          minimum: 0
+          description: Publicados que la tienen como principal (dejan de verse en la tienda).
+        warning: { type: [string, "null"] }
+    AdminExtra:
+      type: object
+      required: [id, code, name, price, available, requiresText, textLabel, textMaxLength]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        price: { type: [integer, "null"] }
+        available: { type: boolean }
+        requiresText: { type: boolean }
+        textLabel: { type: [string, "null"] }
+        textMaxLength: { type: [integer, "null"] }
+    StockAdjustmentInput:
+      type: object
+      additionalProperties: false
+      required: [variantId, stockPhysical, reason]
+      properties:
+        variantId: { type: string, format: uuid }
+        stockPhysical:
+          type: integer
+          minimum: 0
+          description: Nuevo stock físico (absoluto), no menor que lo reservado.
+        reason: { type: string, minLength: 1, maxLength: 200 }
+    InventoryMovement:
+      type: object
+      required:
+        [
+          id,
+          createdAt,
+          kind,
+          variantId,
+          sku,
+          physicalBefore,
+          physicalAfter,
+          physicalDelta,
+          reservedBefore,
+          reservedAfter,
+          reservedDelta,
+          reason,
+          orderId,
+          actorLabel,
+          actorName,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        kind: { type: string, enum: [reservation, release, sale, adjustment, restock] }
+        variantId: { type: string, format: uuid }
+        sku: { type: string }
+        physicalBefore: { type: integer }
+        physicalAfter: { type: integer }
+        physicalDelta: { type: integer }
+        reservedBefore: { type: integer }
+        reservedAfter: { type: integer }
+        reservedDelta: { type: integer }
+        reason: { type: string }
+        orderId: { type: [string, "null"], format: uuid }
+        actorLabel:
+          type: string
+          description: 'Rol al momento ("Administrador" o "Sistema").'
+        actorName: { type: [string, "null"] }
+    StockAdjustmentResult:
+      type: object
+      required: [variant, movement]
+      properties:
+        variant:
+          type: object
+          required: [id, sku, stockPhysical, stockReserved, available]
+          properties:
+            id: { type: string, format: uuid }
+            sku: { type: string }
+            stockPhysical: { type: integer }
+            stockReserved: { type: integer }
+            available: { type: integer }
+        movement: { $ref: "#/components/schemas/InventoryMovement" }
+
   parameters:
     Page:
       name: page
@@ -1636,7 +2272,7 @@ components:
               requestId: 3f0a9c1e,
             }
     PayloadTooLarge:
-      description: Cuerpo demasiado grande (JSON 100 KB; formularios de Flow 16 KB)
+      description: Cuerpo demasiado grande (JSON 100 KB; formularios de Flow 16 KB; imágenes 2 MB)
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorBody" }
@@ -1648,7 +2284,7 @@ components:
               requestId: 3f0a9c1e,
             }
     UnsupportedMediaType:
-      description: Content-Type no permitido (solo JSON; formularios solo en callbacks de Flow)
+      description: Content-Type no permitido (solo JSON; formularios solo en callbacks de Flow; multipart solo en la subida de imágenes)
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorBody" }

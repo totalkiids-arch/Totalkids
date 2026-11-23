@@ -14,18 +14,18 @@ pnpm --filter @totalkids/api worker:dev  # worker de correos (LN-14), en otra te
 
 [`src/app.ts`](src/app.ts) monta los middlewares en este orden:
 
-| #   | Pieza                             | Archivo                       | Qué hace                                                                                             |
-| --- | --------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
-| 1   | `requestId`                       | `middleware/request-id.ts`    | Reutiliza el `X-Request-Id` de Next o genera uno.                                                    |
-| 2   | Log HTTP                          | `lib/logger.ts`               | Una línea por petición. Oculta cookies, tokens, secretos y correos.                                  |
-| 3   | `helmet` y `cors`                 | —                             | Cabeceras de seguridad; CORS solo para `CORS_ORIGINS`.                                               |
-| 4   | `Cache-Control: no-store`         | `app.ts`                      | Ninguna respuesta de `/api/v1` se cachea.                                                            |
-| 5   | `globalLimiter`                   | `middleware/rate-limit.ts`    | Límite por IP (`RATE_LIMIT_*`). Responde 429.                                                        |
-| 6   | `requireContentType`              | `middleware/body.ts`          | 415 si el cuerpo no es JSON. Los formularios solo se aceptan en los callbacks de Flow.               |
-| 7   | `bodyParsers`                     | `middleware/body.ts`          | JSON de hasta 100 KB (400 si está malformado, 413 si es grande). En Flow, formulario de hasta 16 KB. |
-| 8   | `csrfProtection`                  | `middleware/csrf.ts`          | Exige el doble envío CSRF en POST/PUT/PATCH/DELETE. Responde 403.                                    |
-| 9   | Routers                           | `routes/*`                    | Tu endpoint.                                                                                         |
-| 10  | `notFound` y `createErrorHandler` | `middleware/error-handler.ts` | 404, y traduce cualquier error a `ErrorBody`.                                                        |
+| #   | Pieza                             | Archivo                       | Qué hace                                                                                                                 |
+| --- | --------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `requestId`                       | `middleware/request-id.ts`    | Reutiliza el `X-Request-Id` de Next o genera uno.                                                                        |
+| 2   | Log HTTP                          | `lib/logger.ts`               | Una línea por petición. Oculta cookies, tokens, secretos y correos.                                                      |
+| 3   | `helmet` y `cors`                 | —                             | Cabeceras de seguridad; CORS solo para `CORS_ORIGINS`.                                                                   |
+| 4   | `Cache-Control: no-store`         | `app.ts`                      | Ninguna respuesta de `/api/v1` se cachea.                                                                                |
+| 5   | `globalLimiter`                   | `middleware/rate-limit.ts`    | Límite por IP (`RATE_LIMIT_*`). Responde 429.                                                                            |
+| 6   | `requireContentType`              | `middleware/body.ts`          | 415 si el cuerpo no es JSON. Formularios solo en los callbacks de Flow; multipart solo en la subida de imágenes (LN-12). |
+| 7   | `bodyParsers`                     | `middleware/body.ts`          | JSON de hasta 100 KB (400 si está malformado, 413 si es grande). En Flow, formulario de hasta 16 KB.                     |
+| 8   | `csrfProtection`                  | `middleware/csrf.ts`          | Exige el doble envío CSRF en POST/PUT/PATCH/DELETE. Responde 403.                                                        |
+| 9   | Routers                           | `routes/*`                    | Tu endpoint.                                                                                                             |
+| 10  | `notFound` y `createErrorHandler` | `middleware/error-handler.ts` | 404, y traduce cualquier error a `ErrorBody`.                                                                            |
 
 ## Errores
 
@@ -168,6 +168,69 @@ Solo el equipo del taller (Administrador y Operador) tiene cuenta: los comprador
 - **Filtros:** `category`, `ageGroup`, `material` (repetibles o separados por coma), `priceMin`/`priceMax` (excluyen productos sin precio), `onSale` y `availability`.
 - **Orden:** `best_selling` (por defecto) suma las unidades de pedidos `confirmed` en adelante; empata por destacado y novedad. También `price_asc`, `price_desc` (sin precio al final) y `newest`.
 - **Consultas:** el listado arma un solo `WHERE` parametrizado con `Prisma.sql` (RNF-04) para el conteo y la página, y luego carga los productos de la página con Prisma.
+
+## Catálogo admin (LN-12)
+
+Panel de catálogo e inventario (RF-26, RF-34, RN-01 a RN-03). Rutas en [`src/routes/admin-catalog.ts`](src/routes/admin-catalog.ts), reglas en [`src/services/admin-catalog/`](src/services/admin-catalog/). Todo es **solo para el Administrador** (`requireRole("admin")` detrás del `requirePanel` de `/admin`): el Operador recibe 403 también en las lecturas (RF-31). Los métodos que modifican exigen CSRF, como el resto de la API.
+
+### Endpoints
+
+| Método y ruta                                            | Qué hace                                                                                                        |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/products`                                    | Listado paginado. `q` (nombre o SKU), `status` (`draft`, `active`, `inactive`), `categoryId`.                   |
+| `POST /admin/products`                                   | Crea con variantes, categoría principal y adicionales, y extras. 201.                                           |
+| `GET /admin/products/{id}`                               | Ficha completa: variantes (también inactivas) con físico/reservado/disponible, imágenes, extras.                |
+| `PATCH /admin/products/{id}`                             | Edita (campos parciales; `variants` y `extras`, si vienen, son la lista completa). Publicar = `status: active`. |
+| `DELETE /admin/products/{id}`                            | Desactiva (`inactive`). No borra nada. 204.                                                                     |
+| `POST /admin/products/{id}/images`                       | Sube una imagen (`multipart/form-data`: `file`, `alt`, `sortOrder?`, `variantId?`). 201.                        |
+| `PATCH /admin/products/{id}/images/{imageId}`            | Cambia `alt` o `variantId`.                                                                                     |
+| `PUT /admin/products/{id}/images/order`                  | Reordena: `{ imageIds }` con todas las imágenes del producto.                                                   |
+| `DELETE /admin/products/{id}/images/{imageId}`           | Borra la fila y el archivo. 204.                                                                                |
+| `POST /admin/products/{id}/stock-adjustments`            | Ajuste de stock: `{ variantId, stockPhysical, reason }`. 201 con la variante y el movimiento.                   |
+| `GET /admin/products/{id}/stock-movements`               | Historial (todos los tipos), más reciente primero; filtro `variantId`, paginado.                                |
+| `GET /admin/categories`                                  | Todas (activas e inactivas) con `productCount` (principal o adicional, cada producto una vez).                  |
+| `POST /admin/categories`, `PATCH /admin/categories/{id}` | Crea o edita (`name`, `description`, `sortOrder`, `active`).                                                    |
+| `DELETE /admin/categories/{id}`                          | Desactiva y responde 200 con `productsUsingCount`, `hiddenProductsCount` y `warning`.                           |
+| `GET /admin/extras`                                      | Extras que se pueden ofrecer en un producto (armado, nombre grabado…).                                          |
+
+### Reglas
+
+- **SKU:** sin espacios, hasta 40 caracteres, único **sin distinguir mayúsculas**. Se guarda en mayúsculas (`tk-1` → `TK-1`), así el índice único de la base cubre también dos guardados simultáneos (409); antes se compara con `upper(sku)` para dar el error por campo (422, «Ese SKU ya existe. Usa un código único.»).
+- **Importes (RN-01):** enteros ≥ 0. `price` puede quedar en `null` mientras el cliente no lo define (borrador). `compareAtPrice` debe ser igual o mayor al precio, como en el panel; **si es igual se guarda `null`** (sin oferta), porque la migración exige `compare_at_price > price`.
+- **Publicar** (`status: active`, al crear o editar): categoría principal activa, al menos una variante activa, **todas las activas con precio** y **al menos una imagen con texto alternativo**. Si falta algo, 422 con un issue por campo. La primera publicación fija `publishedAt`. Como las imágenes se suben después de crear, un producto nuevo nace como `draft`.
+- **Desactivar no borra (RF-26):** `DELETE` deja el producto `inactive`; la tienda (LN-05) deja de mostrarlo y sus pedidos no cambian (RN-02: los pedidos guardan su propia copia de nombre, SKU y precios).
+- **Variantes:** con `id` se actualizan, sin `id` se crean. Una variante que deja de venir en la lista: **con unidades reservadas → 409** (hay pedidos en curso); con historial (pedidos, carritos, reservas o movimientos) → se **desactiva**; sin nada → se borra. El stock físico de una variante existente **no** se cambia al editar el producto (422): va por un ajuste con motivo. El de una variante nueva queda como movimiento «Stock inicial al crear la variante».
+- **Opciones:** con más de una variante activa, `optionName` («Tamaño», «Color») y un `optionLabel` distinto por variante son obligatorios.
+- **Extras por producto:** `extras: [{ code, price?, textMaxLength? }]` reemplaza la lista. `price`/`textMaxLength` en `null` = los del extra. El largo propio (1–100) solo vale para extras que piden texto.
+- **Slug:** se deriva del nombre al crear (`slugify`, igual que el panel) y se hace único (`silla`, `silla-2`). Al editar no cambia, para no romper enlaces.
+- **Categorías:** nombre obligatorio (hasta 60), único comparando sin mayúsculas, tildes ni espacios de más; slug derivado y único. Un candado de transacción (`pg_advisory_xact_lock`) evita que dos altas simultáneas pasen el chequeo de nombre. Desactivar no toca los productos: los publicados que la tienen como **principal** dejan de verse en la tienda hasta reasignarlos o reactivarla, y la respuesta lo avisa.
+- **Transacciones y auditoría:** cada cambio corre en una transacción y deja su fila en `audit_log` con el actor, un resumen antes/después y el `requestId` (`product.*`, `product_image.*`, `category.*`, `inventory.adjusted`).
+
+### Ajustes de stock (RF-34, RN-03)
+
+`POST /admin/products/{id}/stock-adjustments` fija el **nuevo stock físico absoluto** con un motivo obligatorio (hasta 200 caracteres):
+
+1. Bloquea la fila de la variante con `SELECT … FOR UPDATE`. Un ajuste simultáneo con una reserva (o con otro ajuste) espera a que el otro termine y valida contra los valores ya confirmados: no se pierden actualizaciones.
+2. Rechaza (422) un físico menor que lo reservado («El stock físico no puede ser menor que las N unidades reservadas.») o igual al actual (la base exige que un movimiento cambie algo).
+3. Actualiza la variante y crea un `InventoryMovement` (`adjustment`, `physicalDelta`, `reservedDelta = 0`, valores finales, actor) y una fila de `audit_log` con el motivo.
+
+Stock 0 no es «agotado»: el producto se vende a pedido con su plazo (UI-11). El historial (`stock-movements`) muestra fecha, actor (rol y nombre), SKU, físico y reservado antes → después, motivo y pedido.
+
+### Imágenes en desarrollo
+
+- **Subida sin dependencias:** `POST /admin/products/{id}/images` es la única ruta que acepta `multipart/form-data` (`isImageUploadPath` en `middleware/body.ts`; en cualquier otra ruta, 415). [`lib/multipart.ts`](src/lib/multipart.ts) junta el cuerpo con un tope de 2 MB + 64 KB (413 en cuanto lo pasa; si `Content-Length` ya lo supera, ni lo lee) y lo entrega a `Request.formData()`, que trae Node. La protección CSRF no cambia: va en cabecera y cookie.
+- **Validación:** JPG, PNG o WebP **reconocidos por sus bytes iniciales** ([`services/images/image-bytes.ts`](src/services/images/image-bytes.ts)), no por la extensión ni por el tipo que declara el navegador; máximo 2 MB (413); `alt` obligatorio (hasta 160). Ancho y alto se leen del encabezado.
+- **Almacenamiento:** puerto `ImageStorage` ([`services/images/storage.ts`](src/services/images/storage.ts)) con el adaptador `LocalDiskImageStorage`: guarda en `IMAGES_DIR/products/<uuid>.<ext>` (nombre generado por el servidor, nunca el del archivo subido) y guarda en `product_images.url` la URL `IMAGES_PUBLIC_URL/products/<uuid>.<ext>`. Primero se escribe el archivo y luego la fila; si la fila falla, se borra el archivo.
+- **Servidas por la API solo fuera de producción:** `/uploads` (p. ej. `http://localhost:4000/uploads/products/….webp`) con `Cross-Origin-Resource-Policy: cross-origin` (para que la tienda en :3000 las muestre), `nosniff`, sin listado de carpetas y caché de 1 h. La carpeta `uploads/` está en `.gitignore`.
+- **Tests:** usan una carpeta temporal y la borran al terminar; los casos que escriben corren en una transacción que se deshace (`inRollback` en `test/panel-helpers.ts`) para no alterar los conteos exactos de `catalog.db.test.ts`.
+
+### Qué falta para producción
+
+La SRS deja el almacenamiento de imágenes como dependencia externa (PR-05). Nada de esto está implementado; queda documentado:
+
+- **Opción principal (hosting en VPS):** usar el mismo `LocalDiskImageStorage` en producción, con `IMAGES_DIR` en un **volumen persistente** del VPS (fuera de la carpeta de la app, para que un deploy no lo borre). Lo sirve el proxy (Caddy o Nginx) bajo `/uploads` (la API no lo sirve en producción) con caché larga (los nombres no se reutilizan), `X-Content-Type-Options: nosniff`, sin listado de carpetas y sin ejecutar nada de esa carpeta. `IMAGES_PUBLIC_URL` pasa a ser la URL https pública (p. ej. `https://<dominio>/uploads`; obligatoria con https en producción). La carpeta entra en el **respaldo diario cifrado** junto con la base (DE-07, RNF-07).
+- **Alternativa:** si el hosting final no tiene disco persistente, un adaptador externo (S3, R2 o Cloudinary) que implemente `ImageStorage` (`save`, `delete`, `keyFromUrl`) y se pase en `createApp({ imageStorage })`. Las validaciones de la ruta no cambian.
+- **En ambos casos:** permitir el dominio de las imágenes en `next/image` (`remotePatterns`) al conectar el panel (LN-16), y una limpieza periódica de archivos huérfanos (p. ej. si se cae el proceso entre guardar el archivo y la fila).
 
 ## Correos y worker (LN-14)
 
@@ -339,3 +402,10 @@ Las de LN-14 (correos y worker):
 | `EMAIL_WORKER_POLL_MS`         | `5000`                                | pausa entre vueltas sin trabajo                                       |
 | `EMAIL_WORKER_BATCH`           | `10`                                  | trabajos por vuelta                                                   |
 | `EMAIL_WORKER_LOCK_TIMEOUT_MS` | `300000`                              | bloqueo vencido; debe ser mayor que `EMAIL_SEND_TIMEOUT_MS`           |
+
+Las de LN-12 (imágenes del catálogo):
+
+| Variable            | Por defecto                       | Notas                                                                   |
+| ------------------- | --------------------------------- | ----------------------------------------------------------------------- |
+| `IMAGES_DIR`        | `uploads` (relativa a `apps/api`) | carpeta del adaptador de disco local                                    |
+| `IMAGES_PUBLIC_URL` | `http://localhost:4000/uploads`   | base de `product_images.url`; **obligatoria y con https en producción** |

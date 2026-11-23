@@ -4,7 +4,7 @@ import cors from "cors";
 import express, { type Express, type Router } from "express";
 import helmet from "helmet";
 
-import { parseTrustProxy, type Env } from "./config/env.js";
+import { DEV_IMAGES_URL, parseTrustProxy, type Env } from "./config/env.js";
 import { httpLogger, type Logger } from "./lib/logger.js";
 import type { PrismaClient } from "./lib/prisma.js";
 import { bodyParsers, isFlowCallbackPath, requireContentType } from "./middleware/body.js";
@@ -13,12 +13,15 @@ import { createErrorHandler, notFound } from "./middleware/error-handler.js";
 import { panelCsrfSessionKey, requirePanel } from "./middleware/panel-auth.js";
 import { globalLimiter } from "./middleware/rate-limit.js";
 import { requestId } from "./middleware/request-id.js";
+import { adminCatalogRouter } from "./routes/admin-catalog.js";
 import { adminEmailsRouter } from "./routes/admin-emails.js";
 import { authRouter } from "./routes/auth.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { csrfRouter } from "./routes/csrf.js";
 import { docsRouter } from "./routes/docs.js";
 import { healthRouter } from "./routes/health.js";
+import { LocalDiskImageStorage } from "./services/images/local-disk.js";
+import type { ImageStorage } from "./services/images/storage.js";
 
 export interface AppDeps {
   env: Pick<
@@ -30,7 +33,8 @@ export interface AppDeps {
     | "RATE_LIMIT_MAX"
     | "CSRF_SECRET"
     | "API_DOCS"
-  >;
+  > &
+    Partial<Pick<Env, "IMAGES_DIR" | "IMAGES_PUBLIC_URL">>;
   logger: Logger;
   prisma: PrismaClient;
   /**
@@ -43,6 +47,11 @@ export interface AppDeps {
    * de la cookie del panel (LN-04); LN-06 le suma la del carrito.
    */
   csrfSessionKey?: CsrfSessionKey;
+  /**
+   * Almacenamiento de las imágenes del catálogo (LN-12). Por defecto, disco
+   * local en IMAGES_DIR; los tests inyectan uno en una carpeta temporal.
+   */
+  imageStorage?: ImageStorage;
 }
 
 /** CSRF_SECRET es obligatorio en producción (env.ts); fuera de ella se genera uno. */
@@ -59,11 +68,15 @@ export function createApp({
   prisma,
   registerRoutes,
   csrfSessionKey,
+  imageStorage,
 }: AppDeps): Express {
   const app = express();
   const isProduction = env.NODE_ENV === "production";
   const sessionKey = csrfSessionKey ?? panelCsrfSessionKey(isProduction);
   const csrfSecret = resolveCsrfSecret(env, logger);
+  const storage =
+    imageStorage ??
+    new LocalDiskImageStorage(env.IMAGES_DIR ?? "uploads", env.IMAGES_PUBLIC_URL ?? DEV_IMAGES_URL);
 
   // La API recibe tráfico a través de Next.js: confiar en X-Forwarded-For del proxy
   // para que req.ip (y express-rate-limit) vean la IP real del navegador.
@@ -101,8 +114,15 @@ export function createApp({
   // ruta agrega el rol que necesita con requireRole.
   v1.use("/admin", requirePanel(prisma, isProduction));
   v1.use(adminEmailsRouter(prisma));
+  v1.use(adminCatalogRouter(prisma, storage));
   registerRoutes?.(v1);
   app.use("/api/v1", v1);
+
+  // Imágenes subidas desde el panel: la API las sirve solo fuera de producción.
+  // En producción las sirve el proxy del VPS (o un almacenamiento externo).
+  if (!isProduction && storage instanceof LocalDiskImageStorage) {
+    app.use("/uploads", storage.staticHandler());
+  }
 
   // Contrato OpenAPI: activo en desarrollo; en producción solo si API_DOCS=enabled
   // (SRS 4.4.2). Deshabilitado, /api/docs cae en el 404 estándar.

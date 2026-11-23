@@ -8,6 +8,8 @@ const blankAsUndefined = (value: unknown) => (value === "" ? undefined : value);
 export const DEV_SENDER_EMAIL = "no-reply@example.com";
 export const DEV_ADMIN_TO = "equipo@example.com";
 export const DEV_SITE_URL = "http://localhost:3000";
+/** En desarrollo la API sirve IMAGES_DIR en /uploads (LN-12). */
+export const DEV_IMAGES_URL = "http://localhost:4000/uploads";
 
 const envSchema = z
   .object({
@@ -62,6 +64,12 @@ const envSchema = z
       .int()
       .positive()
       .default(5 * 60_000),
+
+    // ── Imágenes del catálogo (LN-12) ──
+    /** Carpeta del adaptador de disco local (relativa al proceso o absoluta). */
+    IMAGES_DIR: z.preprocess(blankAsUndefined, z.string().min(1).default("uploads")),
+    /** Base pública de las imágenes guardadas en IMAGES_DIR (sin barra final). */
+    IMAGES_PUBLIC_URL: z.preprocess(blankAsUndefined, z.url().optional()),
   })
   .superRefine((env, ctx) => {
     const production = env.NODE_ENV === "production";
@@ -83,6 +91,12 @@ const envSchema = z
     if (production && !env.PUBLIC_SITE_URL?.startsWith("https://")) {
       required("PUBLIC_SITE_URL", "PUBLIC_SITE_URL es obligatorio en producción y debe usar https");
     }
+    if (production && !env.IMAGES_PUBLIC_URL?.startsWith("https://")) {
+      required(
+        "IMAGES_PUBLIC_URL",
+        "IMAGES_PUBLIC_URL es obligatorio en producción y debe usar https",
+      );
+    }
     if (env.EMAIL_WORKER_LOCK_TIMEOUT_MS <= env.EMAIL_SEND_TIMEOUT_MS) {
       required(
         "EMAIL_WORKER_LOCK_TIMEOUT_MS",
@@ -96,6 +110,7 @@ const envSchema = z
     BREVO_SENDER_EMAIL: env.BREVO_SENDER_EMAIL ?? DEV_SENDER_EMAIL,
     EMAIL_ADMIN_TO: env.EMAIL_ADMIN_TO ?? DEV_ADMIN_TO,
     PUBLIC_SITE_URL: (env.PUBLIC_SITE_URL ?? DEV_SITE_URL).replace(/\/+$/, ""),
+    IMAGES_PUBLIC_URL: (env.IMAGES_PUBLIC_URL ?? DEV_IMAGES_URL).replace(/\/+$/, ""),
   }));
 
 export type Env = z.output<typeof envSchema>;
