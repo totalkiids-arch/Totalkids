@@ -79,7 +79,8 @@ app ──> features/<f>/index.ts ──> ui ──> container ──> infrastru
 |                      | Restablecer contraseña        | `/restablecer`                                    | `auth`       |
 |                      | Historial de pedidos          | `/cuenta/pedidos`                                 | `orders`     |
 |                      | Detalle y seguimiento         | `/cuenta/pedidos/[id]`                            | `orders`     |
-| Panel administrativo | Acceso por rol                | `/admin/ingresar`                                 | `auth`       |
+| Panel administrativo | Ingreso del equipo            | `/admin/ingresar`                                 | `auth`       |
+|                      | Definir contraseña            | `/admin/restablecer`                              | `auth`       |
 |                      | Resumen                       | `/admin`                                          | `dashboard`  |
 |                      | Pedidos                       | `/admin/pedidos`                                  | `orders`     |
 |                      | Detalle de pedido y reembolso | `/admin/pedidos/[id]`                             | `orders`     |
@@ -139,12 +140,15 @@ Ambos resultados se versionan. Volver a ejecutarlo actualiza precios, stock y fo
 - **Contador del encabezado**: `CartLink` lee la cookie en el navegador (`useSyncExternalStore`), así las páginas de la tienda siguen estáticas. `shared/ui/cart-signal.ts` avisa los cambios. El layout entrega `CartLink` a `StoreShell` (shared no depende de features).
 - **Pendiente**: cupones (RF-07; hoy responde que no hay cupones vigentes) y umbral de despacho gratis (`site.freeShippingThreshold`, RF-08), ambos según la API y el cliente.
 
-## Panel y sesión demo (UI-10)
+## Panel y sesión (UI-10, LN-16)
 
-- **Sesión de demostración, sin seguridad real**: `/admin/ingresar` guarda el rol elegido en la cookie `tk_demo_rol` (`admin` | `operator`) con una Server Action. No hay credenciales: correo y contraseña son de ejemplo y no se envían. Lo implementa `features/auth/infrastructure/demo-admin-session.ts` tras los puertos de `application/admin-session.ts`; en LN-04 solo cambia ese adaptador (RNF-01, RF-31).
-- **Roles y secciones**: `features/users/domain/admin-role.ts` define los roles, las 15 secciones y `canAccessSection`. El operador ve resumen, pedidos (con su detalle), pagos, solicitudes, correos y reportes (SRS 2.3).
+- **BFF del panel** (`shared/infrastructure/panel-api.ts`): el navegador nunca llama a la API. `panelGet` (componentes de servidor) y `panelSend` (Server Actions y Route Handlers) reenvían solo las cookies `tk_panel` y `tk_csrf` (y sus variantes `__Host-`, ver `shared/config/panel-cookies.ts`), `X-Request-Id` y `X-Forwarded-For`. `panelSend` pide `GET /csrf` y manda el token en la cookie y en `X-CSRF-Token`; los `Set-Cookie` de esas cookies vuelven al navegador. **`tk_carrito` no se reenvía**: la tienda guarda ahí su carrito en JSON y la API usa el mismo nombre para su token opaco.
+- **Errores** (`shared/lib/panel-errors.ts`): `PanelApiError` con `kind` (`unauthorized`, `forbidden`, `not-found`, `conflict`, `validation` con errores por campo, `rate-limited` con los minutos de espera, `unavailable` para timeout o caída) y el mensaje del panel. 401 lleva al ingreso; la caída muestra un aviso, nunca datos de reemplazo (`PanelUnavailable` en el layout, `app/admin/(panel)/error.tsx` en las secciones).
+- **Sesión real** (`features/auth/infrastructure/api-admin-session.ts`): ingreso con `POST /auth/login`, sesión con `GET /auth/session` (una vez por petición, `cache` de React), cierre con `POST /auth/logout`. `/admin/restablecer?token=` define la contraseña (invitación o recuperación); sin token pide el enlace. El mínimo de contraseña está en `features/auth/domain/password-policy.ts` y un test lo compara con la API y el contrato.
+- **`src/proxy.ts`** (solo `/admin`): sin cookie del panel lleva al ingreso sin llamar a la API; en `/admin/restablecer` agrega `Referrer-Policy: no-referrer` y `Cache-Control: no-store`.
+- **Roles y secciones**: `features/users/domain/admin-role.ts` define los roles, las 16 secciones y `canAccessSection`. El operador ve resumen, pedidos (con su detalle), pagos, solicitudes y correos, igual que los `x-roles` de la API (SRS 2.3).
 - **Layout** `app/admin/(panel)/layout.tsx`: sin sesión redirige a `/admin/ingresar`; filtra `adminNav` con `canAccessSection` y entrega a `AdminShell` los ítems, el rol y `AdminSignOutButton` (shared no decide permisos ni depende de features).
-- **URL directa**: las páginas solo de administrador envuelven su pantalla en `AdminSectionGate`, que muestra «Acceso restringido» al operador (CA-07). Es interfaz: la autorización real la aplica el backend.
+- **URL directa**: las páginas solo de administrador envuelven su pantalla en `AdminSectionGate`, que muestra «Sin permiso para esta sección» al operador (CA-07). Es interfaz: la autorización real la aplica la API.
 - **Menú móvil** (≤760 px, como la maqueta): botón con `aria-expanded`, menú `inert` e invisible cuando está cerrado, Escape cierra y devuelve el foco; se cierra al navegar.
 
 ## Panel de catálogo (UI-11)

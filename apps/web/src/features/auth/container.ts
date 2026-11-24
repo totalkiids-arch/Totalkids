@@ -1,23 +1,17 @@
-// Raíz de composición de "auth": conecta los puertos con sus adaptadores actuales.
+// Raíz de composición de "auth": conecta los puertos con sus adaptadores.
 // Solo el equipo del taller ingresa (panel /admin). Los compradores no tienen
 // cuenta: compran como invitados y consultan su pedido con número y correo.
-import type { AdminRole } from "@/features/users";
+import type { AdminAuthGateway, AdminSessionReader } from "./application/admin-session";
+import { apiAdminAuth, apiAdminSession } from "./infrastructure/api-admin-session";
 
-import type { AdminSessionReader, AdminSessionWriter } from "./application/admin-session";
-import { demoAdminSession } from "./infrastructure/demo-admin-session";
+const session: AdminSessionReader = apiAdminSession;
 
-// DEMO (ver infrastructure/demo-admin-session.ts). En LN-04 se cambia solo esta línea.
-const session: AdminSessionReader & AdminSessionWriter = demoAdminSession;
+export const adminAuth: AdminAuthGateway = apiAdminAuth;
 
-/** Sesión actual del panel, o null si nadie ingresó. */
+/**
+ * Sesión actual del panel, o null si nadie ingresó o venció. Lanza
+ * PanelApiError("unavailable") si la API no responde.
+ */
 export function getAdminSession() {
   return session.read();
-}
-
-export function startAdminSession(role: AdminRole) {
-  return session.start(role);
-}
-
-export function endAdminSession() {
-  return session.end();
 }

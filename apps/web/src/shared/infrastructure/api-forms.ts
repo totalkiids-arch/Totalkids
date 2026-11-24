@@ -1,10 +1,7 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
-
-import { headers } from "next/headers";
-
 import { apiFetch } from "./api-client";
+import { requestContext } from "./request-context";
 
 /**
  * Envío de formularios públicos a la API desde el servidor de Next.js (Server
@@ -28,14 +25,6 @@ export class ApiUnavailableError extends Error {
     super("No se pudo contactar la API", { cause });
     this.name = "ApiUnavailableError";
   }
-}
-
-async function requestContext() {
-  const incoming = await headers();
-  return {
-    requestId: incoming.get("x-request-id") ?? randomUUID(),
-    forwardedFor: incoming.get("x-forwarded-for") ?? incoming.get("x-real-ip"),
-  };
 }
 
 /** Par cookie=valor del Set-Cookie de /csrf que trae el token (el nombre cambia en producción). */

@@ -18,7 +18,7 @@ const ROLE_OPTIONS = ADMIN_ROLES.map((role) => ({
   description:
     role === "admin"
       ? "Todo el panel: catálogo, configuración, usuarios y exportaciones."
-      : "Pedidos, pagos, solicitudes, correos y reportes.",
+      : "Pedidos, pagos, solicitudes y correos.",
 }));
 
 const fieldId = (name: string) => `campo-${name}`;
