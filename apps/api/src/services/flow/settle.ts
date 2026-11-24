@@ -165,6 +165,8 @@ export async function settlePayment(
       }
 
       await update({ status: "paid", paidAt: now });
+      // Lo pagado sale del carrito del comprador (LN-11), se confirme o quede en revisión.
+      if (order.cartId) await tx.cart.deleteMany({ where: { id: order.cartId } });
       const confirmable =
         order.status === "pending_payment" ||
         order.status === "in_review" ||

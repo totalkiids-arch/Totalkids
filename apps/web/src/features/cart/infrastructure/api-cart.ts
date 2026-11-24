@@ -149,6 +149,11 @@ async function remember(response: Response, view: CartView) {
 }
 
 export const apiCart = {
+  /** "tk_carrito=…" para otras rutas de la API que leen el carrito (checkout); "" sin carrito. */
+  async sessionCookie(): Promise<string> {
+    const token = await cartToken();
+    return token ? `${CART_COOKIE}=${token}` : "";
+  },
   /** Carrito vigente; sin cookie, vacío sin llamar a la API. */
   async read(): Promise<CartView> {
     if (!(await cartToken())) return EMPTY_CART;

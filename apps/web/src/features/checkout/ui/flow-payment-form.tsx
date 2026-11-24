@@ -12,7 +12,9 @@ import { startPaymentAction } from "./checkout-actions";
 
 /**
  * Aceptación de condiciones y botón hacia Flow (RF-15, RNF-13). La casilla no
- * viene marcada: el comprador la marca a sabiendas. Funciona sin JavaScript.
+ * viene marcada: el comprador la marca a sabiendas. Funciona sin JavaScript; el
+ * botón se desactiva mientras se crea el pedido (y la clave idempotente cubre
+ * un doble envío sin JavaScript).
  */
 export function FlowPaymentForm() {
   const [state, formAction, pending] = useActionState(startPaymentAction, null);
@@ -48,7 +50,7 @@ export function FlowPaymentForm() {
       ) : null}
       <Button type="submit" size="lg" className="min-h-14" disabled={pending}>
         <CardIcon size={22} />
-        {pending ? "Conectando con Flow…" : "Continuar con Flow · Demo"}
+        {pending ? "Conectando con Flow…" : "Continuar con Flow"}
       </Button>
     </form>
   );

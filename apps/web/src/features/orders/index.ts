@@ -5,6 +5,11 @@ export { AdminOrdersScreen } from "./ui/admin-orders-screen";
 export { AdminOrderDetailScreen } from "./ui/admin-order-detail-screen";
 export { exportAdminOrdersCsv } from "./container";
 
+// Checkout (LN-11): credencial del pedido recién creado y su estado al volver de Flow.
+export { getOrderForViewer, rememberGuestOrder } from "./container";
+export { GuestOrderUnavailableError } from "./application/ports";
+export type { Order, GuestPaymentStatus } from "./domain/order";
+
 // Panel: resumen (transitorio hasta la etapa 3 de LN-16).
 export { getAdminOrdersOverview } from "./container";
 

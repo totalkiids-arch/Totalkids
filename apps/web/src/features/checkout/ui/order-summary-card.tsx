@@ -53,6 +53,12 @@ export function OrderSummaryCard({
             <dt>Subtotal</dt>
             <dd className="font-extrabold">{formatPrice(summary.subtotal)}</dd>
           </div>
+          {summary.discount > 0 ? (
+            <div className="flex justify-between gap-3">
+              <dt>Descuento</dt>
+              <dd className="font-extrabold text-brand-green">−{formatPrice(summary.discount)}</dd>
+            </div>
+          ) : null}
           <div className="flex justify-between gap-3">
             <dt>Despacho</dt>
             <dd
@@ -65,13 +71,19 @@ export function OrderSummaryCard({
           <div className="flex items-baseline justify-between gap-3">
             <dt className="text-lg font-extrabold">Total</dt>
             <dd className="font-heading text-[32px] font-extrabold">
-              {formatPrice(summary.total ?? summary.subtotal)}
+              {formatPrice(summary.total)}
             </dd>
           </div>
         </dl>
         {summary.shipping.kind === "pending" ? (
           <p className="text-[13px] text-text-secondary">
-            El despacho depende de tu comuna y aún no está incluido en el total.
+            {summary.shipping.message ??
+              "El despacho se coordina contigo y no está incluido en el total."}
+          </p>
+        ) : null}
+        {summary.shipping.kind === "rate" && summary.shipping.leadTime ? (
+          <p className="text-[13px] text-text-secondary">
+            Plazo de despacho: {summary.shipping.leadTime}.
           </p>
         ) : null}
         {summary.unpriced.length > 0 ? (

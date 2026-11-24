@@ -21,6 +21,14 @@ export function getCart(): Promise<CartView> {
   return apiCart.read();
 }
 
+/**
+ * Cookie del carrito para que el checkout cotice y cree el pedido con este
+ * mismo carrito (GET /shipping/quote, POST /orders). Solo en el servidor.
+ */
+export function cartSessionCookie(): Promise<string> {
+  return apiCart.sessionCookie();
+}
+
 /** Caso de uso: agregar desde la ficha (RF-04, RF-05). La API valida variante, extras y textos. */
 export function addToCart(request: {
   sku: string;

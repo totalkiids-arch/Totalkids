@@ -231,6 +231,8 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
     const saved = await prisma.order.findUniqueOrThrow({
       where: { number: Number((res.body.orderNumber as string).slice(3)) },
     });
+    // El pedido recuerda su carrito: se vacía al confirmarse el pago (LN-11).
+    expect(saved.cartId).not.toBeNull();
     const eventKey = emailEventKey("order_received", saved.id);
 
     const job = await prisma.outboxJob.findUniqueOrThrow({ where: { eventKey } });

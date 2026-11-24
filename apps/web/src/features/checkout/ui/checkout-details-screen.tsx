@@ -15,11 +15,7 @@ export async function CheckoutDetailsScreen() {
       {step.blocker ? (
         <CannotContinue reason={step.blocker} />
       ) : (
-        <CheckoutDetailsForm
-          cart={step.cart}
-          initialValues={step.values}
-          freeShippingThreshold={step.freeShippingThreshold}
-        />
+        <CheckoutDetailsForm cart={step.cart} initialValues={step.values} />
       )}
     </>
   );

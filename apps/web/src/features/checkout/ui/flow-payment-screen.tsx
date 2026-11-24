@@ -15,8 +15,8 @@ import { OrderSummaryCard } from "./order-summary-card";
 
 /**
  * Tienda y compra · Pago Flow (RF-13, RF-15). Revalida carrito y datos en el
- * servidor: si algo falta, vuelve al carrito o a "Datos y facturación".
- * Pago de demostración: no abre la pasarela real (ver startDemoPayment).
+ * servidor y cotiza la entrega en la API: el total que se muestra es el que se
+ * cobra. Si algo falta, vuelve al carrito o a "Datos y facturación".
  */
 export async function FlowPaymentScreen() {
   const step = await getPaymentStep();
@@ -45,9 +45,8 @@ export async function FlowPaymentScreen() {
               Flow aloja la página de pago para completar tu compra: tarjetas, transferencia y más.
               Total Kids no recibe ni almacena datos de tarjeta.
             </p>
-            <p className="rounded-2xl bg-cream px-4 py-3 text-sm">
-              <strong>Pago de demostración.</strong> Por ahora no se abre la pasarela real ni se
-              hace ningún cobro: verás el estado en que queda un pago mientras Flow lo confirma.
+            <p className="text-sm text-text-secondary">
+              Al continuar creamos tu pedido y reservamos tus productos mientras pagas.
             </p>
             <FlowPaymentForm />
           </Panel>

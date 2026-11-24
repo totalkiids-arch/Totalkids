@@ -638,7 +638,8 @@ paths:
         Público y exento de CSRF. El token no es confiable hasta consultar a Flow
         (`getStatus`) con credenciales del backend y verificar pedido, moneda y
         monto (RF-16). Idempotente (RF-19). Responde éxito solo tras registrar el
-        callback de forma durable.
+        callback de forma durable. Con el pago confirmado se elimina el carrito del
+        que salió el pedido (LN-11).
       tags: [Pagos]
       security: []
       requestBody: { $ref: "#/components/requestBodies/FlowCallback" }

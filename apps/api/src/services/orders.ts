@@ -310,6 +310,7 @@ async function createInTransaction(
   const order = await tx.order.create({
     data: {
       idempotencyKey: options.idempotencyKey,
+      cartId: cart.id,
       buyerName: input.buyer.name,
       buyerRut: input.buyer.rut,
       buyerEmail: input.buyer.email,

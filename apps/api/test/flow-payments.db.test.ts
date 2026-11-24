@@ -156,6 +156,28 @@ describe.skipIf(!url)("pagos con Flow (PostgreSQL real)", () => {
     });
   });
 
+  it("el carrito del pedido se elimina solo cuando el pago se confirma (LN-11)", async () => {
+    await run(async ({ db, order, flow, pay, confirm }) => {
+      const cart = await db.cart.create({
+        data: { guestTokenHash: randomUUID(), expiresAt: new Date(Date.now() + 86_400_000) },
+      });
+      await db.order.update({ where: { id: order.id }, data: { cartId: cart.id } });
+      const cartExists = async () => (await db.cart.count({ where: { id: cart.id } })) === 1;
+
+      await pay();
+      flow.set({ status: "rejected" });
+      await confirm();
+      expect(await cartExists()).toBe(true);
+
+      await pay();
+      flow.set({ status: "paid" });
+      await confirm();
+      expect(await cartExists()).toBe(false);
+      const saved = await db.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(saved).toMatchObject({ status: "confirmed", cartId: null });
+    });
+  });
+
   it("rechazo: libera stock y avisa; el reintento vuelve a reservar", async () => {
     await run(async ({ flow, pay, confirm, state }) => {
       await pay();

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ORDER_STATUSES, type Order } from "../domain/order";
+import { GUEST_PAYMENT_STATUSES, ORDER_STATUSES, type Order } from "../domain/order";
 
 /*
  * Traducción entre el pedido del invitado en la API (LN-09, GuestOrder en
@@ -14,6 +14,8 @@ export const ApiGuestOrder = z.object({
   orderNumber: z.string(),
   status,
   createdAt: z.string(),
+  paymentDueAt: z.string(),
+  paymentStatus: z.enum(GUEST_PAYMENT_STATUSES).nullable(),
   buyer: z.object({ name: z.string(), email: z.string() }),
   delivery: z.discriminatedUnion("method", [
     z.object({ method: z.literal("retiro"), pickupDetails: z.string().nullable() }),
@@ -86,5 +88,6 @@ export function toOrder(body: z.infer<typeof ApiGuestOrder>): Order {
       : null,
     tracking: body.delivery.method === "despacho" ? body.delivery.tracking : null,
     history: body.history.map((h) => ({ at: h.at, label: h.label })),
+    payment: { status: body.paymentStatus, dueAt: body.paymentDueAt, total: body.totals.total },
   };
 }

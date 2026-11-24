@@ -7,8 +7,7 @@ import type { CheckoutCartReader } from "../application/ports";
 /**
  * Lee el carrito desde la feature "cart", que ya lo calcula la API (RF-06).
  * Las líneas que ya no se venden no entran al resumen: bloquean el pago. El
- * subtotal va con el descuento del cupón ya aplicado; el despacho se suma aparte.
- * (LN-11 conecta el checkout con POST /orders y /shipping/quote.)
+ * despacho lo cotiza la API en el paso de pago (GET /shipping/quote).
  */
 export const cartCheckoutReader: CheckoutCartReader = {
   async read() {
@@ -23,7 +22,8 @@ export const cartCheckoutReader: CheckoutCartReader = {
           quantity: l.quantity,
           total: l.total,
         })),
-      subtotal: cart.total,
+      subtotal: cart.subtotal,
+      discount: cart.discount,
       unpriced: cart.unpriced,
       blocked: !cart.canCheckout,
     };
