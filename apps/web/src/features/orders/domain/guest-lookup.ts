@@ -65,37 +65,46 @@ export function parseGuestLookup(input: Partial<Record<string, unknown>>): Looku
 }
 
 /**
- * Quién puede ver un pedido: los compradores no tienen cuenta, así que solo
- * quien lo consultó en este navegador con número y correo correctos.
- */
-export function canViewOrder(
-  order: { id: string; email: string },
-  viewer: { guestOrderIds: readonly string[] },
-): boolean {
-  return viewer.guestOrderIds.includes(order.id);
-}
-
-/**
- * Pedidos que este navegador consultó como invitado. Se guardan en una cookie
- * httpOnly de corta duración para no poner el correo en la URL.
+ * Credenciales de los pedidos que este navegador consultó como invitado. La API
+ * entrega una por pedido (X-Order-Access, RF-36) al consultar con número y
+ * correo; se guardan en una cookie httpOnly de corta duración para no poner el
+ * correo en la URL. Quién ve qué lo decide la API con esa credencial.
  */
 export const GUEST_COOKIE = "tk_pedido_invitado";
 export const GUEST_COOKIE_MAX_AGE = 60 * 60; // 1 hora
 export const MAX_GUEST_ORDERS = 5;
 
-export function serializeGuestAccess(ids: readonly string[]): string {
-  return ids.slice(-MAX_GUEST_ORDERS).join(".");
+export interface GuestAccess {
+  /** Número visible ("TK-1048"). */
+  orderId: string;
+  /** Credencial del pedido que entrega la API (43 caracteres base64url). */
+  token: string;
 }
 
-export function parseGuestAccess(raw: string | undefined): string[] {
+const ENTRY = /^(TK-\d{1,10})~([A-Za-z0-9_-]{43})$/;
+
+export function serializeGuestAccess(entries: readonly GuestAccess[]): string {
+  return entries
+    .slice(-MAX_GUEST_ORDERS)
+    .map((e) => `${e.orderId}~${e.token}`)
+    .join(".");
+}
+
+export function parseGuestAccess(raw: string | undefined): GuestAccess[] {
   if (!raw) return [];
   return raw
     .split(".")
-    .filter((id) => /^TK-\d{1,10}$/.test(id))
+    .flatMap((part) => {
+      const match = ENTRY.exec(part);
+      return match?.[1] && match[2] ? [{ orderId: match[1], token: match[2] }] : [];
+    })
     .slice(-MAX_GUEST_ORDERS);
 }
 
-/** Agrega un pedido consultado sin repetir y con tope. */
-export function grantGuestAccess(ids: readonly string[], id: string): string[] {
-  return [...ids.filter((x) => x !== id), id].slice(-MAX_GUEST_ORDERS);
+/** Agrega (o renueva) la credencial de un pedido, sin repetir y con tope. */
+export function grantGuestAccess(
+  entries: readonly GuestAccess[],
+  entry: GuestAccess,
+): GuestAccess[] {
+  return [...entries.filter((e) => e.orderId !== entry.orderId), entry].slice(-MAX_GUEST_ORDERS);
 }

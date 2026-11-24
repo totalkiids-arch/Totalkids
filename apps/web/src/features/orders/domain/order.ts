@@ -84,6 +84,8 @@ export interface Order {
   status: OrderStatus;
   lines: OrderLine[];
   shipping: number;
+  /** Despacho a coordinar con el cliente: su costo no se cobró (UI-13). */
+  shippingToCoordinate?: boolean;
   discount: number;
   delivery: { method: "domicilio"; address: string } | { method: "retiro"; address: string };
   /** Boleta = comprobante de pago de Flow. Factura = la emite Total Kids. */

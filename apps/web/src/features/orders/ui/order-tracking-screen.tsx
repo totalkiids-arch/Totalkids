@@ -102,7 +102,11 @@ export async function OrderTrackingScreen({ id }: { id: string }) {
               <Row term="Productos y extras">{formatPrice(orderSubtotal(order))}</Row>
               <Row term="Descuento">{formatPrice(-order.discount || 0)}</Row>
               <Row term="Despacho">
-                {order.shipping === 0 ? "Gratis" : formatPrice(order.shipping)}
+                {order.shippingToCoordinate
+                  ? "A coordinar"
+                  : order.shipping === 0
+                    ? "Gratis"
+                    : formatPrice(order.shipping)}
               </Row>
               <Row term="Total" strong>
                 {formatPrice(orderTotal(order))}

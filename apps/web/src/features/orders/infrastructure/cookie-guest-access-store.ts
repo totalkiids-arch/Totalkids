@@ -11,15 +11,15 @@ import {
   serializeGuestAccess,
 } from "../domain/guest-lookup";
 
-/** Pedidos consultados como invitado, en cookie httpOnly de 1 hora. */
+/** Credenciales de los pedidos consultados como invitado, en cookie httpOnly de 1 hora. */
 export const cookieGuestAccessStore: GuestAccessStore = {
   async read() {
     return parseGuestAccess((await cookies()).get(GUEST_COOKIE)?.value);
   },
-  async grant(orderId) {
+  async grant(entry) {
     const jar = await cookies();
-    const ids = grantGuestAccess(parseGuestAccess(jar.get(GUEST_COOKIE)?.value), orderId);
-    jar.set(GUEST_COOKIE, serializeGuestAccess(ids), {
+    const entries = grantGuestAccess(parseGuestAccess(jar.get(GUEST_COOKIE)?.value), entry);
+    jar.set(GUEST_COOKIE, serializeGuestAccess(entries), {
       path: "/seguimiento",
       maxAge: GUEST_COOKIE_MAX_AGE,
       sameSite: "lax",

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  canViewOrder,
   grantGuestAccess,
   MAX_GUEST_ORDERS,
   normalizeOrderId,
@@ -42,30 +41,28 @@ describe("parseGuestLookup", () => {
   });
 });
 
-describe("canViewOrder", () => {
-  const order = { id: "TK-1048", email: "camila@example.com" };
+describe("cookie de credenciales de pedidos consultados", () => {
+  const token = (c: string) => c.repeat(43);
 
-  it("lo ve quien lo consultó con número y correo", () => {
-    expect(canViewOrder(order, { guestOrderIds: ["TK-1048"] })).toBe(true);
-  });
-
-  it("nadie más lo ve: no hay cuentas de comprador", () => {
-    expect(canViewOrder(order, { guestOrderIds: [] })).toBe(false);
-    expect(canViewOrder(order, { guestOrderIds: ["TK-1055"] })).toBe(false);
-  });
-});
-
-describe("cookie de pedidos consultados", () => {
-  it("guarda, lee y no repite", () => {
-    const ids = grantGuestAccess(grantGuestAccess([], "TK-1"), "TK-1");
-    expect(parseGuestAccess(serializeGuestAccess(ids))).toEqual(["TK-1"]);
+  it("guarda, lee y renueva sin repetir", () => {
+    const entries = grantGuestAccess(grantGuestAccess([], { orderId: "TK-1", token: token("a") }), {
+      orderId: "TK-1",
+      token: token("b"),
+    });
+    expect(parseGuestAccess(serializeGuestAccess(entries))).toEqual([
+      { orderId: "TK-1", token: token("b") },
+    ]);
   });
 
   it("tiene tope y descarta valores extraños", () => {
-    let ids: string[] = [];
-    for (let i = 0; i < 10; i++) ids = grantGuestAccess(ids, `TK-${i}`);
-    expect(ids).toHaveLength(MAX_GUEST_ORDERS);
-    expect(parseGuestAccess("TK-1.hola.TK-2")).toEqual(["TK-1", "TK-2"]);
+    let entries: ReturnType<typeof parseGuestAccess> = [];
+    for (let i = 0; i < 10; i++)
+      entries = grantGuestAccess(entries, { orderId: `TK-${i}`, token: token("x") });
+    expect(entries).toHaveLength(MAX_GUEST_ORDERS);
+    expect(parseGuestAccess(`TK-1~${token("a")}.hola.TK-2~corto.TK-3~${token("c")}`)).toEqual([
+      { orderId: "TK-1", token: token("a") },
+      { orderId: "TK-3", token: token("c") },
+    ]);
     expect(parseGuestAccess(undefined)).toEqual([]);
   });
 });

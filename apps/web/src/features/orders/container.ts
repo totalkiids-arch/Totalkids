@@ -3,7 +3,12 @@ import type { ActivityArea, ActivityEntry } from "@/features/activity";
 import type { SaleRecord } from "@/features/reports";
 
 import type { AdminOrderPanel, DemoOrderPanel } from "./application/admin-order-panel";
-import type { GuestAccessStore, OrderRepository } from "./application/ports";
+import {
+  GuestOrderUnavailableError,
+  type GuestAccessStore,
+  type GuestOrderGateway,
+  type OrderRepository,
+} from "./application/ports";
 import {
   filterAdminOrders,
   ordersToCsv,
@@ -11,54 +16,66 @@ import {
   type AdminOrderListPage,
   type AdminOrderQuery,
 } from "./domain/admin-order-query";
-import {
-  canViewOrder,
-  LOOKUP_NOT_FOUND,
-  normalizeOrderId,
-  parseGuestLookup,
-} from "./domain/guest-lookup";
+import { LOOKUP_NOT_FOUND, normalizeOrderId, parseGuestLookup } from "./domain/guest-lookup";
 import type { Order } from "./domain/order";
 import { ordersOverview, paidAttempt } from "./domain/order-workflow";
+import { apiGuestOrders } from "./infrastructure/api-guest-orders";
 import { cookieGuestAccessStore } from "./infrastructure/cookie-guest-access-store";
 import { apiAdminOrderPanel } from "./infrastructure/api-admin-order-panel";
 import { demoAdminOrderPanel } from "./infrastructure/demo-admin-order-panel";
 
 // DEMO (ver infrastructure/demo-admin-order-panel.ts): el almacén del panel,
-// sembrado con demo-orders.ts, también responde como OrderRepository para que
-// el listado, el CSV y el seguimiento reflejen los cambios hechos en el panel.
+// sembrado con demo-orders.ts, alimenta el CSV y los resúmenes que todavía no
+// leen la API (ver más abajo). El seguimiento de la tienda ya usa la API.
 const orders: OrderRepository = demoAdminOrderPanel;
+const guestOrders: GuestOrderGateway = apiGuestOrders;
 const guestAccess: GuestAccessStore = cookieGuestAccessStore;
 
 /**
- * Caso de uso: detalle y seguimiento (RF-36). Los compradores no tienen cuenta:
- * lo ve quien lo consultó en este navegador con número y correo de la compra.
- * Si no existe o no le corresponde, la respuesta es la misma (null): no se
- * revela qué pedidos existen.
+ * Caso de uso: detalle y seguimiento (RF-23, RF-36). Los compradores no tienen
+ * cuenta: lo ve quien lo consultó en este navegador con número y correo (la
+ * API entregó su credencial). Si no existe o no le corresponde, la respuesta es
+ * la misma (null): no se revela qué pedidos existen.
  */
 export async function getOrderForViewer(id: string): Promise<{ order: Order } | null> {
   const orderId = normalizeOrderId(id);
   if (!orderId) return null;
-  const [order, guestOrderIds] = await Promise.all([orders.findById(orderId), guestAccess.read()]);
-  if (!order || !canViewOrder(order, { guestOrderIds })) return null;
-  return { order };
+  const access = (await guestAccess.read()).find((e) => e.orderId === orderId);
+  if (!access) return null;
+  const order = await guestOrders.get(orderId, access.token);
+  return order ? { order } : null;
+}
+
+/**
+ * Caso de uso: guardar la credencial de un pedido recién creado (checkout,
+ * LN-11), para que el comprador vea su seguimiento sin volver a consultarlo.
+ */
+export async function rememberGuestOrder(orderId: string, token: string): Promise<void> {
+  await guestAccess.grant({ orderId, token });
 }
 
 export type GuestLookupResult =
   | { ok: true; orderId: string }
   | { ok: false; errors: { pedido?: string; correo?: string }; message: string | null };
 
-/** Caso de uso: consultar un pedido sin cuenta, con número y correo (RF-36). */
+/** Caso de uso: consultar un pedido sin cuenta, con número y correo (RF-23, RF-36). */
 export async function lookupGuestOrder(
   input: Partial<Record<string, unknown>>,
 ): Promise<GuestLookupResult> {
   const parsed = parseGuestLookup(input);
   if (!parsed.ok) return { ...parsed, message: null };
-  const order = await orders.findById(parsed.orderId);
-  if (!order || order.email !== parsed.email) {
-    return { ok: false, errors: {}, message: LOOKUP_NOT_FOUND };
+  let found;
+  try {
+    found = await guestOrders.lookup(parsed.orderId, parsed.email);
+  } catch (error) {
+    if (error instanceof GuestOrderUnavailableError) {
+      return { ok: false, errors: {}, message: error.message };
+    }
+    throw error;
   }
-  await guestAccess.grant(order.id);
-  return { ok: true, orderId: order.id };
+  if (!found) return { ok: false, errors: {}, message: LOOKUP_NOT_FOUND };
+  await guestAccess.grant({ orderId: found.order.id, token: found.token });
+  return { ok: true, orderId: found.order.id };
 }
 
 // ── Panel: pedidos en la API (LN-13) ────────────────────────────────────────
