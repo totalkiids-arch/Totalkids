@@ -3,42 +3,19 @@ import { describe, expect, it } from "vitest";
 import { categoryNav } from "@/shared/config/routes";
 
 import {
-  applyCatalogQuery,
   countActiveFilters,
   EMPTY_QUERY,
-  PAGE_SIZE,
   parseCatalogQuery,
   parsePrice,
   toQueryString,
   type CatalogQuery,
 } from "./catalog-query";
-import { CATEGORIES, type ProductSummary } from "./product";
-
-function product(overrides: Partial<ProductSummary> & { slug: string }): ProductSummary {
-  return {
-    name: overrides.slug,
-    category: "Mesas",
-    categories: ["mesas"],
-    levels: ["nivel-medio"],
-    summary: "",
-    price: null,
-    compareAtPrice: null,
-    badge: null,
-    materials: ["madera"],
-    popularity: 0,
-    publishedAt: "2026-01-01",
-    featured: false,
-    inStock: false,
-    image: null,
-    ...overrides,
-  };
-}
+import { CATEGORIES } from "./product";
 
 const query = (overrides: Partial<CatalogQuery>): CatalogQuery => ({
   ...EMPTY_QUERY,
   ...overrides,
 });
-const slugs = (items: ProductSummary[]) => items.map((p) => p.slug);
 
 describe("parseCatalogQuery", () => {
   it("lee todos los parámetros válidos", () => {
@@ -106,73 +83,6 @@ describe("parsePrice", () => {
     expect(parsePrice("$ 129.990")).toBe(129990);
     expect(parsePrice("abc")).toBeNull();
     expect(parsePrice(undefined)).toBeNull();
-  });
-});
-
-describe("applyCatalogQuery", () => {
-  const catalog = [
-    product({ slug: "baul", name: "Baúl de juguetes", popularity: 5, levels: [] }),
-    product({
-      slug: "cama",
-      categories: ["cunas"],
-      levels: ["sala-cuna"],
-      popularity: 9,
-    }),
-    product({ slug: "escritorio", levels: ["adultos"], materials: ["melamina"], price: 90000 }),
-    product({
-      slug: "oferta",
-      badge: { label: "-10%", tone: "sale" },
-      price: 20000,
-      publishedAt: "2026-06-01",
-    }),
-  ];
-
-  it("busca sin distinguir tildes ni mayúsculas", () => {
-    expect(slugs(applyCatalogQuery(catalog, query({ q: "BAUL" })).items)).toEqual(["baul"]);
-  });
-
-  it("filtra por nivel: basta con uno de los elegidos", () => {
-    const result = applyCatalogQuery(catalog, query({ levels: ["sala-cuna", "adultos"] }));
-    expect(slugs(result.items).sort()).toEqual(["cama", "escritorio"]);
-  });
-
-  it("filtra por categoría, material y ofertas", () => {
-    expect(slugs(applyCatalogQuery(catalog, query({ category: "cunas" })).items)).toEqual(["cama"]);
-    expect(slugs(applyCatalogQuery(catalog, query({ materials: ["melamina"] })).items)).toEqual([
-      "escritorio",
-    ]);
-    expect(slugs(applyCatalogQuery(catalog, query({ onSale: true })).items)).toEqual(["oferta"]);
-  });
-
-  it("excluye productos sin precio cuando hay filtro de precio", () => {
-    const result = applyCatalogQuery(catalog, query({ priceMax: 50000 }));
-    expect(slugs(result.items)).toEqual(["oferta"]);
-  });
-
-  it("ordena por precio dejando al final los productos sin precio", () => {
-    const result = applyCatalogQuery(catalog, query({ sort: "menor-precio" }));
-    expect(slugs(result.items).slice(0, 2)).toEqual(["oferta", "escritorio"]);
-  });
-
-  it("ordena por más vendidos y por novedades", () => {
-    expect(applyCatalogQuery(catalog, query({})).items[0]?.slug).toBe("cama");
-    expect(applyCatalogQuery(catalog, query({ sort: "novedades" })).items[0]?.slug).toBe("oferta");
-  });
-
-  it("pagina y ajusta una página fuera de rango a la última", () => {
-    const many = Array.from({ length: PAGE_SIZE + 2 }, (_, i) => product({ slug: `p${i}` }));
-    const page2 = applyCatalogQuery(many, query({ page: 2 }));
-    expect([page2.items.length, page2.total, page2.pageCount]).toEqual([2, PAGE_SIZE + 2, 2]);
-    expect(applyCatalogQuery(many, query({ page: 40 })).page).toBe(2);
-  });
-
-  it("devuelve una página vacía cuando nada coincide", () => {
-    expect(applyCatalogQuery(catalog, query({ q: "submarino" }))).toEqual({
-      items: [],
-      total: 0,
-      page: 1,
-      pageCount: 1,
-    });
   });
 });
 

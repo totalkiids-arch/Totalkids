@@ -1,13 +1,12 @@
 /**
- * Consulta del catálogo (búsqueda, filtros, orden y página) y las reglas para
- * aplicarla. Dominio puro: el mismo modelo sirve para leer la URL, armar enlaces
- * y, más adelante, traducirse a la consulta de la API.
+ * Consulta del catálogo (búsqueda, filtros, orden y página). Dominio puro: el
+ * mismo modelo sirve para leer la URL, armar enlaces y traducirse a la consulta
+ * de la API (infrastructure/store-catalog-api.ts), que es quien la aplica.
  */
 import {
   CATEGORIES,
   LEVELS,
   MATERIALS,
-  isOnSale,
   type CategorySlug,
   type LevelId,
   type MaterialSlug,
@@ -126,73 +125,4 @@ export function countActiveFilters(query: CatalogQuery): number {
     (query.priceMin !== null || query.priceMax !== null ? 1 : 0) +
     (query.onSale ? 1 : 0)
   );
-}
-
-/** Minúsculas y sin tildes, para buscar "baul" y encontrar "Baúl". */
-export function normalize(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase();
-}
-
-function matchesSearch(product: ProductSummary, q: string): boolean {
-  if (!q) return true;
-  const haystack = normalize(`${product.name} ${product.category} ${product.summary}`);
-  return normalize(q)
-    .split(/\s+/)
-    .every((word) => haystack.includes(word));
-}
-
-function matchesPrice(product: ProductSummary, min: number | null, max: number | null): boolean {
-  if (min === null && max === null) return true;
-  // Sin precio publicado no se puede afirmar que esté en el rango.
-  if (product.price === null) return false;
-  return (min === null || product.price >= min) && (max === null || product.price <= max);
-}
-
-const anyOf = <T>(selected: T[], values: readonly T[]) =>
-  selected.length === 0 || selected.some((v) => values.includes(v));
-
-/** Precio ascendente/descendente; los productos sin precio van al final. */
-function byPrice(direction: 1 | -1) {
-  return (a: ProductSummary, b: ProductSummary) => {
-    if (a.price === null) return b.price === null ? 0 : 1;
-    if (b.price === null) return -1;
-    return (a.price - b.price) * direction;
-  };
-}
-
-const SORTERS: Record<SortId, (a: ProductSummary, b: ProductSummary) => number> = {
-  "mas-vendidos": (a, b) => b.popularity - a.popularity,
-  "menor-precio": byPrice(1),
-  "mayor-precio": byPrice(-1),
-  novedades: (a, b) => b.publishedAt.localeCompare(a.publishedAt),
-};
-
-/** Aplica búsqueda, filtros, orden y paginación. La página se ajusta al rango válido. */
-export function applyCatalogQuery(
-  products: readonly ProductSummary[],
-  query: CatalogQuery,
-): CatalogPage {
-  const filtered = products
-    .filter(
-      (p) =>
-        matchesSearch(p, query.q) &&
-        (query.category === null || p.categories.includes(query.category)) &&
-        anyOf(query.levels, p.levels) &&
-        anyOf(query.materials, p.materials) &&
-        matchesPrice(p, query.priceMin, query.priceMax) &&
-        (!query.onSale || isOnSale(p)),
-    )
-    .sort((a, b) => SORTERS[query.sort](a, b) || b.popularity - a.popularity);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const page = Math.min(query.page, pageCount);
-  return {
-    items: filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    total: filtered.length,
-    page,
-    pageCount,
-  };
 }

@@ -179,6 +179,10 @@ paths:
           in: query
           description: Solo productos con precio anterior (en oferta)
           schema: { type: boolean }
+        - name: featured
+          in: query
+          description: Solo productos destacados (portada)
+          schema: { type: boolean }
         - name: availability
           in: query
           schema: { type: string, enum: [en_stock, a_pedido] }
@@ -2702,6 +2706,7 @@ components:
           name,
           summary,
           category,
+          categories,
           ageGroups,
           materials,
           colors,
@@ -2723,6 +2728,10 @@ components:
           properties:
             slug: { type: string }
             name: { type: string }
+        categories:
+          type: array
+          items: { type: string }
+          description: Slugs de la categoría principal (primero) y de las adicionales activas.
         ageGroups: { type: array, items: { type: string } }
         materials: { type: array, items: { type: string } }
         colors:

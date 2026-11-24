@@ -88,6 +88,17 @@ describe.skipIf(!url)("catálogo: categorías adicionales y extras por producto"
     });
   });
 
+  it("el resumen trae la categoría principal y las adicionales activas", async () => {
+    await inRollback(async (tx) => {
+      const { mesas, junji, product } = await fixture(tx);
+      const listed = async () =>
+        (await listProducts(tx, filters(mesas.slug))).items.find((i) => i.slug === product.slug);
+      expect((await listed())?.categories).toEqual([mesas.slug, junji.slug]);
+      await tx.category.update({ where: { id: junji.id }, data: { active: false } });
+      expect((await listed())?.categories).toEqual([mesas.slug]);
+    });
+  });
+
   it("una categoría adicional inactiva no muestra el producto", async () => {
     await inRollback(async (tx) => {
       const { junji } = await fixture(tx);
