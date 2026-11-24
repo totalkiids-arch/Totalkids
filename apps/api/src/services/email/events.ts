@@ -71,6 +71,8 @@ const orderLine = z.object({
   extras: z.array(text(120)).max(20).default([]),
   /** Producto a pedido (UI-11): se fabrica después de pagar. */
   madeToOrder: z.boolean().default(false),
+  /** Plazo de fabricación de la línea a pedido ("10 días hábiles"), si se conoce. */
+  leadTime: text(60).nullish(),
 });
 
 const amounts = {
@@ -106,6 +108,8 @@ export const EMAIL_DATA_SCHEMAS = {
     ...amounts,
     /** Hasta cuándo se mantiene la reserva (ISO 8601). */
     paymentDueAt: z.iso.datetime({ offset: true }),
+    /** Entrega elegida (LN-09). Opcional: los correos encolados antes no la traen. */
+    delivery: delivery.optional(),
   }),
   /** Comprador: solo después de verificar el pago (RF-16). */
   purchase_confirmed: z.object({

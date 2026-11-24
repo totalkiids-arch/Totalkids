@@ -53,7 +53,11 @@ type Amounts = Pick<
 function lineText(line: OrderLine): string {
   const name = line.variant ? `${line.name} (${line.variant})` : line.name;
   const extras = line.extras.length > 0 ? ` + ${line.extras.join(", ")}` : "";
-  const toOrder = line.madeToOrder ? " · a pedido" : "";
+  const toOrder = line.madeToOrder
+    ? line.leadTime
+      ? ` · a pedido (${line.leadTime})`
+      : " · a pedido"
+    : "";
   return `${String(line.quantity)} × ${name}${extras}${toOrder} — ${formatClp(line.lineTotal)}`;
 }
 
@@ -69,6 +73,18 @@ function amountRows(amounts: Amounts, pickup: boolean): Block {
         : formatClp(amounts.shippingCost),
   ]);
   rows.push(["Total", formatClp(amounts.total)]);
+  return { kind: "rows", rows };
+}
+
+type Delivery = EmailData<"purchase_confirmed">["delivery"];
+
+/** Dónde se entrega (retiro en taller o dirección de despacho) y el plazo, si se conoce. */
+function deliveryRows(delivery: Delivery): Block {
+  const rows: [string, string][] =
+    delivery.method === "pickup"
+      ? [["Retiro en taller", delivery.pickupDetails]]
+      : [["Despacho a", delivery.address]];
+  if (delivery.leadTime) rows.push(["Plazo", delivery.leadTime]);
   return { kind: "rows", rows };
 }
 
@@ -105,6 +121,7 @@ type Renderers = { [E in EmailEvent]: (data: EmailData<E>, ctx: RenderContext) =
 const TEMPLATES: Renderers = {
   order_received: (data, ctx) => {
     const ref = orderRef(data.orderNumber);
+    const pickup = data.delivery?.method === "pickup";
     return {
       subject: `Recibimos tu pedido #${ref}`,
       preheader: `Tu pedido #${ref} está pendiente de pago.`,
@@ -112,7 +129,10 @@ const TEMPLATES: Renderers = {
       blocks: [
         { kind: "p", text: `Hola ${data.buyerName}, tu pedido #${ref} está pendiente de pago.` },
         { kind: "list", items: data.items.map(lineText) },
-        amountRows(data, false),
+        amountRows(data, pickup),
+        // Los correos encolados antes de LN-09 no traen la entrega.
+        ...(data.delivery ? [deliveryRows(data.delivery)] : []),
+        ...shippingToCoordinateNote(data, pickup),
         {
           kind: "p",
           text: `Reservamos tus productos hasta el ${formatDateTime(data.paymentDueAt)}. Si no se completa el pago a tiempo, el pedido vence.`,
@@ -134,11 +154,6 @@ const TEMPLATES: Renderers = {
   purchase_confirmed: (data, ctx) => {
     const ref = orderRef(data.orderNumber);
     const pickup = data.delivery.method === "pickup";
-    const deliveryRows: [string, string][] =
-      data.delivery.method === "pickup"
-        ? [["Retiro en taller", data.delivery.pickupDetails]]
-        : [["Despacho a", data.delivery.address]];
-    if (data.delivery.leadTime) deliveryRows.push(["Plazo", data.delivery.leadTime]);
     return {
       subject: `Tu compra #${ref} está confirmada`,
       preheader: `Confirmamos el pago de tu pedido #${ref}.`,
@@ -147,7 +162,7 @@ const TEMPLATES: Renderers = {
         { kind: "p", text: `Hola ${data.buyerName}, tu pedido #${ref} está confirmado.` },
         { kind: "list", items: data.items.map(lineText) },
         amountRows(data, pickup),
-        { kind: "rows", rows: deliveryRows },
+        deliveryRows(data.delivery),
         ...shippingToCoordinateNote(data, pickup),
         ...madeToOrderNote(data.items),
         {

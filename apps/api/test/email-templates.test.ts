@@ -164,6 +164,28 @@ describe("plantillas de correo", () => {
     expect(hrefs(html)).toEqual(["https://tienda.example.com/seguimiento"]);
   });
 
+  it("pedido recibido con la entrega (LN-09): retiro en taller o despacho a coordinar, y plazo a pedido", () => {
+    const pickup = render("order_received", {
+      ...SAMPLES.order_received,
+      items: [{ ...line, leadTime: "10 días hábiles" }],
+      shippingCost: 0,
+      delivery: { method: "pickup", pickupDetails: "Taller, lun a vie 10 a 18 h" },
+    }).text;
+    expect(pickup).toContain("· a pedido (10 días hábiles)");
+    expect(pickup).toContain("Retiro en taller: Gratis");
+    expect(pickup).toContain("Retiro en taller: Taller, lun a vie 10 a 18 h");
+    expect(pickup).not.toMatch(/Despacho|costo del despacho|undefined|null/);
+
+    const shipping = render("order_received", {
+      ...SAMPLES.order_received,
+      delivery: { method: "shipping", address: "Av. Alemania 0123, Depto 4, Temuco" },
+    }).text;
+    expect(shipping).toContain("Despacho: A coordinar");
+    expect(shipping).toContain("Despacho a: Av. Alemania 0123, Depto 4, Temuco");
+    expect(shipping).toContain("El costo del despacho no está incluido en el total");
+    expect(shipping).not.toContain("Plazo:");
+  });
+
   it("compra confirmada: despacho, plazo, factura con folio y contacto; o retiro en taller", () => {
     const shipping = render("purchase_confirmed").text;
     expect(shipping).toContain("Despacho a: Av. Siempre Viva 123, Ñuñoa");

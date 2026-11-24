@@ -426,7 +426,7 @@ await prisma.$transaction(async (tx) => {
 
 | Tarea | Evento                                                                        | Destinatario     | `eventKey`                          | Referencia         |
 | ----- | ----------------------------------------------------------------------------- | ---------------- | ----------------------------------- | ------------------ |
-| LN-09 | `order_received` (pendiente de pago)                                          | comprador        | `order_received:<orderId>`          | `orderId`          |
+| LN-09 | `order_received` (pendiente de pago; ya conectado en `createOrder`)           | comprador        | `order_received:<orderId>`          | `orderId`          |
 | LN-09 | `purchase_confirmed` (solo tras verificar el pago)                            | comprador        | `purchase_confirmed:<orderId>`      | `orderId`          |
 | LN-09 | `new_sale` (sin datos del comprador)                                          | `EMAIL_ADMIN_TO` | `new_sale:<orderId>`                | `orderId`          |
 | LN-09 | `payment_rejected` (`outcome: rejected/cancelled`)                            | comprador        | `payment_rejected:<paymentId>`      | `orderId`          |

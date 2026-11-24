@@ -656,5 +656,167 @@ describe.skipIf(!url)("PATCH /admin/orders/{id}/status (PostgreSQL real)", () =>
       expect(row.status).toBe(current);
       expect(history).toHaveLength(responses.filter((r) => r.status === 200).length);
     });
+
+    it("una compra (LN-09) y una cancelación sobre las mismas variantes en orden inverso: sin deadlock", async () => {
+      const app = buildTestApp({ prisma });
+      const shop = await shopFixture(prisma); // A: 5 terminadas; B se deja con 5 también.
+      await prisma.productVariant.update({
+        where: { id: shop.variantB },
+        data: { stockPhysical: 5 },
+      });
+      const [lo = "", hi = ""] = [shop.variantA, shop.variantB].sort();
+      const zone = await prisma.shippingZone.create({
+        data: {
+          region: "AR",
+          commune: `Cruce-${shop.slug}`,
+          price: 4_990,
+          leadTime: "3 a 5 días hábiles",
+        },
+      });
+      // Pedido pendiente con una unidad reservada de cada variante (como lo deja LN-09).
+      const pending = await createOrder(prisma, {
+        lines: [
+          { variantId: lo, reservation: "active" },
+          { variantId: hi, reservation: "active" },
+        ],
+      });
+      await prisma.productVariant.updateMany({
+        where: { id: { in: [lo, hi] } },
+        data: { stockReserved: 1 },
+      });
+      // El comprador agrega primero la variante de id mayor: su carrito va en orden inverso.
+      const buyer = new CartClient(app);
+      const skuOf = (variantId: string) => (variantId === shop.variantA ? shop.skuA : shop.skuB);
+      for (const variantId of [hi, lo]) {
+        const added = await buyer.post("/cart/items", { sku: skuOf(variantId), quantity: 1 });
+        expect(added.status, JSON.stringify(added.body)).toBe(201);
+      }
+      const delivery = {
+        method: "despacho",
+        region: "AR",
+        commune: zone.commune,
+        street: "Av. Alemania 0123",
+      };
+      const quote = await buyer.get(
+        `/shipping/quote?method=despacho&region=AR&commune=${encodeURIComponent(zone.commune)}`,
+      );
+      expect(quote.status, JSON.stringify(quote.body)).toBe(200);
+      const expectedTotal = (quote.body as { totals: { total: number } }).totals.total;
+
+      /** Espera (sondeando pg_stat_activity) a que una conexión quede esperando un bloqueo. */
+      async function blockedBy(holders: number[], exclude: number[]): Promise<number> {
+        for (let i = 0; i < 400; i += 1) {
+          const [row] = await prisma.$queryRaw<{ pid: number }[]>`
+            SELECT pid FROM pg_stat_activity
+             WHERE pg_blocking_pids(pid) && ${holders}::int[]
+               AND NOT (pid = ANY(${exclude}::int[]))
+             LIMIT 1`;
+          if (row) return row.pid;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        throw new Error("Ninguna conexión quedó esperando el bloqueo");
+      }
+
+      // Una transacción toma la variante menor y la suelta cuando ambas peticiones
+      // ya esperan: así el cruce es determinista. Con el orden del carrito, la
+      // compra tomaría la mayor y esperaría la menor mientras la cancelación tiene
+      // la menor y espera la mayor (deadlock → 500).
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let holderPid: (pid: number) => void = () => {};
+      const holderReady = new Promise<number>((resolve) => (holderPid = resolve));
+      const holder = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM product_variants WHERE id = ${lo}::uuid FOR UPDATE`;
+          const [me] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+          holderPid(me?.pid ?? 0);
+          await gate;
+        },
+        { timeout: 30_000, maxWait: 10_000 },
+      );
+      try {
+        // Si la transacción falla antes de bloquear, no se queda esperando.
+        const blocker = await Promise.race([holderReady, holder.then(() => 0)]);
+        expect(blocker).toBeGreaterThan(0);
+        const cancelling = Promise.resolve(patch(app, pending.id, change("cancelled")));
+        const cancelPid = await blockedBy([blocker], [blocker]);
+        const ordering = Promise.resolve(
+          request(app)
+            .post("/api/v1/orders")
+            .set(buyer.headers())
+            .set("Idempotency-Key", randomUUID())
+            .send({
+              buyer: {
+                name: "María González",
+                rut: "12345678-5",
+                email: "maria@correo.cl",
+                phone: "+56 9 1234 5678",
+              },
+              delivery,
+              billing: { document: "boleta" },
+              termsAccepted: true,
+              expectedTotal,
+            }),
+        );
+        await blockedBy([blocker, cancelPid], [blocker, cancelPid]);
+        release();
+        await holder;
+        const [cancelled, created] = await Promise.all([cancelling, ordering]);
+
+        expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+        expect(created.status, JSON.stringify(created.body)).toBe(201);
+        // La cancelación liberó su unidad y la compra reservó la suya en cada variante.
+        const variants = await prisma.productVariant.findMany({ where: { id: { in: [lo, hi] } } });
+        expect(variants.map((v) => [v.stockPhysical, v.stockReserved])).toEqual([
+          [5, 1],
+          [5, 1],
+        ]);
+        expect(created.body.items).toMatchObject([
+          { sku: skuOf(hi), madeToOrder: false },
+          { sku: skuOf(lo), madeToOrder: false },
+        ]);
+      } finally {
+        release();
+        await holder.catch(() => undefined);
+        const orders = await prisma.order.findMany({
+          where: {
+            OR: [
+              { id: pending.id },
+              { items: { some: { variant: { productId: shop.productId } } } },
+            ],
+          },
+          select: { id: true, idempotencyKey: true },
+        });
+        const ids = orders.map((o) => o.id);
+        const emails = await prisma.emailLog.findMany({ where: { orderId: { in: ids } } });
+        await prisma.emailAttempt.deleteMany({
+          where: { emailId: { in: emails.map((e) => e.id) } },
+        });
+        await prisma.emailLog.deleteMany({ where: { id: { in: emails.map((e) => e.id) } } });
+        await prisma.outboxJob.deleteMany({
+          where: { eventKey: { in: emails.map((e) => e.eventKey) } },
+        });
+        await prisma.inventoryMovement.deleteMany({ where: { orderId: { in: ids } } });
+        await prisma.stockReservation.deleteMany({ where: { orderId: { in: ids } } });
+        await prisma.orderStatusHistory.deleteMany({ where: { orderId: { in: ids } } });
+        await prisma.orderItemExtra.deleteMany({ where: { orderItem: { orderId: { in: ids } } } });
+        await prisma.orderItem.deleteMany({ where: { orderId: { in: ids } } });
+        await prisma.idempotencyRecord.deleteMany({
+          where: { key: { in: orders.map((o) => o.idempotencyKey) } },
+        });
+        await prisma.order.deleteMany({ where: { id: { in: ids } } });
+        await prisma.cart.deleteMany({
+          where: { items: { some: { variant: { productId: shop.productId } } } },
+        });
+        await prisma.inventoryMovement.deleteMany({ where: { variantId: { in: [lo, hi] } } });
+        await prisma.shippingZone.deleteMany({ where: { id: zone.id } });
+        await prisma.productExtra.deleteMany({ where: { productId: shop.productId } });
+        await prisma.extra.deleteMany({ where: { id: { in: Object.values(shop.extraIds) } } });
+        await prisma.productVariant.deleteMany({ where: { productId: shop.productId } });
+        const product = await prisma.product.findUniqueOrThrow({ where: { id: shop.productId } });
+        await prisma.product.deleteMany({ where: { id: shop.productId } });
+        await prisma.category.deleteMany({ where: { id: product.categoryId } });
+      }
+    });
   });
 });

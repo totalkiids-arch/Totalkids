@@ -11,6 +11,8 @@ import { cleanupCart, readCart } from "./cart/cart.js";
 import type { CartNotice } from "./cart/pricing.js";
 import { findCart } from "./cart/session.js";
 import { CouponUnavailableError, reserveCouponUse } from "./coupons.js";
+import { enqueueEmail } from "./email/enqueue.js";
+import { emailEventKey, type EmailDataInput } from "./email/events.js";
 import type { ShippingQuoter } from "./shipping/quoter.js";
 
 export type Db = Prisma.TransactionClient;
@@ -358,7 +360,11 @@ async function createInTransaction(
     wanted.set(line.variantId, (wanted.get(line.variantId) ?? 0) + line.quantity);
   }
   const reservedLeft = new Map<string, number>();
-  for (const [variantId, quantity] of wanted) {
+  // Las variantes se bloquean en orden de id, como LN-13 (admin-orders/inventory.ts):
+  // una compra y una cancelación sobre las mismas variantes nunca se cruzan (deadlock).
+  // Las líneas del pedido conservan el orden del carrito.
+  const byVariantId = [...wanted].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const [variantId, quantity] of byVariantId) {
     const result = await reserveStock(tx, variantId, quantity);
     reservedLeft.set(variantId, result.taken);
     if (result.taken === 0) continue;
@@ -456,12 +462,12 @@ async function createInTransaction(
   await tx.orderStatusHistory.create({
     data: { orderId: order.id, toStatus: "pending_payment", actorLabel: BUYER, createdAt: now },
   });
-  await tx.outboxJob.create({
-    data: {
-      type: "email.order_received",
-      eventKey: `email.order_received:${order.id}`,
-      payload: { orderId: order.id, orderNumber },
-    },
+  await enqueueEmail(tx, {
+    event: "order_received",
+    recipient: order.buyerEmail,
+    eventKey: emailEventKey("order_received", order.id),
+    orderId: order.id,
+    data: orderReceivedData(order, items, totals, paymentDueAt),
   });
 
   const body: Omit<CreatedOrderDto, "accessToken"> = {
@@ -484,4 +490,69 @@ async function createInTransaction(
     },
   });
   return { ...body, accessToken: issueOrderAccess(options.accessSecret, order.id) };
+}
+
+// ─── Correo "pedido recibido" (SRS 4.4.3, RF-20) ────────────────────────────
+
+/** Largo máximo de cada extra en el correo (EMAIL_DATA_SCHEMAS: text(120)). */
+const EMAIL_EXTRA_MAX = 120;
+
+interface OrderSnapshot {
+  number: number;
+  buyerName: string;
+  deliveryMethod: "pickup" | "shipping";
+  pickupDetails: string | null;
+  shippingStreet: string | null;
+  shippingUnit: string | null;
+  shippingCommune: string | null;
+  shippingLeadTime: string | null;
+}
+
+/**
+ * Foto del pedido para la plantilla `order_received` (ver email/events.ts):
+ * líneas con extras y a pedido, importes en CLP (despacho null = a coordinar)
+ * y la entrega. Nunca lleva datos de pago, RUT, teléfono ni factura.
+ */
+function orderReceivedData(
+  order: OrderSnapshot,
+  items: readonly OrderItemDto[],
+  totals: { subtotal: number; discount: number; shipping: number | null; total: number },
+  paymentDueAt: Date,
+): EmailDataInput<"order_received"> {
+  return {
+    orderNumber: order.number,
+    buyerName: order.buyerName,
+    items: items.map((item) => ({
+      name: item.productName,
+      variant: item.optionLabel,
+      quantity: item.quantity,
+      // Unitario con extras: cantidad × unitario = total de la línea.
+      unitPrice: item.unitPrice + item.extrasUnitPrice,
+      lineTotal: item.lineTotal,
+      extras: item.extras.map((e) =>
+        (e.text ? `${e.name}: ${e.text}` : e.name).slice(0, EMAIL_EXTRA_MAX),
+      ),
+      madeToOrder: item.madeToOrder,
+      leadTime: item.leadTime,
+    })),
+    subtotal: totals.subtotal,
+    discount: totals.discount,
+    shippingCost: totals.shipping,
+    total: totals.total,
+    paymentDueAt: paymentDueAt.toISOString(),
+    delivery:
+      order.deliveryMethod === "pickup"
+        ? {
+            method: "pickup",
+            pickupDetails: order.pickupDetails ?? DEFAULT_PICKUP,
+            leadTime: order.shippingLeadTime,
+          }
+        : {
+            method: "shipping",
+            address: [order.shippingStreet, order.shippingUnit, order.shippingCommune]
+              .filter(Boolean)
+              .join(", "),
+            leadTime: order.shippingLeadTime,
+          },
+  };
 }

@@ -1,13 +1,18 @@
 import { randomUUID } from "node:crypto";
 
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { createLogger } from "../src/lib/logger.js";
 import { createPrismaClient } from "../src/lib/prisma.js";
 import { verifyOrderAccess } from "../src/lib/order-access.js";
 import { CART_COOKIE_DEV, cartSessionKeyOf } from "../src/middleware/cart-session.js";
+import { EMAIL_DATA_SCHEMAS, emailEventKey } from "../src/services/email/events.js";
+import { FakeEmailSender } from "../src/services/email/fake-sender.js";
+import { createEmailWorker } from "../src/services/email/worker.js";
 import { setSettings } from "./cart-helpers.js";
 import { buildTestApp, csrfHeaders, testEnv } from "./helpers.js";
+import { panelHeaders, panelSession } from "./panel-helpers.js";
 
 // Creación del pedido (LN-09) contra totalkids_test. Se omite sin
 // TEST_DATABASE_URL. Crea sus datos y los borra al terminar.
@@ -127,8 +132,14 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
     await prisma.orderStatusHistory.deleteMany({ where: { orderId: { in: ids } } });
     await prisma.orderItemExtra.deleteMany({ where: { orderItem: { orderId: { in: ids } } } });
     await prisma.orderItem.deleteMany({ where: { orderId: { in: ids } } });
+    const emails = await prisma.emailLog.findMany({
+      where: { orderId: { in: ids } },
+      select: { id: true, outboxJobId: true },
+    });
+    await prisma.emailAttempt.deleteMany({ where: { emailId: { in: emails.map((e) => e.id) } } });
+    await prisma.emailLog.deleteMany({ where: { id: { in: emails.map((e) => e.id) } } });
     await prisma.outboxJob.deleteMany({
-      where: { eventKey: { in: ids.map((o) => `email.order_received:${o}`) } },
+      where: { eventKey: { in: ids.map((o) => emailEventKey("order_received", o)) } },
     });
     await prisma.idempotencyRecord.deleteMany({
       where: { key: { in: orders.map((o) => o.idempotencyKey) } },
@@ -198,11 +209,118 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
     expect(saved.paymentDueAt.getTime()).toBeGreaterThan(saved.createdAt.getTime());
     const variant = await prisma.productVariant.findUniqueOrThrow({ where: { sku: skuStock } });
     expect(variant).toMatchObject({ stockPhysical: 2, stockReserved: 2 });
+    // El correo "pedido recibido" queda encolado con su registro (detalle en su propio caso).
     expect(
-      await prisma.outboxJob.count({ where: { eventKey: `email.order_received:${saved.id}` } }),
+      await prisma.emailLog.count({
+        where: { orderId: saved.id, eventKey: emailEventKey("order_received", saved.id) },
+      }),
     ).toBe(1);
 
     // Libera el stock para los demás casos.
+    await prisma.productVariant.update({ where: { sku: skuStock }, data: { stockReserved: 0 } });
+  });
+
+  // ── Correo "pedido recibido" (SRS 4.4.3, RF-20) ─────────────────────────────
+
+  it("encola el correo «pedido recibido» con su registro, sin duplicarlo al repetir", async () => {
+    // 3 mesas con 2 terminadas: la línea queda a pedido con su plazo.
+    const token = await cartWith({ sku: skuStock, quantity: 3 });
+    const key = randomUUID();
+    const res = await order(token, BODY, key);
+    expect(res.status).toBe(201);
+    const saved = await prisma.order.findUniqueOrThrow({
+      where: { number: Number((res.body.orderNumber as string).slice(3)) },
+    });
+    const eventKey = emailEventKey("order_received", saved.id);
+
+    const job = await prisma.outboxJob.findUniqueOrThrow({ where: { eventKey } });
+    const log = await prisma.emailLog.findUniqueOrThrow({ where: { eventKey } });
+    expect(job).toMatchObject({ type: "email.order_received", status: "pending" });
+    expect(log).toMatchObject({
+      event: "order_received",
+      recipient: "maria@correo.cl",
+      orderId: saved.id,
+      outboxJobId: job.id,
+      status: "pending",
+    });
+    // Datos completos y válidos para la plantilla; nada de pago ni datos tributarios.
+    expect(EMAIL_DATA_SCHEMAS.order_received.safeParse(job.payload).success).toBe(true);
+    expect(job.payload).toEqual({
+      orderNumber: saved.number,
+      buyerName: "María González",
+      items: [
+        {
+          name: "mesa",
+          variant: null,
+          quantity: 3,
+          unitPrice: 50_000,
+          lineTotal: 150_000,
+          extras: [],
+          madeToOrder: true,
+          leadTime: "10 días hábiles",
+        },
+      ],
+      subtotal: 150_000,
+      discount: 0,
+      shippingCost: 0,
+      total: 150_000,
+      paymentDueAt: saved.paymentDueAt.toISOString(),
+      delivery: { method: "pickup", pickupDetails: saved.pickupDetails, leadTime: null },
+    });
+    expect(JSON.stringify(job.payload)).not.toMatch(/rut|phone|payment"|token|12\.345/i);
+
+    // La misma Idempotency-Key devuelve el pedido sin encolar otro correo.
+    const again = await order(token, BODY, key);
+    expect(again.status).toBe(200);
+    expect(await prisma.outboxJob.count({ where: { eventKey } })).toBe(1);
+    expect(await prisma.emailLog.count({ where: { orderId: saved.id } })).toBe(1);
+
+    // El worker de LN-14 con el adaptador falso lo envía (sin red).
+    const fetchSpy = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const sender = new FakeEmailSender();
+      const worker = createEmailWorker({
+        prisma,
+        sender,
+        logger: createLogger("silent", false),
+        now: () => new Date(Date.now() + 1000),
+        config: {
+          siteUrl: "https://tienda.example.com",
+          batchSize: 10,
+          pollIntervalMs: 10,
+          lockTimeoutMs: 5 * 60_000,
+          scope: saved.id,
+        },
+      });
+      expect(await worker.runOnce()).toEqual({ processed: 1, released: 0 });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(sender.sent).toHaveLength(1);
+      expect(sender.sent[0]).toMatchObject({
+        to: "maria@correo.cl",
+        subject: `Recibimos tu pedido #${res.body.orderNumber as string}`,
+        tag: "order_received",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const sent = await prisma.emailLog.findUniqueOrThrow({
+      where: { eventKey },
+      include: { attempts: true },
+    });
+    expect(sent.status).toBe("sent");
+    expect(sent.attempts).toMatchObject([{ kind: "automatic", result: "sent" }]);
+
+    // El panel lo muestra en el detalle del pedido (y desde ahí se puede reenviar).
+    const { token: admin } = await panelSession(prisma, "admin");
+    const detail = await request(app)
+      .get(`/api/v1/admin/orders/${res.body.orderNumber as string}`)
+      .set(panelHeaders(admin));
+    expect(detail.status).toBe(200);
+    expect(detail.body.emails).toMatchObject([
+      { id: sent.id, event: "order_received", recipient: "maria@correo.cl", status: "sent" },
+    ]);
+
     await prisma.productVariant.update({ where: { sku: skuStock }, data: { stockReserved: 0 } });
   });
 
