@@ -43,8 +43,11 @@ tags:
   - name: Pagos
   - name: Panel - Sesión
   - name: Formularios
+  - name: Tienda
   - name: Panel - Catálogo
   - name: Panel - Pedidos
+  - name: Panel - Resumen
+  - name: Panel - Pagos
   - name: Panel - Configuración
   - name: Panel - Solicitudes y newsletter
   - name: Panel - Reportes
@@ -906,6 +909,46 @@ paths:
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
+  # ───────────────────────── Tienda: lo que se configura en el panel (LN-16) ─────────────────────────
+  /store-theme:
+    get:
+      operationId: getStoreTheme
+      summary: Plantilla visual activa de la tienda
+      description: La que activa el Administrador en el panel (UI-13); `clasica` si no hay ninguna guardada. Sin sesión.
+      tags: [Tienda]
+      security: []
+      responses:
+        "200":
+          description: Plantilla activa
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [theme]
+                properties:
+                  theme: { $ref: "#/components/schemas/StoreThemeId" }
+              example: { theme: navidad }
+  /banners:
+    get:
+      operationId: listBanners
+      summary: Banners de la portada (activos y vigentes)
+      description: |
+        RF-28. Solo los activos cuya ventana de publicación incluye este momento,
+        por orden y título. El destino siempre es una ruta interna de la tienda.
+        Sin sesión.
+      tags: [Tienda]
+      security: []
+      responses:
+        "200":
+          description: Banners vigentes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/PublicBanner" } }
+
   # ───────────────────────── Panel: catálogo e inventario (LN-12) ─────────────────────────
   # Solo Administrador (RF-26, RF-31: el Operador no modifica ni consulta el catálogo
   # del panel). Cada cambio queda en audit_log con actor, antes/después y requestId.
@@ -1578,194 +1621,428 @@ paths:
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
   # ───────────────────────── Panel: configuración (LN-16) ─────────────────────────
+  # Solo Administrador (RF-28, RF-31: el Operador no modifica ni consulta la
+  # configuración). Cada escritura queda en audit_log con actor, antes/después y
+  # requestId. Editar o desactivar afecta solo compras nuevas: los pedidos guardan
+  # su propia copia de descuento, tarifa, comuna y plazo (RN-02).
   /admin/coupons:
     get:
       operationId: adminListCoupons
-      summary: "[Pendiente LN-16] Cupones"
-      x-pending-task: LN-16
+      summary: Cupones con estado derivado y usos
+      description: |
+        Todos los cupones, activos primero (activo, programado, agotado, vencido,
+        inactivo) y luego por código. El estado se calcula con el día de hoy en
+        Chile (`today`). `uses` = usos registrados (reservados + consumidos), que
+        cuentan para el cupo.
       x-roles: [admin]
       tags: [Panel - Configuración]
       security: [{ panelSession: [] }]
       responses:
-        "200": { description: Cupones }
+        "200":
+          description: Cupones
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [today, items]
+                properties:
+                  today: { type: string, format: date, description: Hoy en Chile }
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminCoupon" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
       operationId: adminCreateCoupon
-      summary: "[Pendiente LN-16] Crear cupón"
-      x-pending-task: LN-16
+      summary: Crear cupón
+      description: |
+        Código normalizado (mayúsculas, sin espacios), de 3 a 20 caracteres (A–Z,
+        0–9, `-`, `_`), único sin distinguir mayúsculas (422 «Ese código ya
+        existe. Usa otro o edita el cupón existente.»; 409 si otra petición se
+        adelantó). Porcentaje entero 1–100 o monto entero > 0 (hasta 10.000.000).
+        Inicio ≤ término (días de Chile, ambos inclusive). Máximo de usos 1–1.000.000.
+        Auditoría `coupon.created`.
       x-roles: [admin]
       tags: [Panel - Configuración]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminCouponInput" }
+            example:
+              {
+                code: APRENDER10,
+                kind: percent,
+                value: 10,
+                startsOn: "2026-12-01",
+                endsOn: "2026-12-31",
+                maxUses: 100,
+              }
       responses:
-        "201": { description: Cupón creado }
+        "201":
+          description: Cupón creado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCoupon" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/coupons/{id}:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
-      - $ref: "#/components/parameters/CsrfTokenHeader"
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: adminGetCoupon
+      summary: Cupón
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [] }]
+      responses:
+        "200":
+          description: Cupón
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCoupon" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
     patch:
       operationId: adminUpdateCoupon
-      summary: "[Pendiente LN-16] Editar cupón (código, tipo y valor fijos si tiene usos)"
-      x-pending-task: LN-16
+      summary: Editar, activar o desactivar un cupón
+      description: |
+        Campos parciales, con las mismas reglas que al crear. Con usos
+        (`termsLocked`), código, tipo y valor quedan fijos: cambiarlos responde
+        409 «Tiene usos: para otro descuento crea un cupón nuevo.» con
+        `details.field` (`code`, `kind` o `value`). El máximo no puede quedar
+        bajo los usos registrados (422 en `maxUses`). La fila se bloquea, así una
+        compra simultánea que reserve un uso espera. Auditoría `coupon.updated`,
+        `coupon.activated` o `coupon.deactivated`.
       x-roles: [admin]
       tags: [Panel - Configuración]
       security: [{ panelSession: [], csrfCookie: [] }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminCouponUpdate" }
+            example: { active: false }
       responses:
-        "200": { description: Cupón actualizado }
+        "200":
+          description: Cupón actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCoupon" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: adminDeleteCoupon
-      summary: "[Pendiente LN-16] Eliminar cupón sin usos (con usos, solo desactivar)"
-      x-pending-task: LN-16
-      x-roles: [admin]
-      tags: [Panel - Configuración]
-      security: [{ panelSession: [], csrfCookie: [] }]
-      responses:
-        "204": { description: Cupón eliminado }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-  /admin/banners:
-    get:
-      operationId: adminListBanners
-      summary: "[Pendiente LN-16] Banners"
-      x-pending-task: LN-16
-      x-roles: [admin]
-      tags: [Panel - Configuración]
-      security: [{ panelSession: [] }]
-      responses:
-        "200": { description: Banners }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-    post:
-      operationId: adminCreateBanner
-      summary: "[Pendiente LN-16] Crear banner (destino solo interno)"
-      x-pending-task: LN-16
+      summary: Eliminar un cupón sin usos (con usos, solo desactivar)
+      description: |
+        Solo un cupón sin usos, sin canjes (ni liberados) y sin pedidos que lo
+        citen (`canDelete`). Si no, 409 «Este cupón tiene usos: solo se puede
+        desactivar.». Un carrito que lo tenga aplicado queda sin cupón.
+        Auditoría `coupon.deleted`.
       x-roles: [admin]
       tags: [Panel - Configuración]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
       responses:
-        "201": { description: Banner creado }
+        "204": { description: Cupón eliminado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/banners:
+    get:
+      operationId: adminListBanners
+      summary: Banners
+      description: Todos (activos e inactivos), por orden de aparición y luego por título, con lo que ve hoy la tienda (`visibility`).
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [] }]
+      responses:
+        "200":
+          description: Banners
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminBanner" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: adminCreateBanner
+      summary: Crear banner (destino solo interno)
+      description: |
+        Título hasta 60 y texto hasta 140 (espacios de más colapsados), orden
+        entero 1–99. El destino debe ser una ruta de la tienda: empieza con `/`,
+        no con `//`, sin `\`, espacios ni caracteres de control (se descartan
+        `http:`, `javascript:`, `data:`…). Ventana de publicación opcional
+        (`startsAt`/`endsAt`, término posterior al inicio). Auditoría `banner.created`.
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminBannerInput" }
+            example:
+              {
+                title: Línea JUNJI,
+                text: Muebles certificados para salas cuna y jardines.,
+                href: /catalogo?categoria=junji,
+                sortOrder: 1,
+              }
+      responses:
+        "201":
+          description: Banner creado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminBanner" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/banners/{id}:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
-      - $ref: "#/components/parameters/CsrfTokenHeader"
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     patch:
       operationId: adminUpdateBanner
-      summary: "[Pendiente LN-16] Editar banner"
-      x-pending-task: LN-16
+      summary: Editar, activar o desactivar un banner
+      description: Campos parciales, mismas reglas que al crear. Auditoría `banner.updated`, `banner.activated` o `banner.deactivated`.
       x-roles: [admin]
       tags: [Panel - Configuración]
       security: [{ panelSession: [], csrfCookie: [] }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminBannerUpdate" }
       responses:
-        "200": { description: Banner actualizado }
+        "200":
+          description: Banner actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminBanner" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: adminDeleteBanner
-      summary: "[Pendiente LN-16] Desactivar banner (no se eliminan)"
-      x-pending-task: LN-16
-      x-roles: [admin]
-      tags: [Panel - Configuración]
-      security: [{ panelSession: [], csrfCookie: [] }]
-      responses:
-        "204": { description: Banner eliminado }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-  /admin/shipping-zones:
-    get:
-      operationId: adminListShippingZones
-      summary: "[Pendiente LN-16] Zonas de despacho a coordinar (comuna, tarifa y plazo)"
-      x-pending-task: LN-16
-      x-roles: [admin]
-      tags: [Panel - Configuración]
-      security: [{ panelSession: [] }]
-      responses:
-        "200": { description: Zonas }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-    post:
-      operationId: adminCreateShippingZone
-      summary: "[Pendiente LN-16] Crear zona"
-      x-pending-task: LN-16
+      summary: Desactivar banner (no se eliminan)
+      description: Deja el banner inactivo; la portada deja de mostrarlo. Idempotente.
       x-roles: [admin]
       tags: [Panel - Configuración]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
       responses:
-        "201": { description: Zona creada }
+        "204": { description: Banner desactivado }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/shipping-zones:
+    get:
+      operationId: adminListShippingZones
+      summary: Zonas de despacho a coordinar (comuna, tarifa y plazo)
+      description: Todas, de norte a sur y luego por comuna. `price` null = tarifa por confirmar.
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [] }]
+      responses:
+        "200":
+          description: Zonas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminShippingZone" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: adminCreateShippingZone
+      summary: Crear zona
+      description: |
+        Región (código de Chile) y comuna (hasta 80) únicas: la comuna se compara
+        sin tildes, mayúsculas ni espacios de más dentro de la región (422 «Esa
+        comuna ya tiene una zona en esta región. Edita la existente.»). Tarifa
+        entera 0–1.000.000 o `null` (por confirmar: despacho a coordinar). Plazo
+        hasta 60. Auditoría `shipping_zone.created`.
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminShippingZoneInput" }
+            example:
+              {
+                region: RM,
+                commune: Ñuñoa,
+                price: null,
+                leadTime: A coordinar con el taller,
+                freeShippingEligible: true,
+              }
+      responses:
+        "201":
+          description: Zona creada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminShippingZone" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/shipping-zones/{id}:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
-      - $ref: "#/components/parameters/CsrfTokenHeader"
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     patch:
       operationId: adminUpdateShippingZone
-      summary: "[Pendiente LN-16] Editar zona (no cambia pedidos anteriores)"
-      x-pending-task: LN-16
+      summary: Editar zona (no cambia pedidos anteriores)
+      description: Campos parciales, mismas reglas. Los pedidos ya hechos conservan su costo, comuna y plazo (RN-02).
       x-roles: [admin]
       tags: [Panel - Configuración]
       security: [{ panelSession: [], csrfCookie: [] }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminShippingZoneUpdate" }
+            example: { price: 4990, leadTime: 3 a 5 días hábiles }
       responses:
-        "200": { description: Zona actualizada }
+        "200":
+          description: Zona actualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminShippingZone" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       operationId: adminDeactivateShippingZone
-      summary: "[Pendiente LN-16] Desactivar zona"
-      x-pending-task: LN-16
-      x-roles: [admin]
-      tags: [Panel - Configuración]
-      security: [{ panelSession: [], csrfCookie: [] }]
-      responses:
-        "204": { description: Zona desactivada }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-  /admin/shipping-settings:
-    get:
-      operationId: adminGetShippingSettings
-      summary: "[Pendiente LN-16] Condiciones de retiro y despacho"
-      description: Dirección y horario de retiro en taller, umbral de despacho gratis y minutos de reserva.
-      x-pending-task: LN-16
-      x-roles: [admin]
-      tags: [Panel - Configuración]
-      security: [{ panelSession: [] }]
-      responses:
-        "200": { description: Configuración vigente }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-    put:
-      operationId: adminUpdateShippingSettings
-      summary: "[Pendiente LN-16] Guardar condiciones de retiro y despacho"
-      x-pending-task: LN-16
+      summary: Desactivar zona (no se borran)
+      description: Deja de ofrecerse en compras nuevas; esa comuna pasa a «a coordinar». Idempotente.
       x-roles: [admin]
       tags: [Panel - Configuración]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
       responses:
-        "200": { description: Configuración actualizada }
+        "204": { description: Zona desactivada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/shipping-settings:
+    get:
+      operationId: adminGetShippingSettings
+      summary: Condiciones de retiro y despacho
+      description: Retiro en taller (habilitado, dirección y horario), umbral de despacho gratis y minutos de reserva. Sin configuración guardada, los valores por defecto (`updatedAt` null).
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [] }]
+      responses:
+        "200":
+          description: Configuración vigente
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShippingSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      operationId: adminUpdateShippingSettings
+      summary: Guardar condiciones de retiro y despacho
+      description: |
+        Reemplaza las condiciones. Dirección y horario de retiro obligatorios (hasta
+        200). Umbral entero 0–100.000.000 o `null` (sin despacho gratis); aplica a
+        subtotal − descuento y solo en zonas elegibles. Reserva de 1 a 120 minutos
+        (RN-04). Afecta solo compras nuevas. Auditoría `settings.shipping_updated`.
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShippingSettingsInput" }
+            example:
+              {
+                pickupEnabled: true,
+                pickupDetails: "Taller Total Kids, Temuco · L a V 10–18 h",
+                freeShippingThreshold: 150000,
+                reservationMinutes: 30,
+              }
+      responses:
+        "200":
+          description: Configuración actualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShippingSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/store-theme:
+    get:
+      operationId: adminGetStoreTheme
+      summary: Plantilla activa de la tienda y las disponibles
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [] }]
+      responses:
+        "200":
+          description: Plantilla
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminStoreTheme" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      operationId: adminSetStoreTheme
+      summary: Activar una plantilla (solo una a la vez)
+      description: Auditoría `settings.theme_changed`. La tienda la lee en `GET /store-theme`.
+      x-roles: [admin]
+      tags: [Panel - Configuración]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [theme]
+              properties:
+                theme: { $ref: "#/components/schemas/StoreThemeId" }
+            example: { theme: navidad }
+      responses:
+        "200":
+          description: Plantilla activada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminStoreTheme" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
@@ -1773,44 +2050,100 @@ paths:
   /admin/service-requests:
     get:
       operationId: adminListServiceRequests
-      summary: "[Pendiente LN-16] Solicitudes de servicio"
-      x-pending-task: LN-16
+      summary: Solicitudes de servicio
+      description: |
+        Más recientes primero. `q` busca por referencia ("SOL-1002"), nombre o
+        correo. `counts` cuenta por estado con los demás filtros (para las pestañas).
       x-roles: [admin, operator]
       tags: [Panel - Solicitudes y newsletter]
       security: [{ panelSession: [] }]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PageSize"
+        - name: service
+          in: query
+          schema:
+            type: string
+            enum: [armado, diseno, personalizacion, instituciones, regalos, garantia]
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/ServiceRequestStatus" } }
+        - { name: q, in: query, schema: { type: string, maxLength: 80 } }
       responses:
-        "200": { description: Página de solicitudes }
+        "200":
+          description: Página de solicitudes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta, counts]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminServiceRequestSummary" }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+                  counts:
+                    type: object
+                    required: [new, in_progress, resolved]
+                    properties:
+                      new: { type: integer }
+                      in_progress: { type: integer }
+                      resolved: { type: integer }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/service-requests/{id}:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
+      - name: id
+        in: path
+        required: true
+        description: Uuid de la solicitud o su referencia ("SOL-1002" o "1002").
+        schema: { type: string, example: SOL-1002 }
     get:
       operationId: adminGetServiceRequest
-      summary: "[Pendiente LN-16] Detalle de solicitud con historial"
-      x-pending-task: LN-16
+      summary: Detalle de solicitud con historial
+      description: |
+        Datos completos (con mensaje y teléfono), nota interna, estados que se
+        pueden elegir (`statusOptions`), historial (la recepción y cada cambio de
+        `audit_log`, con rol y nombre de quien lo hizo) y correos de la solicitud.
       x-roles: [admin, operator]
       tags: [Panel - Solicitudes y newsletter]
       security: [{ panelSession: [] }]
       responses:
-        "200": { description: Solicitud }
+        "200":
+          description: Solicitud
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminServiceRequestDetail" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
     patch:
       operationId: adminUpdateServiceRequest
-      summary: "[Pendiente LN-16] Cambiar estado o nota interna"
-      x-pending-task: LN-16
+      summary: Cambiar estado o nota interna
+      description: |
+        Nueva → En gestión → Resuelta; se puede resolver directo desde Nueva y
+        reabrir una resuelta (vuelve a En gestión); nunca se vuelve a Nueva (409
+        «Una solicitud resuelta no puede pasar a «Nueva».», `details.field:
+        status`). Nota interna hasta 1000 caracteres ("" la borra). Sin cambios:
+        422 «No hay cambios para guardar.». La fila se bloquea. Auditoría
+        `service_request.updated` (sin el texto de la nota).
       x-roles: [admin, operator]
       tags: [Panel - Solicitudes y newsletter]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ServiceRequestFollowUpInput" }
+            example: { status: in_progress, note: Llamar el lunes para agendar. }
       responses:
-        "200": { description: Solicitud actualizada }
+        "200":
+          description: Solicitud actualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminServiceRequestDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
@@ -1818,26 +2151,76 @@ paths:
   /admin/newsletter:
     get:
       operationId: adminListSubscribers
-      summary: "[Pendiente LN-16] Suscriptores del newsletter"
-      x-pending-task: LN-16
+      summary: Suscriptores del newsletter
+      description: Del consentimiento más reciente al más antiguo. `q` busca en el correo; `counts` por estado.
       x-roles: [admin]
       tags: [Panel - Solicitudes y newsletter]
       security: [{ panelSession: [] }]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PageSize"
+        - { name: status, in: query, schema: { type: string, enum: [active, unsubscribed] } }
+        - { name: q, in: query, schema: { type: string, maxLength: 80 } }
       responses:
-        "200": { description: Página de suscriptores }
+        "200":
+          description: Página de suscriptores
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta, counts]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminSubscriber" } }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+                  counts:
+                    type: object
+                    required: [active, unsubscribed]
+                    properties:
+                      active: { type: integer }
+                      unsubscribed: { type: integer }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/newsletter/{id}/unsubscribe:
+    post:
+      operationId: adminUnsubscribeSubscriber
+      summary: Registrar la baja desde el panel (conserva el registro)
+      description: |
+        Deja el suscriptor `unsubscribed` con la fecha y el rol que la registró;
+        no borra nada. Ya de baja: 409 «Ese suscriptor ya estaba dado de baja.»
+        (la fecha original no cambia). Auditoría `newsletter.unsubscribed` (sin el correo).
+      x-roles: [admin]
+      tags: [Panel - Solicitudes y newsletter]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      responses:
+        "200":
+          description: Baja registrada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSubscriber" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
 
   # ───────────────────────── Panel: reportes y exportaciones (LN-16) ─────────────────────────
+  # Solo Administrador: la tabla de la API de la SRS manda sobre UC-08.
   /admin/reports/sales:
     get:
       operationId: adminSalesReport
-      summary: "[Pendiente LN-16] Ventas por período, producto y medio de pago"
-      description: Separa cobros y reembolsos registrados e indica el criterio de fecha (RF-30).
-      x-pending-task: LN-16
+      summary: Ventas por período, producto y medio de pago
+      description: |
+        RF-30. Una venta es un cobro confirmado (`payments.status = paid`) y cae
+        en el período por la fecha del cobro en días de Chile. Los reembolsos van
+        aparte: cuentan los procesados cuya fecha cae en el período, aunque el
+        cobro sea de otro (`criteria` lo explica para la pantalla). Neto = cobros −
+        reembolsos. Por producto: líneas al precio de compra, antes del descuento.
+        Sin fechas: el mes en curso hasta hoy. Período de hasta un año (422 con
+        los textos del panel en `from`/`to`).
       x-roles: [admin]
       tags: [Panel - Reportes]
       security: [{ panelSession: [] }]
@@ -1845,16 +2228,34 @@ paths:
         - { name: from, in: query, schema: { type: string, format: date } }
         - { name: to, in: query, schema: { type: string, format: date } }
       responses:
-        "200": { description: Reporte }
+        "200":
+          description: Reporte
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesReport" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/exports/{resource}:
     get:
       operationId: adminExport
-      summary: "[Pendiente LN-16] Exportación CSV (fórmulas neutralizadas)"
-      description: Solo Administrador. CSV con BOM, `;` y celdas peligrosas neutralizadas (RF-29).
-      x-pending-task: LN-16
+      summary: Exportación CSV (fórmulas neutralizadas)
+      description: |
+        RF-29. CSV UTF-8 con BOM, separador `;`, fin de línea CRLF y cada celda
+        entre comillas; una celda que empieza con `=`, `+`, `-`, `@`, tabulador o
+        retorno se antepone con `'`. Acepta los mismos filtros que el listado de
+        cada pantalla:
+
+        - `orders`: los de `GET /admin/orders` (`q`, `status`, `paymentStatus`,
+          `deliveryMethod`, `invoicePending`, `from`, `to`). Columnas: Pedido,
+          Fecha, Cliente, Correo, Estado, Pago, Total CLP (sin RUT, teléfono ni dirección).
+        - `sales`: `from`, `to` (como el reporte). Una fila por cobro del período.
+        - `service-requests`: `service`, `status`, `q`. Sin teléfono, mensaje ni nota.
+        - `subscribers`: `status`, `q`. Correo, consentimiento (fecha y versión), estado y baja.
+
+        Fechas en hora de Chile ("AAAA-MM-DD HH:mm"). Máximo 5.000 filas (422
+        «Acota los filtros.»). La cabecera `X-Export-Rows` trae las filas. Cada
+        descarga queda en audit_log (`export.downloaded`, recurso, filtros y filas).
       x-roles: [admin]
       tags: [Panel - Reportes]
       security: [{ panelSession: [] }]
@@ -1866,32 +2267,301 @@ paths:
       responses:
         "200":
           description: Archivo CSV
+          headers:
+            Content-Disposition:
+              schema:
+                {
+                  type: string,
+                  example: 'attachment; filename="total-kids-pedidos-2026-11-23.csv"',
+                }
+            X-Export-Rows: { schema: { type: integer } }
           content:
             text/csv:
               schema: { type: string }
+              example: "﻿\"Pedido\";\"Fecha\";\"Cliente\"\r\n\"TK-1048\";\"2026-11-23 10:15\";\"'=Camila\""
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
 
-  # ───────────────────────── Panel: usuarios (LN-16) y correos (LN-14) ─────────────────────────
-  /admin/users/{id}/role:
+  # ───────────────────────── Panel: resumen, pagos y actividad (LN-16) ─────────────────────────
+  /admin/summary:
+    get:
+      operationId: adminSummary
+      summary: Resumen del panel
+      description: |
+        Pedidos por estado, pagos en revisión y pendientes (último intento) y los 5
+        pedidos más recientes. Cobros y reembolsos del mes y stock bajo solo para
+        el Administrador; para el Operador llegan en `null`.
+      x-roles: [admin, operator]
+      tags: [Panel - Resumen]
+      security: [{ panelSession: [] }]
+      responses:
+        "200":
+          description: Resumen
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PanelSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/payments:
+    get:
+      operationId: adminListPayments
+      summary: Intentos de pago (solo lectura)
+      description: |
+        Para «Pagos y conciliación» (RF-33). Más recientes primero. `current`
+        marca el último intento del pedido y `reconcilable` el que sigue pendiente
+        o en revisión. La conciliación con Flow es de LN-15 y no está aquí.
+      x-roles: [admin, operator]
+      tags: [Panel - Pagos]
+      security: [{ panelSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, paid, rejected, voided, in_review, expired] }
+        - name: order
+          in: query
+          description: Pedido ("TK-1048", "1048" o uuid).
+          schema: { type: string }
+      responses:
+        "200":
+          description: Página de intentos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta, counts]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminPayment" } }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+                  counts:
+                    type: object
+                    additionalProperties: { type: integer }
+                    description: Intentos por estado (con el filtro de pedido).
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/activity:
+    get:
+      operationId: adminActivity
+      summary: Historial de actividad (audit_log)
+      description: |
+        RF-27, RF-34. Quién hizo qué, cuándo y por qué, más reciente primero. El
+        responsable se identifica por su cuenta: `actorName` es el nombre de la
+        persona y `actorLabel` el rol con que actuó; el filtro `actor` es el id de
+        la cuenta. Áreas por recurso afectado; los ingresos al panel no se listan.
+        `actors` y `byArea` alimentan los filtros.
+      x-roles: [admin]
+      tags: [Panel - Usuarios]
+      security: [{ panelSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - { name: area, in: query, schema: { $ref: "#/components/schemas/ActivityArea" } }
+        - { name: actor, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Página del historial
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActivityPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  # ───────────────────────── Panel: usuarios (LN-16) y correos (LN-14, LN-16) ─────────────────────────
+  # Usuarios: solo Administrador. Siempre queda al menos un Administrador activo;
+  # nadie se quita el rol ni se desactiva a sí mismo. Cambiar el rol o desactivar
+  # revoca todas las sesiones de la cuenta (RNF-01). Las cuentas no se eliminan.
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      summary: Cuentas internas del panel
+      description: Administradores primero, luego activas, luego por nombre. Nunca trae contraseñas ni hashes.
+      x-roles: [admin]
+      tags: [Panel - Usuarios]
+      security: [{ panelSession: [] }]
+      responses:
+        "200":
+          description: Cuentas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, activeAdmins]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminUser" } }
+                  activeAdmins: { type: integer, minimum: 0 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: adminCreateUser
+      summary: Crear una cuenta (con correo para definir la contraseña)
+      description: |
+        Nombre (hasta 120), correo válido y único (se guarda en minúsculas; 422
+        «Ya existe una cuenta con ese correo.») y rol. La cuenta nace con una
+        contraseña aleatoria que nadie conoce y, si queda activa, se le encola
+        `password_recovery` (`invitationSent: true`) para que defina la suya en
+        `/admin/restablecer?token=…` (el enlace vence a los 30 minutos; si vence,
+        se pide otro con «Olvidé mi contraseña»). Auditoría `user.created`.
+      x-roles: [admin]
+      tags: [Panel - Usuarios]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminUserInput" }
+            example: { name: Paula Rojas, email: paula@totalkids.cl, role: operator }
+      responses:
+        "201":
+          description: Cuenta creada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserCreated" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/users/{id}:
     patch:
-      operationId: adminChangeUserRole
-      summary: "[Pendiente LN-16] Cambiar el rol de un usuario interno"
-      x-pending-task: LN-16
+      operationId: adminUpdateUser
+      summary: Editar nombre, correo, rol o estado de una cuenta
+      description: |
+        El formulario completo de la pantalla, con las mismas reglas que
+        `PATCH /admin/users/{id}/role`. 409 (`details.field: form`): dejaría el
+        panel sin Administradores activos, o te quitas el rol o te desactivas a ti
+        mismo. Cambiar el rol o el estado revoca las sesiones (`sessionsRevoked`).
+        Auditoría `user.updated`, `user.role_changed`, `user.activated` o `user.deactivated`.
       x-roles: [admin]
       tags: [Panel - Usuarios]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/ResourceId"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - $ref: "#/components/parameters/CsrfTokenHeader"
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminUserUpdate" }
+            example: { active: false }
       responses:
-        "200": { description: Rol actualizado }
+        "200":
+          description: Cuenta actualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserChanged" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/users/{id}/role:
+    patch:
+      operationId: adminChangeUserRole
+      summary: Cambiar el rol de un usuario interno
+      description: |
+        409 «Debe quedar al menos un Administrador activo. Asigna o activa otro
+        antes de este cambio.» o «No puedes quitarte el rol de Administrador.…».
+        Revoca todas las sesiones de la cuenta (RNF-01): el permiso nuevo rige de
+        inmediato. Auditoría `user.role_changed`.
+      x-roles: [admin]
+      tags: [Panel - Usuarios]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [role]
+              properties:
+                role: { type: string, enum: [admin, operator] }
+            example: { role: admin }
+      responses:
+        "200":
+          description: Rol actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserChanged" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/emails:
+    get:
+      operationId: adminListEmails
+      summary: Registro de correos transaccionales
+      description: |
+        RF-21, SRS 4.4.3. Más recientes primero, con `counts` por estado. El
+        Operador no ve los correos de recuperación de contraseña ni los de baja
+        del newsletter. `canResend` indica si el Administrador puede reenviarlo.
+      x-roles: [admin, operator]
+      tags: [Panel - Correos]
+      security: [{ panelSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - { name: event, in: query, schema: { $ref: "#/components/schemas/EmailEvent" } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/EmailStatus" } }
+        - name: order
+          in: query
+          description: Pedido ("TK-1048", "1048" o uuid).
+          schema: { type: string }
+        - name: request
+          in: query
+          description: Solicitud ("SOL-1002", "1002" o uuid).
+          schema: { type: string }
+      responses:
+        "200":
+          description: Página de correos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta, counts]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminEmailSummary" } }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+                  counts:
+                    type: object
+                    required: [pending, sent, failed, uncertain]
+                    properties:
+                      pending: { type: integer }
+                      sent: { type: integer }
+                      failed: { type: integer }
+                      uncertain: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/emails/{id}:
+    get:
+      operationId: adminGetEmail
+      summary: Detalle de un correo con sus intentos y reenvíos
+      x-roles: [admin, operator]
+      tags: [Panel - Correos]
+      security: [{ panelSession: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Correo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminEmailDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/emails/{id}/resend:
     post:
@@ -3259,6 +3929,717 @@ components:
         availableTransitions: { type: array, items: { $ref: "#/components/schemas/OrderStatus" } }
         blockedByUnresolvedPayment: { type: boolean }
 
+    # ── Panel: configuración, solicitudes, reportes, usuarios y lecturas (LN-16) ──
+    AdminCoupon:
+      type: object
+      required:
+        [
+          id,
+          code,
+          kind,
+          value,
+          startsOn,
+          endsOn,
+          maxUses,
+          uses,
+          reservedUses,
+          consumedUses,
+          active,
+          status,
+          statusLabel,
+          termsLocked,
+          canDelete,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, example: APRENDER10 }
+        kind: { type: string, enum: [percent, amount] }
+        value: { type: integer, description: Porcentaje (1–100) o monto en CLP }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        maxUses: { type: integer, minimum: 1 }
+        uses:
+          { type: integer, minimum: 0, description: Reservados + consumidos (cuentan para el cupo) }
+        reservedUses: { type: integer, minimum: 0 }
+        consumedUses: { type: integer, minimum: 0 }
+        active: { type: boolean }
+        status: { type: string, enum: [active, scheduled, expired, exhausted, inactive] }
+        statusLabel: { type: string, example: Activo }
+        termsLocked: { type: boolean, description: Con usos, código, tipo y valor quedan fijos }
+        canDelete: { type: boolean, description: Sin usos, canjes ni pedidos que lo citen }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminCouponInput:
+      type: object
+      additionalProperties: false
+      required: [code, kind, value, startsOn, endsOn, maxUses]
+      properties:
+        code:
+          {
+            type: string,
+            minLength: 3,
+            maxLength: 20,
+            description: "Se quitan los espacios y se pasa a mayúsculas; A–Z, 0–9, - y _",
+          }
+        kind: { type: string, enum: [percent, amount] }
+        value:
+          { type: integer, minimum: 1, description: "Porcentaje 1–100 o monto CLP 1–10.000.000" }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        maxUses: { type: integer, minimum: 1, maximum: 1000000 }
+        active: { type: boolean, default: true }
+    AdminCouponUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Campos parciales de AdminCouponInput.
+      properties:
+        code: { type: string, minLength: 3, maxLength: 20 }
+        kind: { type: string, enum: [percent, amount] }
+        value: { type: integer, minimum: 1 }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        maxUses: { type: integer, minimum: 1, maximum: 1000000 }
+        active: { type: boolean }
+    AdminBanner:
+      type: object
+      required:
+        [
+          id,
+          title,
+          text,
+          href,
+          sortOrder,
+          active,
+          startsAt,
+          endsAt,
+          visibility,
+          visibilityLabel,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        text: { type: string }
+        href: { type: string, example: /catalogo?categoria=junji }
+        sortOrder: { type: integer, minimum: 1, maximum: 99 }
+        active: { type: boolean }
+        startsAt: { type: [string, "null"], format: date-time }
+        endsAt: { type: [string, "null"], format: date-time }
+        visibility: { type: string, enum: [visible, scheduled, ended, inactive] }
+        visibilityLabel: { type: string, example: Visible }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminBannerInput:
+      type: object
+      additionalProperties: false
+      required: [title, text, href, sortOrder]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 60 }
+        text: { type: string, minLength: 1, maxLength: 140 }
+        href:
+          {
+            type: string,
+            maxLength: 200,
+            pattern: "^/(?!/)",
+            description: Ruta interna de la tienda,
+          }
+        sortOrder: { type: integer, minimum: 1, maximum: 99 }
+        active: { type: boolean, default: true }
+        startsAt: { type: [string, "null"], format: date-time }
+        endsAt: { type: [string, "null"], format: date-time }
+    AdminBannerUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Campos parciales de AdminBannerInput.
+      properties:
+        title: { type: string, minLength: 1, maxLength: 60 }
+        text: { type: string, minLength: 1, maxLength: 140 }
+        href: { type: string, maxLength: 200 }
+        sortOrder: { type: integer, minimum: 1, maximum: 99 }
+        active: { type: boolean }
+        startsAt: { type: [string, "null"], format: date-time }
+        endsAt: { type: [string, "null"], format: date-time }
+    PublicBanner:
+      type: object
+      required: [id, title, text, href, sortOrder]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        text: { type: string }
+        href: { type: string }
+        sortOrder: { type: integer }
+    AdminShippingZone:
+      type: object
+      required:
+        [id, region, commune, price, leadTime, freeShippingEligible, active, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        region: { type: string, example: RM }
+        commune: { type: string, example: Ñuñoa }
+        price:
+          {
+            type: [integer, "null"],
+            minimum: 0,
+            description: "CLP; 0 = sin costo; null = por confirmar",
+          }
+        leadTime: { type: string }
+        freeShippingEligible: { type: boolean }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminShippingZoneInput:
+      type: object
+      additionalProperties: false
+      required: [region, commune, price, leadTime]
+      properties:
+        region:
+          type: string
+          enum: [AP, TA, AN, AT, CO, VS, RM, LI, ML, NB, BI, AR, LR, LL, AI, MA]
+        commune: { type: string, minLength: 1, maxLength: 80 }
+        price: { type: [integer, "null"], minimum: 0, maximum: 1000000 }
+        leadTime: { type: string, minLength: 1, maxLength: 60 }
+        freeShippingEligible: { type: boolean, default: true }
+        active: { type: boolean, default: true }
+    AdminShippingZoneUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Campos parciales de AdminShippingZoneInput.
+      properties:
+        region: { type: string }
+        commune: { type: string, minLength: 1, maxLength: 80 }
+        price: { type: [integer, "null"], minimum: 0, maximum: 1000000 }
+        leadTime: { type: string, minLength: 1, maxLength: 60 }
+        freeShippingEligible: { type: boolean }
+        active: { type: boolean }
+    ShippingSettings:
+      type: object
+      required: [pickupEnabled, pickupDetails, freeShippingThreshold, reservationMinutes, updatedAt]
+      properties:
+        pickupEnabled: { type: boolean }
+        pickupDetails: { type: string }
+        freeShippingThreshold: { type: [integer, "null"], minimum: 0 }
+        reservationMinutes: { type: integer, minimum: 1, maximum: 120 }
+        updatedAt: { type: [string, "null"], format: date-time }
+    ShippingSettingsInput:
+      type: object
+      additionalProperties: false
+      required: [pickupEnabled, pickupDetails, freeShippingThreshold, reservationMinutes]
+      properties:
+        pickupEnabled: { type: boolean }
+        pickupDetails: { type: string, minLength: 1, maxLength: 200 }
+        freeShippingThreshold: { type: [integer, "null"], minimum: 0, maximum: 100000000 }
+        reservationMinutes: { type: integer, minimum: 1, maximum: 120 }
+    StoreThemeId:
+      type: string
+      enum: [clasica, navidad, pascua, ano-nuevo, fiestas-patrias, invierno, primavera]
+    AdminStoreTheme:
+      type: object
+      required: [theme, themes, updatedAt]
+      properties:
+        theme: { $ref: "#/components/schemas/StoreThemeId" }
+        themes: { type: array, items: { $ref: "#/components/schemas/StoreThemeId" } }
+        updatedAt: { type: [string, "null"], format: date-time }
+    ServiceRequestStatus:
+      type: string
+      enum: [new, in_progress, resolved]
+    AdminServiceRequestSummary:
+      type: object
+      required:
+        [
+          id,
+          number,
+          reference,
+          service,
+          serviceLabel,
+          name,
+          email,
+          commune,
+          preferredDate,
+          status,
+          statusLabel,
+          hasNote,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: integer }
+        reference: { type: string, example: SOL-1002 }
+        service: { type: string, example: armado }
+        serviceLabel: { type: string, example: Armado e instalación }
+        name: { type: string }
+        email: { type: string, format: email }
+        commune: { type: [string, "null"] }
+        preferredDate: { type: [string, "null"], format: date }
+        status: { $ref: "#/components/schemas/ServiceRequestStatus" }
+        statusLabel: { type: string, example: Nueva }
+        hasNote: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminServiceRequestDetail:
+      allOf:
+        - $ref: "#/components/schemas/AdminServiceRequestSummary"
+        - type: object
+          required:
+            [
+              phone,
+              childrenAges,
+              message,
+              privacyAcceptedAt,
+              privacyVersion,
+              note,
+              statusOptions,
+              history,
+              emails,
+            ]
+          properties:
+            phone: { type: [string, "null"] }
+            childrenAges: { type: [string, "null"] }
+            message: { type: string }
+            privacyAcceptedAt: { type: string, format: date-time }
+            privacyVersion: { type: string }
+            note: { type: string, description: Nota interna (solo el equipo) }
+            statusOptions:
+              type: array
+              items: { $ref: "#/components/schemas/ServiceRequestStatus" }
+              description: El estado actual primero y luego los permitidos
+            history:
+              type: array
+              items:
+                type: object
+                required: [at, actor, actorName, actorUserId, change]
+                properties:
+                  at: { type: string, format: date-time }
+                  actor: { type: string, description: Rol o «Solicitante» }
+                  actorName: { type: [string, "null"] }
+                  actorUserId: { type: [string, "null"], format: uuid }
+                  change: { type: string, example: "Estado: Nueva → En gestión" }
+            emails:
+              type: array
+              items:
+                type: object
+                required: [id, event, recipient, status, resendOfId, createdAt]
+                properties:
+                  id: { type: string, format: uuid }
+                  event: { $ref: "#/components/schemas/EmailEvent" }
+                  recipient: { type: string }
+                  status: { $ref: "#/components/schemas/EmailStatus" }
+                  resendOfId: { type: [string, "null"], format: uuid }
+                  createdAt: { type: string, format: date-time }
+    ServiceRequestFollowUpInput:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        status: { $ref: "#/components/schemas/ServiceRequestStatus" }
+        note: { type: string, maxLength: 1000, description: '"" borra la nota' }
+    AdminSubscriber:
+      type: object
+      required:
+        [
+          id,
+          email,
+          status,
+          statusLabel,
+          consentedAt,
+          consentVersion,
+          unsubscribedAt,
+          unsubscribedBy,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        status: { type: string, enum: [active, unsubscribed] }
+        statusLabel: { type: string, example: Activo }
+        consentedAt: { type: string, format: date-time }
+        consentVersion: { type: string }
+        unsubscribedAt: { type: [string, "null"], format: date-time }
+        unsubscribedBy:
+          { type: [string, "null"], description: «Suscriptor» o el rol que la registró }
+    SalesReport:
+      type: object
+      required:
+        [
+          period,
+          currency,
+          timeZone,
+          criteria,
+          charged,
+          refunded,
+          net,
+          paidOrders,
+          averageTicket,
+          refundsCount,
+          sales,
+          byProduct,
+          byMethod,
+          refunds,
+        ]
+      properties:
+        period:
+          type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        currency: { type: string, enum: [CLP] }
+        timeZone: { type: string, enum: [America/Santiago] }
+        criteria: { type: string, description: Criterio de fecha para mostrar en la pantalla }
+        charged: { type: integer, description: Cobros confirmados del período }
+        refunded: { type: integer, description: Reembolsos procesados con fecha en el período }
+        net: { type: integer }
+        paidOrders: { type: integer }
+        averageTicket: { type: integer }
+        refundsCount: { type: integer }
+        sales:
+          type: array
+          items:
+            type: object
+            required: [orderId, orderRef, buyerName, method, paidAt, charged, refundedInPeriod]
+            properties:
+              orderId: { type: string, format: uuid }
+              orderRef: { type: string, example: TK-1048 }
+              buyerName: { type: string }
+              method: { type: string, example: Flow }
+              paidAt: { type: string, format: date-time }
+              charged: { type: integer }
+              refundedInPeriod: { type: integer }
+        byProduct:
+          type: array
+          items:
+            type: object
+            required: [name, sku, units, amount]
+            properties:
+              name: { type: string }
+              sku: { type: string }
+              units: { type: integer }
+              amount: { type: integer, description: Al precio de compra, antes del descuento }
+        byMethod:
+          type: array
+          items:
+            type: object
+            required: [method, orders, charged, refunded]
+            properties:
+              method: { type: string }
+              orders: { type: integer }
+              charged: { type: integer }
+              refunded: { type: integer }
+        refunds:
+          type: array
+          items:
+            type: object
+            required: [id, orderId, orderRef, date, amount, method, reference]
+            properties:
+              id: { type: string, format: uuid }
+              orderId: { type: string, format: uuid }
+              orderRef: { type: string }
+              date: { type: string, format: date }
+              amount: { type: integer }
+              method: { type: string }
+              reference: { type: string }
+    PanelSummary:
+      type: object
+      required: [byStatus, paymentsInReview, paymentsPending, recentOrders, sales, lowStockVariants]
+      properties:
+        byStatus:
+          type: object
+          description: Pedidos por estado
+          additionalProperties: { type: integer }
+        paymentsInReview: { type: integer }
+        paymentsPending: { type: integer }
+        recentOrders: { type: array, items: { $ref: "#/components/schemas/AdminOrderSummary" } }
+        sales:
+          description: Solo Administrador (null para el Operador). Mes en curso.
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [period, charged, refunded, net]
+              properties:
+                period:
+                  type: object
+                  properties:
+                    from: { type: string, format: date }
+                    to: { type: string, format: date }
+                charged: { type: integer }
+                refunded: { type: integer }
+                net: { type: integer }
+        lowStockVariants:
+          type: [integer, "null"]
+          description: Solo Administrador. Variantes activas con 1 a 3 unidades disponibles.
+    AdminPayment:
+      type: object
+      required:
+        [
+          id,
+          orderId,
+          orderRef,
+          buyerName,
+          attempt,
+          commerceOrder,
+          flowOrder,
+          amount,
+          status,
+          statusLabel,
+          paymentMethod,
+          createdAt,
+          paidAt,
+          lastCheckedAt,
+          current,
+          reconcilable,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        orderRef: { type: string, example: TK-1053 }
+        buyerName: { type: string }
+        attempt: { type: integer }
+        commerceOrder: { type: string }
+        flowOrder: { type: [string, "null"] }
+        amount: { type: integer }
+        status: { type: string, enum: [pending, paid, rejected, voided, in_review, expired] }
+        statusLabel: { type: string }
+        paymentMethod: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        paidAt: { type: [string, "null"], format: date-time }
+        lastCheckedAt: { type: [string, "null"], format: date-time }
+        current: { type: boolean, description: Último intento del pedido }
+        reconcilable: { type: boolean, description: Último intento pendiente o en revisión (LN-15) }
+    ActivityArea:
+      type: string
+      enum:
+        [
+          pedidos,
+          pagos,
+          reembolsos,
+          inventario,
+          catalogo,
+          configuracion,
+          solicitudes,
+          correos,
+          suscriptores,
+          usuarios,
+          exportaciones,
+        ]
+    ActivityPage:
+      type: object
+      required: [items, meta, actors, byArea]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              [
+                id,
+                at,
+                area,
+                areaLabel,
+                action,
+                description,
+                reason,
+                actorUserId,
+                actorName,
+                actorLabel,
+                resourceType,
+                resourceId,
+                reference,
+                requestId,
+              ]
+            properties:
+              id: { type: string, format: uuid }
+              at: { type: string, format: date-time }
+              area: { oneOf: [{ $ref: "#/components/schemas/ActivityArea" }, { type: "null" }] }
+              areaLabel: { type: [string, "null"] }
+              action: { type: string, example: order.status_changed }
+              description:
+                { type: string, example: "Estado del pedido: Confirmado → En preparación" }
+              reason: { type: [string, "null"] }
+              actorUserId: { type: [string, "null"], format: uuid }
+              actorName: { type: [string, "null"], description: Nombre de la persona }
+              actorLabel: { type: string, description: Rol con que actuó }
+              resourceType: { type: string }
+              resourceId: { type: string }
+              reference:
+                oneOf:
+                  - type: "null"
+                  - type: object
+                    required: [type, id, label]
+                    properties:
+                      type: { type: string, example: order }
+                      id: { type: string }
+                      label: { type: string, example: TK-1048 }
+              requestId: { type: [string, "null"] }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+        actors:
+          type: array
+          items:
+            type: object
+            required: [id, name, role, active]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              role: { type: string, example: Operador }
+              active: { type: boolean }
+        byArea:
+          type: object
+          additionalProperties: { type: integer }
+    AdminUser:
+      type: object
+      required:
+        [
+          id,
+          name,
+          email,
+          role,
+          roleLabel,
+          status,
+          active,
+          lastLoginAt,
+          createdAt,
+          updatedAt,
+          isSelf,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [admin, operator] }
+        roleLabel: { type: string, example: Administrador }
+        status: { type: string, enum: [active, inactive] }
+        active: { type: boolean }
+        lastLoginAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        isSelf: { type: boolean, description: Es la cuenta de quien consulta }
+    AdminUserInput:
+      type: object
+      additionalProperties: false
+      required: [name, email, role]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        role: { type: string, enum: [admin, operator] }
+        active: { type: boolean, default: true }
+    AdminUserUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        role: { type: string, enum: [admin, operator] }
+        active: { type: boolean }
+    AdminUserCreated:
+      allOf:
+        - $ref: "#/components/schemas/AdminUser"
+        - type: object
+          required: [invitationSent]
+          properties:
+            invitationSent:
+              { type: boolean, description: Se encoló el correo para definir la contraseña }
+    AdminUserChanged:
+      allOf:
+        - $ref: "#/components/schemas/AdminUser"
+        - type: object
+          required: [sessionsRevoked]
+          properties:
+            sessionsRevoked: { type: integer, minimum: 0, description: Sesiones revocadas (RNF-01) }
+    EmailEvent:
+      type: string
+      enum:
+        [
+          order_received,
+          purchase_confirmed,
+          new_sale,
+          payment_rejected,
+          order_shipped,
+          order_delivered,
+          service_request,
+          password_recovery,
+          newsletter_unsubscribe,
+        ]
+    EmailStatus:
+      type: string
+      enum: [pending, sent, failed, uncertain]
+    AdminEmailSummary:
+      type: object
+      required:
+        [
+          id,
+          event,
+          eventLabel,
+          recipient,
+          status,
+          statusLabel,
+          reference,
+          attemptsCount,
+          lastAttemptAt,
+          resendOfId,
+          canResend,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        event: { $ref: "#/components/schemas/EmailEvent" }
+        eventLabel: { type: string, example: Pedido despachado }
+        recipient: { type: string }
+        status: { $ref: "#/components/schemas/EmailStatus" }
+        statusLabel: { type: string, example: Fallido }
+        reference:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [kind, id, label]
+              properties:
+                kind: { type: string, enum: [order, request] }
+                id: { type: string, format: uuid }
+                label: { type: string, example: TK-1048 }
+        attemptsCount: { type: integer }
+        lastAttemptAt: { type: [string, "null"], format: date-time }
+        resendOfId: { type: [string, "null"], format: uuid }
+        canResend: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminEmailDetail:
+      allOf:
+        - $ref: "#/components/schemas/AdminEmailSummary"
+        - type: object
+          required: [eventKey, providerMessageId, attempts, resends]
+          properties:
+            eventKey: { type: string }
+            providerMessageId: { type: [string, "null"] }
+            attempts:
+              type: array
+              items:
+                type: object
+                required:
+                  [id, at, kind, result, resultLabel, actorUserId, actorLabel, actorName, detail]
+                properties:
+                  id: { type: string, format: uuid }
+                  at: { type: string, format: date-time }
+                  kind: { type: string, enum: [automatic, manual] }
+                  result: { type: string, enum: [sent, failed, timeout] }
+                  resultLabel: { type: string }
+                  actorUserId: { type: [string, "null"], format: uuid }
+                  actorLabel: { type: [string, "null"] }
+                  actorName: { type: [string, "null"] }
+                  detail: { type: [string, "null"] }
+            resends:
+              type: array
+              items:
+                type: object
+                required: [id, status, createdAt]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { $ref: "#/components/schemas/EmailStatus" }
+                  createdAt: { type: string, format: date-time }
   parameters:
     Page:
       name: page

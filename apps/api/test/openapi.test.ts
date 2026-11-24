@@ -37,6 +37,38 @@ const LN13_ROLES: Record<string, string[]> = {
   "/admin/orders/{id}/refund-records/{refundId}": ["admin"],
 };
 const LN13_PATHS = Object.keys(LN13_ROLES);
+/**
+ * Panel admin (LN-16): rol por path. Configuración, suscriptores, reportes,
+ * exportaciones, usuarios y actividad: solo Administrador (tabla de la API de la
+ * SRS). Solicitudes, correos, resumen y pagos: ambos roles.
+ */
+const LN16_ROLES: Record<string, string[]> = {
+  "/admin/coupons": ["admin"],
+  "/admin/coupons/{id}": ["admin"],
+  "/admin/banners": ["admin"],
+  "/admin/banners/{id}": ["admin"],
+  "/admin/shipping-zones": ["admin"],
+  "/admin/shipping-zones/{id}": ["admin"],
+  "/admin/shipping-settings": ["admin"],
+  "/admin/store-theme": ["admin"],
+  "/admin/service-requests": ["admin", "operator"],
+  "/admin/service-requests/{id}": ["admin", "operator"],
+  "/admin/newsletter": ["admin"],
+  "/admin/newsletter/{id}/unsubscribe": ["admin"],
+  "/admin/reports/sales": ["admin"],
+  "/admin/exports/{resource}": ["admin"],
+  "/admin/summary": ["admin", "operator"],
+  "/admin/payments": ["admin", "operator"],
+  "/admin/activity": ["admin"],
+  "/admin/users": ["admin"],
+  "/admin/users/{id}": ["admin"],
+  "/admin/users/{id}/role": ["admin"],
+  "/admin/emails": ["admin", "operator"],
+  "/admin/emails/{id}": ["admin", "operator"],
+};
+const LN16_PATHS = Object.keys(LN16_ROLES);
+/** Lecturas públicas de la tienda que se configuran en el panel (LN-16). */
+const LN16_PUBLIC_PATHS = ["/store-theme", "/banners"];
 /** Paths ya implementados; todo lo demás debe estar marcado como pendiente. */
 const IMPLEMENTED = new Set([
   // LN-02
@@ -69,6 +101,9 @@ const IMPLEMENTED = new Set([
   "/orders/{orderNumber}",
   // LN-13
   ...LN13_PATHS,
+  // LN-16
+  ...LN16_PATHS,
+  ...LN16_PUBLIC_PATHS,
 ]);
 
 function operations() {
@@ -196,6 +231,48 @@ describe("contrato OpenAPI", () => {
           expect(Object.keys(responses), where).toEqual(expect.arrayContaining(["409", "422"]));
         }
       }
+    }
+  });
+
+  it("el panel admin (LN-16) declara roles, cuerpos y respuestas reales", () => {
+    for (const path of LN16_PATHS) {
+      const ops = operations().filter((o) => o.path === path);
+      expect(ops.length, path).toBeGreaterThan(0);
+      for (const { method, op } of ops) {
+        const where = `${method.toUpperCase()} ${path}`;
+        expect(op["x-roles"], where).toEqual(LN16_ROLES[path]);
+        expect(op["x-pending-task"], where).toBeUndefined();
+        expect(op.summary, where).not.toContain("Pendiente");
+        expect(op.security, where).toEqual(
+          MUTATING.has(method) ? [{ panelSession: [], csrfCookie: [] }] : [{ panelSession: [] }],
+        );
+        expect(JSON.stringify(op.requestBody ?? {}), where).not.toContain("PendingJson");
+        const responses = op.responses as Json;
+        expect(Object.keys(responses), where).toEqual(expect.arrayContaining(["401", "403"]));
+        const ok = (responses["200"] ?? responses["201"]) as Json | undefined;
+        if (path === "/admin/exports/{resource}") {
+          expect(Object.keys((ok?.content ?? {}) as Json), where).toEqual(["text/csv"]);
+        } else if (ok) {
+          expect(JSON.stringify(ok.content ?? null), where).toContain("#/components/schemas/");
+        } else {
+          expect(Object.keys(responses), where).toContain("204");
+        }
+        if (MUTATING.has(method)) expect(Object.keys(responses), where).toContain("422");
+        if (MUTATING.has(method) && method !== "delete" && !path.endsWith("/unsubscribe")) {
+          expect(op.requestBody, where).toBeDefined();
+        }
+      }
+    }
+  });
+
+  it("ya no queda nada pendiente de LN-16", () => {
+    for (const { path, method, op } of operations()) {
+      expect(op["x-pending-task"], `${method.toUpperCase()} ${path}`).not.toBe("LN-16");
+    }
+    for (const path of LN16_PUBLIC_PATHS) {
+      const op = paths[path]?.get as Json | undefined;
+      expect(op?.security, path).toEqual([]);
+      expect(op?.["x-roles"], path).toBeUndefined();
     }
   });
 

@@ -15,8 +15,13 @@ import { requirePanel } from "./middleware/panel-auth.js";
 import { globalLimiter } from "./middleware/rate-limit.js";
 import { requestId } from "./middleware/request-id.js";
 import { adminCatalogRouter } from "./routes/admin-catalog.js";
+import { adminConfigRouter } from "./routes/admin-config.js";
+import { adminDeskRouter } from "./routes/admin-desk.js";
 import { adminEmailsRouter } from "./routes/admin-emails.js";
 import { adminOrdersRouter } from "./routes/admin-orders.js";
+import { adminPanelRouter } from "./routes/admin-panel.js";
+import { adminReportsRouter } from "./routes/admin-reports.js";
+import { adminUsersRouter } from "./routes/admin-users.js";
 import { authRouter } from "./routes/auth.js";
 import { cartRouter } from "./routes/cart.js";
 import { ordersRouter } from "./routes/orders.js";
@@ -26,6 +31,7 @@ import { docsRouter } from "./routes/docs.js";
 import { formsRouter } from "./routes/forms.js";
 import { healthRouter } from "./routes/health.js";
 import { shippingRouter } from "./routes/shipping.js";
+import { storeRouter } from "./routes/store.js";
 import { cartTtlMs } from "./services/cart/session.js";
 import { LocalDiskImageStorage } from "./services/images/local-disk.js";
 import type { ImageStorage } from "./services/images/storage.js";
@@ -140,12 +146,20 @@ export function createApp({
   v1.use(ordersRouter({ prisma, isProduction, accessSecret: csrfSecret, quoter }));
   // Formularios públicos (LN-08): solicitudes de servicio y newsletter.
   v1.use(formsRouter({ prisma, adminEmail: env.EMAIL_ADMIN_TO ?? DEV_ADMIN_TO }));
+  // Tienda (LN-16): plantilla activa y banners vigentes que se configuran en el panel.
+  v1.use(storeRouter(prisma));
   // Panel: todo /admin exige sesión del equipo (denegar por defecto, RF-31). Cada
   // ruta agrega el rol que necesita con requireRole.
   v1.use("/admin", requirePanel(prisma, isProduction));
   v1.use(adminEmailsRouter(prisma));
   v1.use(adminCatalogRouter(prisma, storage));
   v1.use(adminOrdersRouter(prisma));
+  // Panel admin (LN-16): configuración, solicitudes, reportes, usuarios y lecturas.
+  v1.use(adminConfigRouter(prisma));
+  v1.use(adminDeskRouter(prisma));
+  v1.use(adminUsersRouter(prisma));
+  v1.use(adminReportsRouter(prisma));
+  v1.use(adminPanelRouter(prisma));
   registerRoutes?.(v1);
   app.use("/api/v1", v1);
 

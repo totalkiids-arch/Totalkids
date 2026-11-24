@@ -148,7 +148,7 @@ Solo el equipo del taller (Administrador y Operador) tiene cuenta: los comprador
 
 - **Recuperación:** `POST /auth/password-reset/request` responde 202 siempre y, si la cuenta existe y está activa, encola el correo `password_recovery` con `enqueueEmail` (`outbox_jobs` con `{ userId }` y su `email_log`). El worker de correos (LN-14) llama a `issuePasswordResetToken(prisma, userId)` al enviar: así el token en claro nunca queda guardado. El token es de un solo uso, vence a los 30 min y solo vale el último. `POST /auth/password-reset/confirm` lo consume, cambia la contraseña y revoca todas las sesiones.
 - **Contraseñas:** argon2id (OWASP: 19 MiB, t=2), mínimo 12 y máximo 128 caracteres (`passwordSchema`). Al ingresar se rehace el hash si los parámetros cambiaron.
-- **Alta de cuentas:** el CRUD de usuarios del panel llega en LN-16. Mientras tanto:
+- **Alta de cuentas:** desde el panel con `POST /admin/users` (LN-16, ver «Panel admin (LN-16)»). Para la primera cuenta, o sin panel:
 
   ```bash
   pnpm --filter @totalkids/api users:create --email ana@totalkids.cl --name "Ana" --role admin
@@ -335,7 +335,7 @@ Solicitudes de servicio y newsletter, sin sesión: CSRF (middleware global) y l�
 
 - **Baja con credencial (RF-35):** con solo el correo nadie puede dar de baja a otra persona. El worker emite el token al enviar el correo (como la recuperación de contraseña): en la base queda solo su hash (`unsubscribe_token_hash`) y solo vale el último enlace enviado. Volver a suscribirse cambia el hash, así los enlaces viejos dejan de servir.
 - **La baja no borra nada:** queda `unsubscribed` con fecha y `unsubscribed_by = "Suscriptor"`; los pedidos no cambian.
-- **Pendiente:** el plazo de respuesta de los correos de solicitudes (`RESPONSE_TIME`, "2 días hábiles") y las versiones de los textos (`v1-provisional`) son provisionales hasta CL-02. El seguimiento de solicitudes y suscriptores en el panel llega con LN-13.
+- **Pendiente:** el plazo de respuesta de los correos de solicitudes (`RESPONSE_TIME`, "2 días hábiles") y las versiones de los textos (`v1-provisional`) son provisionales hasta CL-02. El seguimiento de solicitudes y suscriptores en el panel está en «Panel admin (LN-16)».
 
 ## Pedidos admin (LN-13)
 
@@ -377,6 +377,90 @@ Panel de pedidos (RF-27, RF-32, RF-34; RN-04 a RN-06; UI-12). Rutas en [`src/rou
 - **Venta de stock al confirmar el pago (LN-10):** pasar las reservas `active` a `consumed`, bajar físico y reservado con un movimiento `sale`, y llamar a `consumeCouponUse`. Hasta entonces el panel no deja confirmar a mano un pedido con reservas o cupón sin asentar.
 - **`purchase_confirmed` y `new_sale` (LN-10):** se encolan al verificar el pago, no desde el panel.
 - **Vencimiento automático (LN-15):** el job que vence los pedidos sin pagar al pasar `paymentDueAt` debe reutilizar `releaseOrderReservations` (en `services/admin-orders/inventory.ts`) y `releaseCouponUse` dentro de su transacción, con el pedido bloqueado y respetando RN-04 (no vencer con un pago pendiente o en revisión).
+
+## Panel admin (LN-16)
+
+Configuración, solicitudes, suscriptores, reportes, exportaciones CSV, usuarios y roles, y las lecturas que necesitan las demás pantallas del panel (RF-21, RF-28 a RF-31, RF-34; RN-02; RNF-01). Todo va bajo `/admin`, detrás de `requirePanel`, con `requireRole` por ruta, CSRF en las escrituras y `validated()`. Cada escritura deja su fila en `audit_log` con actor, antes/después y `requestId`. Las reglas y los textos son los de los dominios del panel en `apps/web/src/features/*/domain` (UI-13 y UI-14), así la parte 2 muestra lo que devuelve la API.
+
+**Roles:** se aplica la tabla de la API de la SRS. Por eso reportes, exportaciones y suscriptores son **solo del Administrador**, aunque UC-08 nombre también al Operador. La parte 2 debe sacar «Reportes» del menú del Operador (`OPERATOR_SECTIONS`) y ocultarle el botón «Exportar CSV» de pedidos.
+
+### Endpoints
+
+| Método y ruta                                                      | Roles                   | Qué hace                                                                                                                                                        |
+| ------------------------------------------------------------------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET/POST /admin/coupons`, `GET/PATCH/DELETE /admin/coupons/{id}`  | Administrador           | Cupones con estado derivado (activo, programado, agotado, vencido, inactivo), usos, `termsLocked` y `canDelete`.                                                |
+| `GET/POST /admin/banners`, `PATCH/DELETE /admin/banners/{id}`      | Administrador           | Banners con `visibility`. `DELETE` solo desactiva.                                                                                                              |
+| `GET/POST /admin/shipping-zones`, `PATCH/DELETE …/{id}`            | Administrador           | Zonas por comuna; `price: null` = por confirmar. `DELETE` desactiva.                                                                                            |
+| `GET/PUT /admin/shipping-settings`                                 | Administrador           | Retiro habilitado y sus datos, umbral de despacho gratis y minutos de reserva.                                                                                  |
+| `GET/PUT /admin/store-theme`                                       | Administrador           | Plantilla activa de la tienda (una a la vez).                                                                                                                   |
+| `GET /admin/service-requests`, `GET/PATCH …/{id}`                  | Administrador, Operador | Solicitudes (`service`, `status`, `q`; `{id}` es el uuid o `SOL-1002`), detalle con historial y correos, seguimiento de estado y nota.                          |
+| `GET /admin/newsletter`, `POST /admin/newsletter/{id}/unsubscribe` | Administrador           | Suscriptores (`status`, `q`) y baja desde el panel.                                                                                                             |
+| `GET /admin/reports/sales`                                         | Administrador           | Ventas del período (`from`, `to`) por producto y medio de pago, con los reembolsos aparte.                                                                      |
+| `GET /admin/exports/{resource}`                                    | Administrador           | CSV de `orders`, `sales`, `service-requests` o `subscribers` con los filtros de la URL.                                                                         |
+| `GET/POST /admin/users`, `PATCH /admin/users/{id}`, `PATCH …/role` | Administrador           | Cuentas del panel: alta con correo para definir la contraseña, edición, rol y estado.                                                                           |
+| `GET /admin/emails`, `GET /admin/emails/{id}`                      | Administrador, Operador | Registro de correos (`event`, `status`, `order`, `request`) con intentos y reenvíos. El reenvío (`POST …/resend`, LN-14) sigue siendo del Administrador.        |
+| `GET /admin/activity`                                              | Administrador           | Historial desde `audit_log`: `area`, `actor` (id de la cuenta), `from`, `to`.                                                                                   |
+| `GET /admin/summary`                                               | Administrador, Operador | Pedidos por estado, pagos en revisión o pendientes y últimos 5 pedidos. Los montos del mes y el stock bajo solo van al Administrador (`null` para el Operador). |
+| `GET /admin/payments`                                              | Administrador, Operador | Intentos de pago de solo lectura (`status`, `order`) con `current` y `reconcilable`. La conciliación con Flow es de LN-15.                                      |
+| `GET /store-theme`, `GET /banners`                                 | Público                 | Plantilla activa y banners activos y vigentes, para la tienda (RF-28).                                                                                          |
+
+Rutas en [`routes/admin-config.ts`](src/routes/admin-config.ts), [`admin-desk.ts`](src/routes/admin-desk.ts), [`admin-users.ts`](src/routes/admin-users.ts), [`admin-reports.ts`](src/routes/admin-reports.ts), [`admin-panel.ts`](src/routes/admin-panel.ts), [`admin-emails.ts`](src/routes/admin-emails.ts) y [`store.ts`](src/routes/store.ts). La lógica está en `services/admin-config/`, `admin-desk/`, `admin-reports/`, `admin-panel/` y `admin-users.ts`.
+
+### Reglas
+
+- **Cupones (UI-13):**
+  - El código se normaliza (mayúsculas, sin espacios): de 3 a 20 caracteres (A–Z, 0–9, `-`, `_`) y único sin distinguir mayúsculas.
+  - El valor es un porcentaje entero de 1 a 100 o un monto entero mayor que 0. El inicio no puede ser posterior al término (días de Chile). El máximo de usos no puede quedar bajo los usos registrados.
+  - `uses` = `uses_count` (reservados + consumidos). Con usos, el código, el tipo y el valor quedan fijos: 409 «Tiene usos: para otro descuento crea un cupón nuevo.» con `details.field`.
+  - Solo se elimina un cupón sin usos, sin canjes (ni siquiera liberados) y sin pedidos que lo citen. Si no, 409 «Este cupón tiene usos: solo se puede desactivar.».
+  - La fila se bloquea (`FOR UPDATE`), así una compra que reserve un uso al mismo tiempo espera.
+- **Banners:**
+  - Título de hasta 60 caracteres, texto de hasta 140 y orden de 1 a 99.
+  - El destino solo puede ser interno: empieza con `/`, no con `//`, sin `\`, espacios ni caracteres de control.
+  - Ventana de publicación opcional (`startsAt`/`endsAt`). `GET /banners` muestra solo los activos dentro de su ventana.
+- **Despacho y retiro (cambios del cliente):**
+  - La tarifa puede ser `null` (por confirmar) y cada zona indica si es elegible para el despacho gratis.
+  - La comuna es única por región sin tildes ni mayúsculas («Ñuñoa» = «nunoa»), con un candado de transacción.
+  - Las zonas no se borran, se desactivan.
+  - La dirección de retiro es obligatoria (hasta 200 caracteres), el umbral es entero o `null` y la reserva va de 1 a 120 minutos.
+  - Cambiar tarifas, plazos o condiciones **no toca pedidos anteriores** (RN-02): cada pedido guarda su copia. Hay un test que lo comprueba.
+- **Solicitudes (UI-14):**
+  - Estados: Nueva → En gestión → Resuelta. Se puede resolver directo desde Nueva y reabrir una resuelta (vuelve a En gestión), pero nunca volver a Nueva (409 con el texto del panel).
+  - La nota interna admite hasta 1000 caracteres. Guardar sin cambios responde 422 «No hay cambios para guardar.».
+  - El historial es la recepción más las filas `service_request.updated` de `audit_log`, con rol y nombre de quien hizo el cambio. El texto de la nota no se copia a la auditoría.
+- **Suscriptores:** la baja desde el panel conserva el registro y anota la fecha y el rol. Si ya estaba de baja, responde 409 y la fecha original no cambia.
+- **Reportes (RF-30):**
+  - Una venta es un cobro confirmado (`payments.status = paid`) y cuenta en el día de Chile del cobro. Un pedido pagado y luego cancelado sigue siendo venta.
+  - Los reembolsos van **aparte**: cuentan los procesados cuya fecha cae en el período, aunque el cobro sea de otro período. Neto = cobros − reembolsos.
+  - Por producto se suma el precio de compra de cada línea, antes del descuento. Por medio se usa el `payment_method` de Flow, o «Flow» si no viene.
+  - El período es de hasta un año; sin fechas, el mes en curso. La respuesta trae `criteria` para que la pantalla explique el criterio de fecha.
+- **CSV (RF-29):** `lib/csv.ts` (mismas reglas que `apps/web/src/shared/lib/csv.ts`).
+  - Formato: BOM, `;`, CRLF y todas las celdas entre comillas. Una celda que empieza con `=`, `+`, `-`, `@`, tabulador o retorno se antepone con `'`.
+  - Columnas y datos personales mínimos, como los decidió el panel: sin RUT, teléfono, dirección, mensaje ni nota interna.
+  - Fechas en hora de Chile («AAAA-MM-DD HH:mm») y un máximo de 5.000 filas (422 «Acota los filtros.»).
+  - Cada descarga queda auditada (`export.downloaded`) y la cabecera `X-Export-Rows` trae las filas.
+- **Usuarios (RF-31, RNF-01):**
+  - Siempre queda al menos un Administrador activo; nadie se quita el rol ni se desactiva a sí mismo (409).
+  - Cambiar el rol o desactivar una cuenta **revoca todas sus sesiones**.
+  - Un candado de transacción serializa los cambios de cuentas: si dos Administradores se degradan entre sí al mismo tiempo, el segundo recibe 409 «Debe quedar al menos un Administrador activo…».
+  - Las cuentas no se eliminan, se desactivan.
+  - **Alta:** la cuenta nace con una contraseña aleatoria que nadie conoce y, si queda activa, se encola `password_recovery`. La persona define su contraseña con el enlace (vence a los 30 min; si vence, pide otro con «Olvidé mi contraseña»).
+- **Actividad:**
+  - El responsable sale de `audit_log.actor_user_id`: `actorName` es el nombre de la persona, `actorLabel` el rol con que actuó, y el filtro `actor` usa el id de la cuenta.
+  - Áreas: las de la UI más `catalogo`, `configuracion` y `exportaciones`. Los ingresos al panel (`auth.login`) no se listan.
+- **Correos:** el Operador no ve los de recuperación de contraseña ni los de baja del newsletter (son de cuentas del panel y de suscriptores).
+
+### Pendiente para la parte 2 (apps/web)
+
+- Conectar cada pantalla a estos endpoints, reemplazando los adaptadores `demo-*`, y mostrar los `message` y `details.issues` de la API por campo.
+- **Crear la página `/admin/restablecer?token=…`.** Hoy la usan tanto la recuperación de contraseña como el alta de cuentas. Debe leer `token` de la query sin registrarlo, enviar `POST /auth/password-reset/confirm` y responder con `Referrer-Policy: no-referrer`.
+- Ajustar las pantallas a los cambios del modelo:
+  - zona con tarifa «por confirmar» (`null`) y «elegible para despacho gratis»;
+  - interruptor «Retiro habilitado»;
+  - ventana de publicación de los banners;
+  - responsable por persona en Actividad;
+  - quitar «Reportes» y las exportaciones al Operador.
+- Usar `GET /store-theme` y `GET /banners` en los layouts y la portada de la tienda.
 
 ## Correos y worker (LN-14)
 
@@ -438,7 +522,7 @@ await prisma.$transaction(async (tx) => {
 
 ### Plantillas
 
-`templates/` arma asunto, HTML de marca y texto plano de cada evento (los asuntos coinciden con la vista previa del panel). Todo texto se escapa; importes en CLP y fechas en America/Santiago. Los enlaces son absolutos desde `PUBLIC_SITE_URL` y sin identificadores predecibles: el comprador va a `/seguimiento` (consulta con número y correo); el equipo, a `/admin/pedidos/TK-<n>` y `/admin/solicitudes` (con sesión). La recuperación enlaza a `/admin/restablecer?token=…`: el worker emite el token (`issuePasswordResetToken`) justo al enviar, así nunca queda guardado ni en logs. **Pendiente en apps/web:** la página `/admin/restablecer` (leer `token` de la query, no registrarlo y responder con `Referrer-Policy: no-referrer`).
+`templates/` arma asunto, HTML de marca y texto plano de cada evento (los asuntos coinciden con la vista previa del panel). Todo texto se escapa; importes en CLP y fechas en America/Santiago. Los enlaces son absolutos desde `PUBLIC_SITE_URL` y sin identificadores predecibles: el comprador va a `/seguimiento` (consulta con número y correo); el equipo, a `/admin/pedidos/TK-<n>` y `/admin/solicitudes` (con sesión). La recuperación enlaza a `/admin/restablecer?token=…`: el worker emite el token (`issuePasswordResetToken`) justo al enviar, así nunca queda guardado ni en logs. **Pendiente en apps/web (parte 2 de LN-16):** la página `/admin/restablecer`, que también usa el alta de cuentas, (leer `token` de la query, no registrarlo y responder con `Referrer-Policy: no-referrer`).
 
 ### El worker
 
