@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { z } from "zod";
 
-import { acceptCartChanges, addToCart, changeQuantity, removeFromCart } from "../container";
+import { addToCart, applyCoupon, changeQuantity, removeCoupon, removeFromCart } from "../container";
 
 const AddRequest = z.object({
   slug: z.string().max(120),
@@ -17,52 +17,58 @@ export type AddToCartAction = (
   request: z.input<typeof AddRequest>,
 ) => Promise<{ ok: true } | { ok: false; error: string }>;
 
-/** Agrega desde la ficha. Todo se revalida en el servidor (RF-04, RF-06). */
+/** Agrega desde la ficha. Todo se valida en la API (RF-04, RF-06). */
 export const addToCartAction: AddToCartAction = async (request) => {
   const parsed = AddRequest.safeParse(request);
   if (!parsed.success) return { ok: false, error: "No pudimos agregar el producto." };
-  const result = await addToCart(parsed.data);
+  const { slug: _slug, ...input } = parsed.data;
+  const result = await addToCart(input);
   return result.ok ? { ok: true } : result;
 };
 
+/** Estado de una acción sobre una línea: null = sin error. */
+export type LineActionState = { error: string } | null;
+
 const LineForm = z.object({
-  id: z.string().max(400),
-  cantidad: z.coerce.number().int().optional(),
+  id: z.string().max(64),
+  cantidad: z.coerce.number().int().min(0).max(99).optional(),
 });
 
 /** Cambia la cantidad de una línea (formulario: id, cantidad). 0 la elimina. */
-export async function updateQuantityAction(formData: FormData) {
+export async function updateQuantityAction(formData: FormData): Promise<LineActionState> {
   const parsed = LineForm.safeParse(Object.fromEntries(formData));
-  if (!parsed.success || parsed.data.cantidad === undefined) return;
-  await changeQuantity(parsed.data.id, parsed.data.cantidad);
+  if (!parsed.success || parsed.data.cantidad === undefined) return null;
+  const result = await changeQuantity(parsed.data.id, parsed.data.cantidad);
   refresh();
+  return result.ok ? null : { error: result.error };
 }
 
 /** Quita una línea (formulario: id). */
-export async function removeLineAction(formData: FormData) {
+export async function removeLineAction(formData: FormData): Promise<LineActionState> {
   const parsed = LineForm.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
-  await removeFromCart(parsed.data.id);
+  if (!parsed.success) return null;
+  const result = await removeFromCart(parsed.data.id);
   refresh();
-}
-
-/** Guarda los ajustes informados en el carrito (productos retirados, stock). */
-export async function acceptChangesAction() {
-  await acceptCartChanges();
-  refresh();
+  return result.ok ? null : { error: result.error };
 }
 
 export type CouponState = { message: string; tone: "error" | "success" } | null;
 
-/**
- * Cupones (RF-07): se validan contra la API (vigencia, usos, subtotal elegible).
- * Mientras no exista, no hay cupones activos y se responde con honestidad.
- */
+/** Aplica un cupón (RF-07): vigencia, usos y carrito los valida la API. */
 export async function applyCouponAction(_: CouponState, formData: FormData): Promise<CouponState> {
   const code = String(formData.get("cupon") ?? "").trim();
   if (code === "") return { message: "Escribe el código de tu cupón.", tone: "error" };
+  const result = await applyCoupon(code.slice(0, 60));
+  if (!result.ok) return { message: result.error, tone: "error" };
+  refresh();
   return {
-    message: `El cupón «${code.slice(0, 30)}» no existe o ya no está vigente.`,
-    tone: "error",
+    message: `Cupón «${result.cart.coupon?.code ?? code.toUpperCase()}» aplicado.`,
+    tone: "success",
   };
+}
+
+/** Quita el cupón aplicado. */
+export async function removeCouponAction(): Promise<void> {
+  await removeCoupon();
+  refresh();
 }

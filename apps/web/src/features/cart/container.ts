@@ -1,70 +1,56 @@
-// Raíz de composición de "cart": conecta los puertos con sus adaptadores actuales.
-import type { CartCatalog, CartStore } from "./application/ports";
-import { priceCart } from "./application/price-cart";
-import { validateAdd, type AddResult } from "./application/validate-add";
-import {
-  addLine,
-  CartFullError,
-  MAX_QUANTITY_PER_LINE,
-  removeLine,
-  setQuantity,
-  type CartLine,
-} from "./domain/cart";
-import { catalogCartCatalog } from "./infrastructure/catalog-cart-catalog";
-import { cookieCartStore } from "./infrastructure/cookie-cart-store";
+// Raíz de composición de "cart": el carrito del invitado vive en la API (LN-06, LN-07).
+import type { CartView } from "./application/cart-view";
+import { apiCart, CartRejectedError, CartUnavailableError } from "./infrastructure/api-cart";
 
-const store: CartStore = cookieCartStore;
-const catalog: CartCatalog = catalogCartCatalog;
+export type CartResult = { ok: true; cart: CartView } | { ok: false; error: string };
 
-async function resolve(lines: readonly CartLine[]) {
-  const products = await Promise.all(lines.map((l) => catalog.findVariant(l.slug, l.sku)));
-  return new Map(lines.map((l, i) => [l.id, products[i] ?? null]));
+const UNAVAILABLE = "No pudimos actualizar tu carrito. Intenta de nuevo en unos segundos.";
+
+async function attempt(run: () => Promise<CartView>): Promise<CartResult> {
+  try {
+    return { ok: true, cart: await run() };
+  } catch (error) {
+    if (error instanceof CartRejectedError) return { ok: false, error: error.message };
+    if (error instanceof CartUnavailableError) return { ok: false, error: UNAVAILABLE };
+    throw error;
+  }
 }
 
-/** Caso de uso: ver el carrito revalidado contra el catálogo (RF-05, RF-06). */
-export async function getCart() {
-  const lines = await store.read();
-  return priceCart(lines, await resolve(lines));
+/** Caso de uso: ver el carrito revalidado por la API (RF-05, RF-06). */
+export function getCart(): Promise<CartView> {
+  return apiCart.read();
 }
 
-/** Caso de uso: agregar desde la ficha, validado en el servidor (RF-04, RF-05). */
-export async function addToCart(request: {
-  slug: string;
+/** Caso de uso: agregar desde la ficha (RF-04, RF-05). La API valida variante, extras y textos. */
+export function addToCart(request: {
   sku: string;
   quantity: number;
   extras: string[];
   texts: Record<string, string>;
-}): Promise<AddResult> {
-  const lines = await store.read();
-  const result = validateAdd(await catalog.findVariant(request.slug, request.sku), request, lines);
-  if (!result.ok) return result;
-  try {
-    await store.write(addLine(lines, result.input));
-  } catch (error) {
-    if (error instanceof CartFullError) return { ok: false, error: error.message };
-    throw error;
-  }
-  return result;
+}): Promise<CartResult> {
+  // Solo los textos de los extras elegidos.
+  const texts = Object.fromEntries(
+    request.extras.flatMap((id) => (request.texts[id] ? [[id, request.texts[id]]] : [])),
+  );
+  return attempt(() => apiCart.add({ ...request, texts }));
 }
 
-/** Caso de uso: cambiar la cantidad (0 elimina). */
-export async function changeQuantity(id: string, quantity: number) {
-  const lines = await store.read();
-  const product = lines.find((l) => l.id === id);
-  if (!product) return;
-  const variant = await catalog.findVariant(product.slug, product.sku);
-  // Sin variante vigente no se cambia; el stock no limita (todo se fabrica a pedido).
-  const max = variant ? MAX_QUANTITY_PER_LINE : 0;
-  await store.write(setQuantity(lines, id, Math.min(quantity, max)));
+/** Caso de uso: cambiar la cantidad (0 elimina la línea). */
+export function changeQuantity(id: string, quantity: number): Promise<CartResult> {
+  return attempt(() => (quantity <= 0 ? apiCart.remove(id) : apiCart.setQuantity(id, quantity)));
 }
 
 /** Caso de uso: quitar una línea. */
-export async function removeFromCart(id: string) {
-  await store.write(removeLine(await store.read(), id));
+export function removeFromCart(id: string): Promise<CartResult> {
+  return attempt(() => apiCart.remove(id));
 }
 
-/** Caso de uso: guardar los ajustes informados (productos retirados, stock). */
-export async function acceptCartChanges() {
-  const lines = await store.read();
-  await store.write(priceCart(lines, await resolve(lines)).normalized);
+/** Caso de uso: aplicar un cupón (RF-07): uno por carrito, el nuevo reemplaza al anterior. */
+export function applyCoupon(code: string): Promise<CartResult> {
+  return attempt(() => apiCart.applyCoupon(code));
+}
+
+/** Caso de uso: quitar el cupón. */
+export function removeCoupon(): Promise<CartResult> {
+  return attempt(() => apiCart.removeCoupon());
 }
