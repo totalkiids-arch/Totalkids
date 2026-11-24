@@ -591,27 +591,50 @@ paths:
   /payments/flow/create:
     post:
       operationId: createFlowPayment
-      summary: "[Pendiente LN-10] Crear o recuperar el intento de pago vigente"
-      x-pending-task: LN-10
+      summary: Crear o recuperar el intento de pago vigente
+      description: |
+        Con la credencial del pedido. Reutiliza el intento vigente (RF-15) y no abre
+        otro mientras el anterior pueda cobrarse (RN-06): primero consulta su estado
+        a Flow. Tras un rechazo vuelve a reservar el stock liberado.
+        `details.reason` del 409: `payment_uncertain`, `already_paid`,
+        `order_not_payable`, `payment_expired`, `nothing_to_charge`,
+        `stock_unavailable` o `payment_unavailable`.
       tags: [Pagos]
       security: [{ orderAccess: [], csrfCookie: [] }]
       parameters: [{ $ref: "#/components/parameters/CsrfTokenHeader" }]
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderNumber]
+              properties:
+                orderNumber: { type: string, example: TK-1048 }
       responses:
-        "200": { description: URL de pago de Flow (url + token) }
+        "200":
+          description: URL de pago de Flow (url + token)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [redirectUrl]
+                properties:
+                  redirectUrl: { type: string, format: uri }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
         "409": { $ref: "#/components/responses/Conflict" }
   /payments/flow/confirm:
     post:
       operationId: confirmFlowPayment
-      summary: "[Pendiente LN-10] Callback de confirmación de Flow"
+      summary: Callback de confirmación de Flow
       description: |
         Público y exento de CSRF. El token no es confiable hasta consultar a Flow
         (`getStatus`) con credenciales del backend y verificar pedido, moneda y
         monto (RF-16). Idempotente (RF-19). Responde éxito solo tras registrar el
         callback de forma durable.
-      x-pending-task: LN-10
       tags: [Pagos]
       security: []
       requestBody: { $ref: "#/components/requestBodies/FlowCallback" }
@@ -619,16 +642,16 @@ paths:
         "200": { description: Callback registrado }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
         "500": { $ref: "#/components/responses/InternalError" }
   /payments/flow/return:
     post:
       operationId: returnFromFlow
-      summary: "[Pendiente LN-10] Retorno del comprador desde Flow"
+      summary: Retorno del comprador desde Flow
       description: |
         Público y exento de CSRF de sesión, pero sin autoridad para acreditar pagos
         (RNF-04): volver del proveedor no confirma nada. Consulta el estado de forma
-        segura y redirige al resultado en la tienda.
-      x-pending-task: LN-10
+        segura y redirige a `/checkout/resultado?pedido=TK-…` (sin estado en la URL).
       tags: [Pagos]
       security: []
       requestBody: { $ref: "#/components/requestBodies/FlowCallback" }

@@ -41,7 +41,7 @@ export const TERMS_VERSION = "v1-provisional";
 /** Minutos para pagar si la configuración no existe todavía. */
 const DEFAULT_RESERVATION_MINUTES = 30;
 /** Texto de retiro mientras el cliente no lo configura en el panel. */
-const DEFAULT_PICKUP = "Taller Total Kids (dirección y horario por confirmar)";
+export const DEFAULT_PICKUP = "Taller Total Kids (dirección y horario por confirmar)";
 
 const SYSTEM = "Sistema";
 const BUYER = "Comprador";

@@ -373,11 +373,23 @@ Panel de pedidos (RF-27, RF-32, RF-34; RN-04 a RN-06; UI-12). Rutas en [`src/rou
 - **Factura (UI-12):** solo para pedidos con factura y pagados. Folio de solo dígitos (hasta 10), sin ceros a la izquierda, único entre pedidos. Guarda `invoiceIssuedAt`, `invoiceIssuedByUserId` e `invoiceIssuedByLabel`. Administrador y Operador registran el primero (`order.invoice_registered`). Corregir exige `replace: true`, ser Administrador, un motivo y un folio distinto (`order.invoice_replaced`, con antes y después). `replace: true` sin folio previo registra el primero.
 - **Correos:** `order_shipped` y `order_delivered` se encolan en la misma transacción con `enqueueEmail` y su `eventKey`, así que repetir no duplica.
 
-### Lo que queda para LN-10 y LN-15
+### Lo que queda para LN-15
 
-- **Venta de stock al confirmar el pago (LN-10):** pasar las reservas `active` a `consumed`, bajar físico y reservado con un movimiento `sale`, y llamar a `consumeCouponUse`. Hasta entonces el panel no deja confirmar a mano un pedido con reservas o cupón sin asentar.
-- **`purchase_confirmed` y `new_sale` (LN-10):** se encolan al verificar el pago, no desde el panel.
 - **Vencimiento automático (LN-15):** el job que vence los pedidos sin pagar al pasar `paymentDueAt` debe reutilizar `releaseOrderReservations` (en `services/admin-orders/inventory.ts`) y `releaseCouponUse` dentro de su transacción, con el pedido bloqueado y respetando RN-04 (no vencer con un pago pendiente o en revisión).
+
+## Pagos con Flow (LN-10)
+
+Un intento de cobro vigente por pedido (RF-15 a RF-19, RN-04 a RN-06). Claves y `FLOW_CALLBACK_BASE` en `.env`; sin claves la API arranca y `create` responde 409 `payment_unavailable`. Para recibir callbacks en local hace falta un túnel.
+
+- **`POST /payments/flow/create`** (`X-Order-Access` + CSRF): si hay un intento abierto consulta su estado a Flow y reutiliza su URL; si el resultado es incierto responde 409 `payment_uncertain` y no abre otro. Se guarda el hash del token y la URL cifrada (AES-256-GCM, clave derivada de `FLOW_SECRET_KEY`), nunca el token en claro.
+- **`POST /payments/flow/confirm`**: consulta `getStatus` y responde 200 solo con el resultado guardado; si algo falla, 500 para que Flow reintente.
+- **`POST /payments/flow/return`**: verifica si puede y redirige (303) a `/checkout/resultado?pedido=TK-…`. Volver de Flow no acredita nada.
+- **`settlePayment`** (`services/flow/settle.ts`), en una transacción con el pedido bloqueado e idempotente; LN-15 debe reutilizarla:
+  - Pagado y verificado: descuenta el stock (`sale`), consume el cupón, confirma el pedido y encola `purchase_confirmed` y `new_sale`.
+  - Rechazado o anulado: libera las reservas y encola `payment_rejected`. El reintento vuelve a reservar.
+  - Monto, moneda o número distintos: `in_review` y auditoría `payment.mismatch`.
+  - Pago tardío sin stock o de un pedido cancelado: `in_review` y `payment.late_review`. Segundo cobro: `payment.double_charge`, sin segunda entrega.
+- **Queda para LN-15:** resolver los intentos inciertos que Flow no encuentra y vencer los pedidos.
 
 ## Panel admin (LN-16)
 

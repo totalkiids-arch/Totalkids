@@ -13,12 +13,18 @@ const schema = z.object({
     blankAsUndefined,
     z.enum([FLOW_SANDBOX_BASE, FLOW_PRODUCTION_BASE]).default(FLOW_SANDBOX_BASE),
   ),
+  FLOW_CALLBACK_BASE: z.preprocess(
+    blankAsUndefined,
+    z.url().default("http://localhost:4000/api/v1"),
+  ),
 });
 
 export interface FlowConfig {
   apiKey: string;
   secretKey: string;
   apiBase: string;
+  /** Base pública de la API (…/api/v1), para confirmación y retorno. */
+  callbackBase: string;
 }
 
 /**
@@ -30,11 +36,17 @@ export function parseFlowConfig(
 ): FlowConfig | null {
   const parsed = schema.safeParse(source);
   // No se incluye el valor recibido: podría ser una clave mal puesta.
-  if (!parsed.success) throw new Error("FLOW_API_BASE debe ser la base oficial de Flow");
+  if (!parsed.success) {
+    throw new Error("FLOW_API_BASE debe ser la base oficial de Flow y FLOW_CALLBACK_BASE, una URL");
+  }
   const { FLOW_API_KEY: apiKey, FLOW_SECRET_KEY: secretKey, FLOW_API_BASE: apiBase } = parsed.data;
   if (!apiKey && !secretKey) return null;
   if (!apiKey || !secretKey) {
     throw new Error("FLOW_API_KEY y FLOW_SECRET_KEY deben definirse juntas");
   }
-  return { apiKey, secretKey, apiBase };
+  const callbackBase = parsed.data.FLOW_CALLBACK_BASE.replace(/\/+$/, "");
+  if (apiBase === FLOW_PRODUCTION_BASE && !callbackBase.startsWith("https://")) {
+    throw new Error("FLOW_CALLBACK_BASE debe usar https con Flow de producción");
+  }
+  return { apiKey, secretKey, apiBase, callbackBase };
 }

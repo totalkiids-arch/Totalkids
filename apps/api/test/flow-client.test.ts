@@ -75,6 +75,7 @@ describe("configuración de Flow", () => {
         FLOW_API_KEY: "a",
         FLOW_SECRET_KEY: "b",
         FLOW_API_BASE: FLOW_PRODUCTION_BASE,
+        FLOW_CALLBACK_BASE: "https://api.totalkids.cl/api/v1",
       })?.apiBase,
     ).toBe(FLOW_PRODUCTION_BASE);
   });

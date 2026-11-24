@@ -29,6 +29,9 @@ export class FlowUncertainError extends Error {
   }
 }
 
+/** Lo que necesita el cliente HTTP. */
+export type FlowCredentials = Omit<FlowConfig, "callbackBase">;
+
 export interface CreatePaymentInput {
   /** Identificador propio y único del intento. */
   commerceOrder: string;
@@ -121,7 +124,10 @@ export interface FlowClientOptions {
   requestTimeoutMs?: number;
 }
 
-export function createFlowClient(config: FlowConfig, options: FlowClientOptions = {}): FlowClient {
+export function createFlowClient(
+  config: FlowCredentials,
+  options: FlowClientOptions = {},
+): FlowClient {
   const doFetch = options.fetch ?? fetch;
   const requestTimeoutMs = options.requestTimeoutMs ?? 10_000;
 

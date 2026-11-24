@@ -100,6 +100,10 @@ const IMPLEMENTED = new Set([
   "/orders",
   "/orders/lookup",
   "/orders/{orderNumber}",
+  // LN-10
+  "/payments/flow/create",
+  "/payments/flow/confirm",
+  "/payments/flow/return",
   // LN-13
   ...LN13_PATHS,
   // LN-16
