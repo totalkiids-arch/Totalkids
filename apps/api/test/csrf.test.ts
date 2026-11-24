@@ -20,11 +20,6 @@ function routes(v1: Router) {
   router.delete("/orders-test", (_req, res) => {
     res.status(204).end();
   });
-  for (const path of FLOW_CALLBACK_PATHS) {
-    router.post(path, (req, res) => {
-      res.json({ token: (req.body as { token?: string }).token ?? null });
-    });
-  }
   v1.use(router);
 }
 
@@ -176,8 +171,8 @@ describe("callbacks de Flow", () => {
       .post(`/api/v1${path}`)
       .type("form")
       .send({ token: "tok_flow_123" });
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ token: "tok_flow_123" });
+    // Llegan a su ruta (LN-10; Flow sin configurar en los tests): ni 403 ni 415.
+    expect(res.status).toBe(path.endsWith("/return") ? 303 : 500);
   });
 
   it("los callbacks de Flow no aceptan JSON (415)", async () => {

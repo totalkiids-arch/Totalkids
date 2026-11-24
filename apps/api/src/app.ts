@@ -4,7 +4,13 @@ import cors from "cors";
 import express, { type Express, type Router } from "express";
 import helmet from "helmet";
 
-import { DEV_ADMIN_TO, DEV_IMAGES_URL, parseTrustProxy, type Env } from "./config/env.js";
+import {
+  DEV_ADMIN_TO,
+  DEV_IMAGES_URL,
+  DEV_SITE_URL,
+  parseTrustProxy,
+  type Env,
+} from "./config/env.js";
 import { httpLogger, type Logger } from "./lib/logger.js";
 import type { PrismaClient } from "./lib/prisma.js";
 import { bodyParsers, isFlowCallbackPath, requireContentType } from "./middleware/body.js";
@@ -30,9 +36,11 @@ import { csrfRouter } from "./routes/csrf.js";
 import { docsRouter } from "./routes/docs.js";
 import { formsRouter } from "./routes/forms.js";
 import { healthRouter } from "./routes/health.js";
+import { paymentsRouter } from "./routes/payments.js";
 import { shippingRouter } from "./routes/shipping.js";
 import { storeRouter } from "./routes/store.js";
 import { cartTtlMs } from "./services/cart/session.js";
+import type { FlowGateway } from "./services/flow/start.js";
 import { LocalDiskImageStorage } from "./services/images/local-disk.js";
 import type { ImageStorage } from "./services/images/storage.js";
 import type { ShippingQuoter } from "./services/shipping/quoter.js";
@@ -49,7 +57,12 @@ export interface AppDeps {
     | "CSRF_SECRET"
     | "API_DOCS"
   > &
-    Partial<Pick<Env, "IMAGES_DIR" | "IMAGES_PUBLIC_URL" | "CART_TTL_DAYS" | "EMAIL_ADMIN_TO">>;
+    Partial<
+      Pick<
+        Env,
+        "IMAGES_DIR" | "IMAGES_PUBLIC_URL" | "CART_TTL_DAYS" | "EMAIL_ADMIN_TO" | "PUBLIC_SITE_URL"
+      >
+    >;
   logger: Logger;
   prisma: PrismaClient;
   /**
@@ -72,6 +85,8 @@ export interface AppDeps {
    * courier se enchufa aquí con otro adaptador del puerto.
    */
   shippingQuoter?: ShippingQuoter;
+  /** Cobro con Flow (LN-10). Sin claves configuradas no se puede pagar. */
+  flow?: FlowGateway | null;
 }
 
 /** CSRF_SECRET es obligatorio en producción (env.ts); fuera de ella se genera uno. */
@@ -90,6 +105,7 @@ export function createApp({
   csrfSessionKey,
   imageStorage,
   shippingQuoter,
+  flow = null,
 }: AppDeps): Express {
   const app = express();
   const isProduction = env.NODE_ENV === "production";
@@ -144,6 +160,17 @@ export function createApp({
   v1.use(shippingRouter({ prisma, isProduction, quoter }));
   // Pedidos de invitado (LN-09): cotiza la entrega con el mismo puerto que el carrito.
   v1.use(ordersRouter({ prisma, isProduction, accessSecret: csrfSecret, quoter }));
+  // Pagos con Flow (LN-10).
+  v1.use(
+    paymentsRouter({
+      prisma,
+      logger,
+      flow,
+      accessSecret: csrfSecret,
+      adminEmail: env.EMAIL_ADMIN_TO ?? DEV_ADMIN_TO,
+      siteUrl: env.PUBLIC_SITE_URL ?? DEV_SITE_URL,
+    }),
+  );
   // Formularios públicos (LN-08): solicitudes de servicio y newsletter.
   v1.use(formsRouter({ prisma, adminEmail: env.EMAIL_ADMIN_TO ?? DEV_ADMIN_TO }));
   // Tienda (LN-16): plantilla activa y banners vigentes que se configuran en el panel.
