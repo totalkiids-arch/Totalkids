@@ -1,0 +1,4 @@
+﻿"Pedido";"Fecha";"Cliente";"Correo";"Estado";"Pago";"Total CLP"
+"TK-1003";"2026-11-23 22:41";"Prueba Correo";"prueba@example.com";"Pendiente de pago";"Sin pago";"85990"
+"TK-1002";"2026-11-23 22:39";"Prueba Correo";"prueba@example.com";"Pendiente de pago";"Sin pago";"85990"
+"TK-1001";"2026-11-23 21:52";"Prueba Panel";"prueba@example.com";"Cancelado";"Sin pago";"85990"

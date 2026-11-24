@@ -68,6 +68,7 @@ describe("POST /orders (sin base)", () => {
     },
     delivery: { method: "retiro" },
     billing: { document: "boleta" },
+    expectedTotal: 50_000,
     termsAccepted: true,
   };
   const post = (body: object, key?: string) => {
@@ -94,6 +95,7 @@ describe("POST /orders (sin base)", () => {
         buyer: { name: "", rut: "12.345.678-9", email: "maria@", phone: "123" },
         delivery: { method: "despacho", region: "XX", commune: "", street: "" },
         billing: { document: "factura" },
+        expectedTotal: -1,
         termsAccepted: false,
       },
       "0f8fad5b-d9cb-469f-a165-70867728950e",
@@ -108,6 +110,7 @@ describe("POST /orders (sin base)", () => {
         "buyer.phone",
         "delivery.region",
         "billing.rut",
+        "expectedTotal",
         "termsAccepted",
       ]),
     );

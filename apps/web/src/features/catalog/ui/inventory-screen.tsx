@@ -9,13 +9,7 @@ import { StatusBadge } from "@/shared/ui/admin/status-badge";
 
 import { adminCatalog } from "../container";
 import { availableStock, inventoryStatus, normalizeSku } from "../domain/admin-product";
-import {
-  DEMO_STORE_NOTE,
-  formatDateTime,
-  param,
-  units,
-  type AdminSearchParams,
-} from "./admin/admin-format";
+import { formatDateTime, param, units, type AdminSearchParams } from "./admin/admin-format";
 import { StockAdjustForm } from "./admin/stock-adjust-form";
 
 const RECENT_ADJUSTMENTS = 20;
@@ -24,12 +18,12 @@ const RECENT_ADJUSTMENTS = 20;
 export async function InventoryScreen({ searchParams = {} }: { searchParams?: AdminSearchParams }) {
   const [rows, adjustments] = await Promise.all([
     adminCatalog.listInventory(),
-    adminCatalog.listAdjustments(RECENT_ADJUSTMENTS),
+    adminCatalog.listInventoryActivity(RECENT_ADJUSTMENTS),
   ]);
   const requested = normalizeSku(param(searchParams, "sku"));
   const preselected = rows.find((r) => normalizeSku(r.sku) === requested)?.sku ?? "";
   const saved = param(searchParams, "aviso") === "ajuste";
-  const low = rows.filter((r) => inventoryStatus(r) === "low").length;
+  const low = rows.filter((r) => r.active && inventoryStatus(r) === "low").length;
 
   return (
     <>
@@ -39,9 +33,9 @@ export async function InventoryScreen({ searchParams = {} }: { searchParams?: Ad
       />
       {saved ? <LiveNotice message="Ajuste registrado con responsable, fecha y motivo." /> : null}
       <InfoNote>
-        {DEMO_STORE_NOTE} Todo se fabrica a pedido: el stock parte en 0. Registra aquí las unidades
-        terminadas; con al menos 1 disponible la tienda muestra el producto “En stock” y, si no, “A
-        pedido”, y se vende como reserva.
+        Todo se fabrica a pedido: el stock parte en 0. Registra aquí las unidades terminadas; con al
+        menos 1 disponible la tienda muestra el producto “En stock” y, si no, “A pedido”, y se vende
+        como reserva.
       </InfoNote>
 
       <AdminPanel
@@ -66,7 +60,9 @@ export async function InventoryScreen({ searchParams = {} }: { searchParams?: Ad
                 product: (
                   <CellTitle
                     title={row.productName}
-                    meta={[row.sku, row.option].filter(Boolean).join(" · ")}
+                    meta={[row.sku, row.option, row.active ? null : "variante inactiva"]
+                      .filter(Boolean)
+                      .join(" · ")}
                   />
                 ),
                 physical: row.physical,
@@ -90,7 +86,7 @@ export async function InventoryScreen({ searchParams = {} }: { searchParams?: Ad
               },
             };
           })}
-          footer={`${rows.length} variantes · Datos de demostración`}
+          footer={`${rows.length} variante${rows.length === 1 ? "" : "s"}`}
         />
       </AdminPanel>
 
@@ -115,34 +111,27 @@ export async function InventoryScreen({ searchParams = {} }: { searchParams?: Ad
         id="ajustes"
         flush
         title="Ajustes recientes"
-        description="Ajustes hechos desde que se inició el sistema."
+        description="Los más recientes, con responsable, fecha y motivo. El historial completo está en Actividad."
       >
         <DataTable
           caption="Ajustes de inventario recientes"
           columns={[
             { key: "at", label: "Fecha" },
             { key: "actor", label: "Responsable" },
-            { key: "variant", label: "Variante" },
-            { key: "change", label: "Antes → después", align: "end" },
+            { key: "change", label: "Ajuste" },
             { key: "reason", label: "Motivo" },
           ]}
           rows={adjustments.map((a) => ({
             key: a.id,
             cells: {
               at: <time dateTime={a.at}>{formatDateTime(a.at)}</time>,
-              actor: `${a.actor} (demo)`,
-              variant: <CellTitle title={a.productName} meta={a.sku} />,
-              change: (
-                <span>
-                  {a.before} <span aria-hidden>→</span>
-                  <span className="sr-only">a</span> {a.after}
-                </span>
-              ),
+              actor: a.actor,
+              change: <span className="whitespace-normal">{a.description}</span>,
               reason: <span className="whitespace-normal">{a.reason}</span>,
             },
           }))}
-          empty="Aún no hay ajustes. Los que registres aparecerán aquí hasta que se reinicie el servidor."
-          footer={`${adjustments.length} ajuste${adjustments.length === 1 ? "" : "s"} · Datos de demostración`}
+          empty="Aún no hay ajustes de inventario."
+          footer={`${adjustments.length} ajuste${adjustments.length === 1 ? "" : "s"}`}
         />
       </AdminPanel>
     </>

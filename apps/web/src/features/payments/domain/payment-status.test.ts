@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { isPaymentStatus, PAYMENT_STATUS_LABEL, PAYMENT_STATUSES } from "./payment-status";
+import {
+  ATTEMPT_STATUS_LABEL,
+  ATTEMPT_STATUSES,
+  isAttemptStatus,
+  isPaymentStatus,
+  PAYMENT_STATUS_LABEL,
+  PAYMENT_STATUSES,
+} from "./payment-status";
 
 describe("PaymentStatus", () => {
   it("cubre los cinco estados del inventario con su etiqueta", () => {
@@ -11,6 +18,12 @@ describe("PaymentStatus", () => {
       "En revisión",
       "Vencido",
     ]);
+  });
+
+  it("los intentos del panel suman «Anulado», como la API", () => {
+    expect(ATTEMPT_STATUSES.map((status) => ATTEMPT_STATUS_LABEL[status]).at(-1)).toBe("Anulado");
+    expect(isAttemptStatus("voided")).toBe(true);
+    expect(isPaymentStatus("voided")).toBe(false);
   });
 
   it("reconoce solo valores válidos", () => {

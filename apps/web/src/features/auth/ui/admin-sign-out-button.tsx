@@ -1,6 +1,6 @@
 import { ExitIcon } from "@/shared/ui/icons";
 
-import { signOutDemoAction } from "./admin-session-actions";
+import { signOutAction } from "./admin-session-actions";
 
 /**
  * «Cerrar sesión» del pie del menú. Es un formulario: funciona sin JavaScript.
@@ -8,7 +8,7 @@ import { signOutDemoAction } from "./admin-session-actions";
  */
 export function AdminSignOutButton() {
   return (
-    <form action={signOutDemoAction}>
+    <form action={signOutAction}>
       <button
         type="submit"
         className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-3.5 text-sm font-extrabold text-brand-red hover:bg-soft-red"

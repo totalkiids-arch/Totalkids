@@ -36,6 +36,18 @@ const tagList = z
   .pipe(z.array(tag).max(10))
   .transform((items) => [...new Set(items)]);
 
+/** Colores como los escribe el panel ("Blanco", "Azul marino"); se comparan sin tildes. */
+const colorList = z
+  .union([z.string(), z.array(z.string())])
+  .transform((value) =>
+    (Array.isArray(value) ? value : [value])
+      .flatMap((item) => item.split(","))
+      .map((item) => item.trim().replace(/\s+/g, " "))
+      .filter(Boolean),
+  )
+  .pipe(z.array(z.string().max(60)).max(10))
+  .transform((items) => [...new Set(items)]);
+
 const price = z.coerce.number().int().min(0).max(100_000_000);
 
 const flag = z
@@ -48,6 +60,7 @@ const listQuery = paginationQuery
     category: slug.optional(),
     ageGroup: tagList.optional(),
     material: tagList.optional(),
+    color: colorList.optional(),
     priceMin: price.optional(),
     priceMax: price.optional(),
     onSale: flag.optional(),
@@ -80,6 +93,7 @@ export function catalogRouter(prisma: PrismaClient): Router {
           category: query.category,
           ageGroups: query.ageGroup,
           materials: query.material,
+          colors: query.color,
           priceMin: query.priceMin,
           priceMax: query.priceMax,
           onSale: query.onSale,

@@ -1,16 +1,14 @@
 // Raíz de composición de "orders": conecta los puertos con sus adaptadores actuales.
-import type { PaymentAttemptRow } from "@/features/payments";
 import type { ActivityArea, ActivityEntry } from "@/features/activity";
 import type { SaleRecord } from "@/features/reports";
 
-import type { AdminOrderPanel } from "./application/admin-order-panel";
+import type { AdminOrderPanel, DemoOrderPanel } from "./application/admin-order-panel";
 import type { GuestAccessStore, OrderRepository } from "./application/ports";
 import {
-  applyAdminOrderQuery,
   filterAdminOrders,
   ordersToCsv,
   parseAdminOrderQuery,
-  type AdminOrderPage,
+  type AdminOrderListPage,
   type AdminOrderQuery,
 } from "./domain/admin-order-query";
 import {
@@ -20,8 +18,9 @@ import {
   parseGuestLookup,
 } from "./domain/guest-lookup";
 import type { Order } from "./domain/order";
-import { ordersOverview, paidAttempt, type AdminOrderRecord } from "./domain/order-workflow";
+import { ordersOverview, paidAttempt } from "./domain/order-workflow";
 import { cookieGuestAccessStore } from "./infrastructure/cookie-guest-access-store";
+import { apiAdminOrderPanel } from "./infrastructure/api-admin-order-panel";
 import { demoAdminOrderPanel } from "./infrastructure/demo-admin-order-panel";
 
 // DEMO (ver infrastructure/demo-admin-order-panel.ts): el almacén del panel,
@@ -62,12 +61,18 @@ export async function lookupGuestOrder(
   return { ok: true, orderId: order.id };
 }
 
-/**
- * Caso de uso: listado de pedidos del panel (RF-28). La pantalla y la
- * exportación verifican antes el rol (sección "pedidos").
- */
-export async function listAdminOrders(query: AdminOrderQuery): Promise<AdminOrderPage> {
-  return applyAdminOrderQuery(await orders.listAll(), query);
+// ── Panel: pedidos en la API (LN-13) ────────────────────────────────────────
+export const adminOrderPanel: AdminOrderPanel = apiAdminOrderPanel;
+
+/** Caso de uso: listado de pedidos del panel (RF-28), filtrado y paginado por la API. */
+export function listAdminOrders(query: AdminOrderQuery): Promise<AdminOrderListPage> {
+  return adminOrderPanel.list(query);
+}
+
+/** Caso de uso: detalle del pedido en el panel (RF-27). null si no existe. */
+export async function getAdminOrder(ref: string) {
+  const orderId = normalizeOrderId(ref);
+  return orderId ? adminOrderPanel.get(orderId) : null;
 }
 
 /** Caso de uso: CSV con todos los pedidos que cumplen los filtros de la URL, sin paginar. */
@@ -77,35 +82,14 @@ export async function exportAdminOrdersCsv(
   return ordersToCsv(filterAdminOrders(await orders.listAll(), parseAdminOrderQuery(params)));
 }
 
-// ── Panel: detalle, pagos y resumen (Tanda A) ────────────────────────────────
-// DEMO hasta LN-09/LN-16. Las pantallas y las Server Actions verifican el rol antes.
-export const adminOrderPanel: AdminOrderPanel = demoAdminOrderPanel;
-
-/** Caso de uso: detalle del pedido en el panel (RF-27). null si no existe. */
-export async function getAdminOrder(id: string): Promise<AdminOrderRecord | null> {
-  const orderId = normalizeOrderId(id);
-  return orderId ? adminOrderPanel.get(orderId) : null;
-}
-
-/** Caso de uso: intentos de pago de todos los pedidos (RF-33). */
-export async function listPaymentAttempts(): Promise<PaymentAttemptRow[]> {
-  return (await adminOrderPanel.list()).flatMap((record) =>
-    record.attempts.map((attempt, index) => ({
-      orderId: record.order.id,
-      buyerName: record.order.buyerName,
-      commerceOrder: attempt.commerceOrder,
-      amount: attempt.amount,
-      status: attempt.status,
-      createdAt: attempt.createdAt,
-      lastCheckedAt: attempt.lastCheckedAt,
-      current: index === record.attempts.length - 1,
-    })),
-  );
-}
+// ── TRANSITORIO hasta la etapa 3 de LN-16 ───────────────────────────────────
+// El resumen, los reportes, la actividad y el CSV de pedidos todavía leen el
+// almacén de demostración (también lo usa el seguimiento de la tienda).
+const demoRecords: DemoOrderPanel = demoAdminOrderPanel;
 
 /** Caso de uso: indicadores y últimos pedidos del resumen del panel. */
 export async function getAdminOrdersOverview(recent = 5) {
-  const records = await adminOrderPanel.list();
+  const records = await demoRecords.list();
   return {
     overview: ordersOverview(records),
     recent: [...records]
@@ -119,7 +103,7 @@ export async function getAdminOrdersOverview(recent = 5) {
  * Las líneas van al precio de compra; los reembolsos, solo los procesados.
  */
 export async function listSalesForReports(): Promise<SaleRecord[]> {
-  return (await adminOrderPanel.list()).flatMap((record) => {
+  return (await demoRecords.list()).flatMap((record) => {
     const paid = paidAttempt(record);
     if (!paid) return [];
     return [
@@ -157,7 +141,7 @@ const AUDIT_AREA: Record<string, ActivityArea> = {
  * detalle de cada pedido.
  */
 export async function listActivity(): Promise<ActivityEntry[]> {
-  return (await adminOrderPanel.list()).flatMap((record) =>
+  return (await demoRecords.list()).flatMap((record) =>
     record.audit.flatMap((entry, index) => {
       const area = AUDIT_AREA[entry.kind];
       if (!area) return [];

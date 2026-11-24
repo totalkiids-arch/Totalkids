@@ -24,7 +24,3 @@ export function formatDateTime(iso: string): string {
 export function units(n: number): string {
   return `${n} un.`;
 }
-
-/** Aviso fijo de las pantallas del catálogo administrable. */
-export const DEMO_STORE_NOTE =
-  "Datos de ejemplo: los cambios se borran al reiniciar el sistema y todavía no se ven en la tienda.";

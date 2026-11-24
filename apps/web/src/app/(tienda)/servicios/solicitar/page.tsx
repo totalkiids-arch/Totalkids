@@ -5,6 +5,7 @@ import { ServiceRequestScreen } from "@/features/services";
 export const metadata: Metadata = {
   title: "Solicitar servicio",
   description: "Cuéntanos qué necesitas: armado, diseño de espacios, personalización y más.",
+  alternates: { canonical: "/servicios/solicitar" },
 };
 
 export default async function Page({ searchParams }: PageProps<"/servicios/solicitar">) {

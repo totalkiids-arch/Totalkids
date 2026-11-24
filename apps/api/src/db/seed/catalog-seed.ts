@@ -1,9 +1,5 @@
 import { z } from "zod";
 
-import { DEFAULT_LEAD_TIME } from "../../domain/cart.js";
-
-export { DEFAULT_LEAD_TIME };
-
 /**
  * Semilla del catálogo (DE-03): convierte el catálogo importado de
  * totalmuebles.cl (apps/web/.../totalmuebles/catalogo.json) en filas de la
@@ -27,6 +23,9 @@ export const SEED_CATEGORIES = [
  * parte en 0. El "con stock" del sitio de origen no se usa como inventario.
  */
 export const INITIAL_STOCK = 0;
+
+/** Plazo de fabricación a pedido mientras el cliente no defina uno por producto. */
+export const DEFAULT_LEAD_TIME = "3 a 5 días hábiles";
 
 /**
  * Extras que ofrece cada producto. "Armado a domicilio" queda con precio por

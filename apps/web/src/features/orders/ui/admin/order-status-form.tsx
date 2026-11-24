@@ -7,7 +7,7 @@ import { AdminMuted } from "@/shared/ui/admin/panel";
 import { Button } from "@/shared/ui/button";
 import { Checkbox, SelectField, TextareaField, TextField } from "@/shared/ui/form";
 
-import { REASON_MAX, TRACKING_MAX } from "../../domain/order-workflow";
+import { REASON_MAX, TRACKING_MAX } from "../../domain/admin-order";
 import { changeOrderStatusAction, type StatusFormState } from "../admin-order-actions";
 import { errorSummary } from "./form-errors";
 
@@ -20,8 +20,10 @@ const FIELD_ID: Record<string, string> = {
 };
 
 /**
- * Cambio de estado del pedido (RF-27). Solo ofrece las transiciones permitidas;
- * el servidor vuelve a validarlas. Funciona sin JavaScript.
+ * Cambio de estado del pedido (RF-27). Solo ofrece las transiciones que la API
+ * permite ahora; la API las vuelve a validar. Funciona sin JavaScript.
+ * En retiro en taller, "Despachado" es "Listo para retiro": sin transportista
+ * ni seguimiento.
  */
 export function OrderStatusForm({
   orderId,
@@ -33,7 +35,7 @@ export function OrderStatusForm({
 }: {
   orderId: string;
   options: readonly { value: string; label: string }[];
-  /** Despachar está entre las opciones: se piden transportista y seguimiento. */
+  /** Despachar a domicilio está entre las opciones: se piden transportista y seguimiento. */
   showTracking: boolean;
   tracking: { carrier: string; code: string } | null;
   /** Cancelar puede registrar la reposición de stock (una sola vez, RN-06). */
@@ -81,7 +83,7 @@ export function OrderStatusForm({
               maxLength={TRACKING_MAX}
               autoComplete="off"
               error={errors.carrier}
-              hint="Obligatorio para despachar."
+              hint="Obligatorio para despachar a domicilio."
             />
           </div>
           <div id={FIELD_ID.code} className="min-w-0 scroll-mt-24">
@@ -92,7 +94,7 @@ export function OrderStatusForm({
               maxLength={TRACKING_MAX}
               autoComplete="off"
               error={errors.code}
-              hint="Obligatorio para despachar."
+              hint="Obligatorio para despachar a domicilio."
             />
           </div>
         </div>
@@ -105,7 +107,7 @@ export function OrderStatusForm({
             value="1"
             defaultChecked={values.restock}
             label="Al cancelar, registrar la reposición de stock: las unidades son vendibles"
-            description="Se registra una sola vez por pedido. En esta demo no modifica el inventario."
+            description="Se registra una sola vez por pedido: repone en el inventario lo que la venta descontó."
           />
           {errors.restock ? (
             <p className="text-sm font-bold text-brand-red">{errors.restock}</p>
@@ -126,7 +128,9 @@ export function OrderStatusForm({
       </div>
 
       <AdminMuted>
-        Para despachar se requiere pago confirmado, transportista y seguimiento.
+        {showTracking
+          ? "Para despachar se requiere pago confirmado, transportista y seguimiento."
+          : "Para avanzar se requiere pago confirmado."}
         {cancelsPaidOrder
           ? " Cancelar no devuelve dinero: la devolución se gestiona aparte con un reembolso manual."
           : ""}

@@ -1,79 +1,125 @@
 /**
  * Catálogo tal como lo administra el panel: productos con variantes, stock,
- * extras, imágenes y categorías (RF-26), y los ajustes de inventario (RF-34).
+ * extras, imágenes y categorías (RF-26), y el inventario (RF-34).
  * Dominio puro: solo tipos y reglas, sin React, Next.js ni acceso a datos.
+ *
+ * Los datos viven en la API (LN-12), que vuelve a validar todo y aplica la
+ * autorización. Estas reglas solo evitan un viaje con datos que no pasarán y
+ * usan los mismos mensajes que la API.
  *
  * Reglas de la SRS que se aplican aquí:
  * - RF-26: SKU único, importes válidos, archivos permitidos; desactivar no borra.
  * - RN-01: importes en CLP, enteros y no negativos.
  * - RN-03: disponible = físico − reservado; un ajuste no deja físico < reservas.
  */
-import type { LevelId, MaterialSlug } from "./product";
 import { LOW_STOCK_THRESHOLD } from "./product-detail";
+
+/** Borrador (nunca publicado), publicado o desactivado. */
+export const PRODUCT_STATUSES = ["draft", "active", "inactive"] as const;
+export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
+
+export const PRODUCT_STATUS_LABEL: Record<ProductStatus, string> = {
+  draft: "Borrador",
+  active: "Publicado",
+  inactive: "Inactivo",
+};
 
 export interface AdminVariant {
   id: string;
   sku: string;
   /** Nombre de la opción ("1 plaza", "Azul"); null si el producto tiene una sola variante. */
   option: string | null;
-  price: number;
+  /** CLP; null = por definir (no se puede publicar). */
+  price: number | null;
   /** Precio anterior (oferta); null si no hay. */
   compareAtPrice: number | null;
-  /** Unidades en bodega. */
+  /** Unidades en bodega. Se cambia con un ajuste de inventario (con motivo, RF-34). */
   physical: number;
   /** Unidades apartadas por pedidos en curso (RN-03, RN-04). No se editan en el panel. */
   reserved: number;
 }
 
 export interface AdminImage {
+  id: string;
   src: string;
-  width: number;
-  height: number;
+  /** null si la API no pudo leer el tamaño. */
+  width: number | null;
+  height: number | null;
   alt: string;
+}
+
+/** Extra que la tienda puede ofrecer en un producto (armado, personalización…). */
+export interface ExtraOption {
+  code: string;
+  name: string;
+  /** Pide un texto al comprador (p. ej. el nombre a grabar). */
+  requiresText: boolean;
+  /** Precio general del extra; null = por confirmar. */
+  price: number | null;
+  textMaxLength: number | null;
+}
+
+/** Extra ofrecido en un producto. null en price/textMaxLength = el general del extra. */
+export interface ProductExtra {
+  code: string;
+  price: number | null;
+  textMaxLength: number | null;
 }
 
 export interface AdminProduct {
   id: string;
   slug: string;
   name: string;
-  /** Slug de la categoría principal; siempre está incluida en `categories`. */
+  /** Id de la categoría principal; siempre está incluida en `categories`. */
   category: string;
+  /** Ids de la principal y las adicionales. */
   categories: readonly string[];
-  levels: readonly LevelId[];
-  materials: readonly MaterialSlug[];
+  /** Niveles (grupos de edad) y materiales, con los ids de la tienda. */
+  levels: readonly string[];
+  materials: readonly string[];
   description: string;
   /** Texto libre: "Ancho 1,0 m · Fondo 40 cm · Alto 50 cm". */
   dimensions: string;
   /** Qué se elige entre variantes ("Tamaño", "Color"); null con una sola variante. */
   optionName: string | null;
+  /** Solo las variantes activas (las que se quitaron con historial quedan inactivas). */
   variants: readonly AdminVariant[];
-  /** Extras en CLP; 0 = no disponible (RF-04). */
-  assemblyPrice: number;
-  personalizationPrice: number;
-  /** Largo máximo del texto personalizado. */
-  personalizationMaxLength: number;
-  /** Visible en el catálogo. Desactivar no borra el producto ni sus pedidos (RF-26). */
-  active: boolean;
+  /** Extras ofrecidos en este producto. */
+  extras: readonly ProductExtra[];
+  status: ProductStatus;
   images: readonly AdminImage[];
 }
 
+/** Fila del listado de productos del panel. */
+export interface AdminProductListItem {
+  id: string;
+  name: string;
+  categoryName: string;
+  status: ProductStatus;
+  /** Variantes activas. */
+  variantCount: number;
+  /** Menor precio entre las variantes activas; null si aún no tiene. */
+  price: number | null;
+  /** Unidades disponibles de las variantes activas. */
+  available: number;
+}
+
 export interface AdminCategory {
+  id: string;
   slug: string;
   name: string;
   active: boolean;
 }
 
-/** Ajuste administrativo de stock físico (RF-34). */
-export interface StockAdjustment {
+/** Ajuste de inventario tal como lo registra el historial (audit_log). */
+export interface InventoryActivity {
   id: string;
   /** Fecha ISO. */
   at: string;
-  /** Responsable; en la demo, el rol de la sesión ("Administrador"). */
+  /** Nombre de la persona (o el rol si no hay nombre). */
   actor: string;
-  productName: string;
-  sku: string;
-  before: number;
-  after: number;
+  /** "Ajuste de stock TK-12: 0 → 5". */
+  description: string;
   reason: string;
 }
 
@@ -84,10 +130,11 @@ export const PRODUCT_NAME_MAX = 120;
 export const SKU_MAX = 40;
 export const OPTION_MAX = 60;
 export const DESCRIPTION_MAX = 4000;
+export const DIMENSIONS_MAX = 200;
 export const STOCK_REASON_MAX = 200;
 export const IMAGE_ALT_MAX = 160;
 export const CATEGORY_NAME_MAX = 60;
-export const PERSONALIZATION_LIMIT = { min: 1, max: 100 } as const;
+export const TEXT_LIMIT = { min: 1, max: 100 } as const;
 
 // ── Importes (RN-01) ─────────────────────────────────────────────────────────
 
@@ -126,20 +173,16 @@ export function validateSkuFormat(sku: string): string | null {
 }
 
 /**
- * Índices de las variantes cuyo SKU ya existe en otro producto o se repite
- * dentro del mismo producto. No distingue mayúsculas ("tk-1" = "TK-1").
+ * Índices de las variantes cuyo SKU se repite dentro del mismo producto. No
+ * distingue mayúsculas ("tk-1" = "TK-1"). Entre productos lo comprueba la API.
  */
-export function findDuplicateSkus(
-  skus: readonly string[],
-  otherProductSkus: readonly string[],
-): number[] {
-  const taken = new Set(otherProductSkus.map(normalizeSku));
+export function findDuplicateSkus(skus: readonly string[]): number[] {
   const seen = new Set<string>();
   const duplicates: number[] = [];
   skus.forEach((sku, index) => {
     const key = normalizeSku(sku);
     if (key === "") return;
-    if (taken.has(key) || seen.has(key)) duplicates.push(index);
+    if (seen.has(key)) duplicates.push(index);
     seen.add(key);
   });
   return duplicates;
@@ -158,8 +201,12 @@ export type InventoryStatus = "out" | "low" | "ok";
 export function inventoryStatus(
   variant: Pick<AdminVariant, "physical" | "reserved">,
 ): InventoryStatus {
-  const available = availableStock(variant);
-  if (available === 0) return "out";
+  return stockStatus(availableStock(variant));
+}
+
+/** Estado a partir de las unidades disponibles (también para el total de un producto). */
+export function stockStatus(available: number): InventoryStatus {
+  if (available <= 0) return "out";
   if (available <= LOW_STOCK_THRESHOLD) return "low";
   return "ok";
 }
@@ -176,15 +223,19 @@ export function validatePhysicalStock(physical: number, reserved: number): strin
   return null;
 }
 
-/** Ajuste de inventario: nuevo físico válido y motivo obligatorio (RF-34). */
+/** Ajuste de inventario: nuevo físico válido, distinto del actual, y motivo obligatorio (RF-34). */
 export function validateStockAdjustment(input: {
   physical: number;
+  current: number;
   reserved: number;
   reason: string;
 }): FieldErrors {
   const errors: FieldErrors = {};
   const physical = validatePhysicalStock(input.physical, input.reserved);
   if (physical) errors.physical = physical;
+  else if (input.physical === input.current) {
+    errors.physical = `El stock físico ya es ${input.current}: no hay nada que ajustar.`;
+  }
   const reason = input.reason.trim();
   if (reason === "") errors.reason = "Escribe el motivo del ajuste.";
   else if (reason.length > STOCK_REASON_MAX) {
@@ -228,25 +279,20 @@ export function validateImageAlt(alt: string): string | null {
 export function slugify(text: string): string {
   return text
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
 
-/** Para comparar nombres sin mayúsculas, tildes ni espacios de más. */
-function nameKey(name: string): string {
-  return slugify(name);
-}
-
 /**
- * Nombre de categoría obligatorio, y nombre y slug únicos. Al editar, el slug no
- * cambia (no rompe enlaces), así que solo se compara el nombre con las demás.
+ * Nombre de categoría obligatorio y único (sin mayúsculas, tildes ni espacios de
+ * más). Al editar, el slug no cambia (no rompe enlaces).
  */
 export function validateCategoryName(
   name: string,
   existing: readonly AdminCategory[],
-  editingSlug: string | null,
+  editingId: string | null,
 ): string | null {
   const value = name.trim();
   if (value === "") return "Escribe el nombre de la categoría.";
@@ -254,54 +300,65 @@ export function validateCategoryName(
     return `El nombre admite como máximo ${CATEGORY_NAME_MAX} caracteres.`;
   }
   if (slugify(value) === "") return "Usa al menos una letra o un número en el nombre.";
-  const others = existing.filter((c) => c.slug !== editingSlug);
-  if (others.some((c) => nameKey(c.name) === nameKey(value))) {
+  const others = existing.filter((c) => c.id !== editingId);
+  if (others.some((c) => slugify(c.name) === slugify(value))) {
     return "Ya existe una categoría con ese nombre.";
   }
-  if (editingSlug === null && others.some((c) => c.slug === slugify(value))) {
+  if (editingId === null && others.some((c) => c.slug === slugify(value))) {
     return `Ya existe una categoría con el enlace «${slugify(value)}».`;
   }
   return null;
 }
 
-/** Productos que usan la categoría, como principal o adicional. */
-export function countProductsInCategory(
-  products: readonly Pick<AdminProduct, "categories">[],
-  slug: string,
-): number {
-  return products.filter((p) => p.categories.includes(slug)).length;
+// ── Producto completo ────────────────────────────────────────────────────────
+
+export interface DraftVariant {
+  /** Id de la API, o null si la variante es nueva. */
+  id: string | null;
+  sku: string;
+  option: string | null;
+  price: number;
+  compareAtPrice: number | null;
+  /** Stock inicial: solo se usa en variantes nuevas. */
+  physical: number;
 }
 
-// ── Producto completo ────────────────────────────────────────────────────────
+export interface DraftExtra {
+  code: string;
+  offered: boolean;
+  /** null = el precio general del extra. */
+  price: number | null;
+  /** null = el límite general del extra. */
+  textMaxLength: number | null;
+}
 
 /** Lo que el formulario entrega para guardar. Las reservas no vienen del formulario. */
 export interface ProductDraft {
   name: string;
   category: string;
   categories: readonly string[];
-  levels: readonly LevelId[];
-  materials: readonly MaterialSlug[];
+  levels: readonly string[];
+  materials: readonly string[];
   description: string;
   dimensions: string;
   optionName: string;
-  variants: readonly Omit<AdminVariant, "reserved">[];
-  assemblyPrice: number;
-  personalizationPrice: number;
-  personalizationMaxLength: number;
-  active: boolean;
+  variants: readonly DraftVariant[];
+  extras: readonly DraftExtra[];
+  /** «Visible en el catálogo». */
+  publish: boolean;
   /** Texto alternativo de las fotos actuales, en orden. */
   imageAlts: readonly string[];
-  /** Imagen elegida en el navegador (solo metadatos: no se sube, ver PR-05/LN-12). */
+  /** Imagen nueva elegida (se sube después de guardar). */
   newImage: { type: string; size: number; alt: string } | null;
 }
 
 export interface ProductDraftContext {
-  /** SKU de todos los demás productos. */
-  otherProductSkus: readonly string[];
   /** Variantes actuales del producto (vacío al crear), con sus reservas. */
   currentVariants: readonly Pick<AdminVariant, "id" | "sku" | "reserved">[];
   /** Categorías que se pueden elegir: las activas más las que el producto ya tenía. */
   allowedCategories: readonly string[];
+  /** Extras que existen en la tienda. */
+  extraOptions: readonly ExtraOption[];
 }
 
 function textRequired(value: string, max: number, empty: string, label: string) {
@@ -330,6 +387,9 @@ export function validateProductDraft(
     "description",
     textRequired(draft.description, DESCRIPTION_MAX, "Escribe la descripción.", "La descripción"),
   );
+  if (draft.dimensions.trim().length > DIMENSIONS_MAX) {
+    set("dimensions", `Las medidas admiten como máximo ${DIMENSIONS_MAX} caracteres.`);
+  }
   if (!context.allowedCategories.includes(draft.category)) {
     set("category", "Elige una categoría activa.");
   }
@@ -350,7 +410,6 @@ export function validateProductDraft(
       ),
     );
   }
-  const reservedById = new Map(context.currentVariants.map((v) => [v.id, v.reserved]));
   const options = new Set<string>();
   draft.variants.forEach((variant, index) => {
     const at = (field: string) => `variants.${index}.${field}`;
@@ -368,12 +427,10 @@ export function validateProductDraft(
     }
     set(at("price"), validateClp(variant.price, "El precio"));
     set(at("compareAtPrice"), validateCompareAt(variant.price, variant.compareAtPrice));
-    set(at("physical"), validatePhysicalStock(variant.physical, reservedById.get(variant.id) ?? 0));
+    // El stock de una variante existente se cambia en Inventario (con motivo).
+    if (variant.id === null) set(at("physical"), validatePhysicalStock(variant.physical, 0));
   });
-  for (const index of findDuplicateSkus(
-    draft.variants.map((v) => v.sku),
-    context.otherProductSkus,
-  )) {
+  for (const index of findDuplicateSkus(draft.variants.map((v) => v.sku))) {
     set(`variants.${index}.sku`, "Ese SKU ya existe. Usa un código único.");
   }
   const kept = new Set(draft.variants.map((v) => v.id));
@@ -384,19 +441,26 @@ export function validateProductDraft(
   }
 
   // Extras
-  set("assemblyPrice", validateClp(draft.assemblyPrice, "El armado"));
-  set("personalizationPrice", validateClp(draft.personalizationPrice, "La personalización"));
-  const limit = draft.personalizationMaxLength;
-  if (
-    !Number.isInteger(limit) ||
-    limit < PERSONALIZATION_LIMIT.min ||
-    limit > PERSONALIZATION_LIMIT.max
-  ) {
-    set(
-      "personalizationMaxLength",
-      `El límite debe ser un entero entre ${PERSONALIZATION_LIMIT.min} y ${PERSONALIZATION_LIMIT.max}.`,
-    );
-  }
+  draft.extras.forEach((extra, index) => {
+    if (!extra.offered) return;
+    const option = context.extraOptions.find((o) => o.code === extra.code);
+    if (!option) {
+      set(`extras.${index}.code`, "Ese extra no existe.");
+      return;
+    }
+    if (extra.price !== null) set(`extras.${index}.price`, validateClp(extra.price, option.name));
+    const limit = extra.textMaxLength;
+    if (
+      option.requiresText &&
+      limit !== null &&
+      (!Number.isInteger(limit) || limit < TEXT_LIMIT.min || limit > TEXT_LIMIT.max)
+    ) {
+      set(
+        `extras.${index}.textMaxLength`,
+        `El límite debe ser un entero entre ${TEXT_LIMIT.min} y ${TEXT_LIMIT.max}.`,
+      );
+    }
+  });
 
   // Imágenes
   draft.imageAlts.forEach((alt, index) => set(`images.${index}.alt`, validateImageAlt(alt)));
@@ -408,13 +472,11 @@ export function validateProductDraft(
   return errors;
 }
 
-/** Precio que se muestra en el listado: el menor entre las variantes. */
-export function lowestPrice(product: Pick<AdminProduct, "variants">): number | null {
-  if (product.variants.length === 0) return null;
-  return Math.min(...product.variants.map((v) => v.price));
-}
-
-/** Unidades disponibles sumando todas las variantes. */
-export function totalAvailable(product: Pick<AdminProduct, "variants">): number {
-  return product.variants.reduce((sum, v) => sum + availableStock(v), 0);
+/**
+ * Estado que se pide al guardar: visible = publicado; si no, un producto que
+ * nunca se publicó sigue en borrador y uno publicado pasa a inactivo.
+ */
+export function requestedStatus(publish: boolean, current: ProductStatus | null): ProductStatus {
+  if (publish) return "active";
+  return current === null || current === "draft" ? "draft" : "inactive";
 }

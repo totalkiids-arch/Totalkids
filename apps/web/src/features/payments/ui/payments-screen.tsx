@@ -1,27 +1,21 @@
 import type { Route } from "next";
 import Link from "next/link";
 
-import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
+import { CellTitle, DataTable } from "@/shared/ui/admin/data-table";
 import { FilterBar } from "@/shared/ui/admin/filter-bar";
-import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
+import { InfoNote } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
-import { AdminMuted, AdminPanel } from "@/shared/ui/admin/panel";
+import { PaginationNav } from "@/shared/ui/admin/pagination-nav";
+import { AdminPanel } from "@/shared/ui/admin/panel";
 import { StatCard, StatGrid } from "@/shared/ui/admin/stat-card";
+import { StatusBadge } from "@/shared/ui/admin/status-badge";
 import { formatPrice } from "@/shared/ui/format-price";
 import { SelectField } from "@/shared/ui/form";
 
-import {
-  countPaymentAttempts,
-  filterPaymentAttempts,
-  isReconcilable,
-  PAYMENT_FILTERS,
-  toPaymentSearch,
-  type PaymentAttemptRow,
-  type PaymentQuery,
-} from "../domain/payment-query";
-import { PAYMENT_STATUS_LABEL } from "../domain/payment-status";
+import { listPaymentAttempts } from "../container";
+import { PAYMENT_FILTERS, toPaymentSearch, type PaymentQuery } from "../domain/payment-query";
+import { ATTEMPT_STATUS_LABEL } from "../domain/payment-status";
 import { PaymentStatusBadge } from "./payment-status-badge";
-import { ReconcileForm, type ReconcileAction } from "./reconcile-form";
 
 const DATE_TIME = new Intl.DateTimeFormat("es-CL", {
   day: "numeric",
@@ -32,42 +26,11 @@ const DATE_TIME = new Intl.DateTimeFormat("es-CL", {
 });
 const formatDateTime = (iso: string) => DATE_TIME.format(new Date(iso));
 
-const NOTICES: Record<string, { message: string; tone: "success" | "warning" | "info" }> = {
-  pagado: {
-    message: "Consulta simulada: Flow confirmó el pago. El pedido quedó confirmado.",
-    tone: "success",
-  },
-  rechazado: {
-    message:
-      "Consulta simulada: Flow rechazó el pago. El pedido sigue pendiente para un nuevo intento.",
-    tone: "warning",
-  },
-  incierto: {
-    message: "Consulta simulada: Flow no respondió. El pago y su pedido quedan en revisión.",
-    tone: "info",
-  },
-};
-
-/** Panel administrativo · Pagos y conciliación (RF-33, RN-04, RN-05). */
-export function PaymentsScreen({
-  attempts,
-  query,
-  notice,
-  reconcileAction,
-}: {
-  attempts: readonly PaymentAttemptRow[];
-  query: PaymentQuery;
-  notice?: string;
-  /** Server Action de conciliación; la inyecta la página desde orders. */
-  reconcileAction: ReconcileAction;
-}) {
-  const counts = countPaymentAttempts(attempts);
-  const rows = filterPaymentAttempts(attempts, query.status);
-  const reconcilable = filterPaymentAttempts(attempts, "todos").filter(isReconcilable);
-  const preselected = reconcilable.some((r) => r.orderId === query.order)
-    ? query.order
-    : (reconcilable[0]?.orderId ?? "");
-  const shown = notice ? NOTICES[notice] : undefined;
+/** Panel administrativo · Pagos y conciliación (RF-33, RN-04, RN-05). Solo lectura. */
+export async function PaymentsScreen({ query }: { query: PaymentQuery }) {
+  const result = await listPaymentAttempts(query);
+  const { counts } = result;
+  const filtered = query.status !== "todos" || query.order !== "";
 
   return (
     <>
@@ -75,11 +38,10 @@ export function PaymentsScreen({
         title="Pagos y conciliación"
         description="Revisa pagos pendientes e inciertos sin asumir que el retorno del navegador confirma un cobro."
       />
-      {shown ? <LiveNotice message={shown.message} tone={shown.tone} /> : null}
       <InfoNote>
-        Las respuestas de Flow se <strong>simulan</strong>: aquí eliges qué respondería la consulta
-        de estado. Solo una verificación real del backend (LN-10) puede acreditar un pago y consumir
-        reservas. Esta vista no mueve stock ni dinero.
+        Solo Flow confirma un cobro: el pedido se acredita cuando la API verifica el pago. Los
+        intentos pendientes o en revisión se concilian con la consulta de estado a Flow, que llega
+        con LN-15. Esta vista no mueve stock ni dinero.
       </InfoNote>
 
       <StatGrid label="Intentos de pago por estado">
@@ -94,6 +56,7 @@ export function PaymentsScreen({
       </StatGrid>
 
       <FilterBar label="Filtrar pagos">
+        {query.order ? <input type="hidden" name="pedido" value={query.order} /> : null}
         <SelectField
           label="Estado del pago"
           name="estado"
@@ -101,6 +64,17 @@ export function PaymentsScreen({
           options={PAYMENT_FILTERS}
         />
       </FilterBar>
+      {query.order ? (
+        <p className="mb-4 text-sm">
+          Intentos del pedido <strong>#{query.order}</strong> ·{" "}
+          <Link
+            href={`/admin/pagos${toPaymentSearch({ status: query.status })}` as Route}
+            className="font-extrabold text-brand-blue underline"
+          >
+            Ver todos los pedidos
+          </Link>
+        </p>
+      ) : null}
 
       <AdminPanel flush>
         <DataTable
@@ -112,9 +86,9 @@ export function PaymentsScreen({
             { key: "status", label: "Estado de pago" },
             { key: "date", label: "Fecha" },
             { key: "checked", label: "Última consulta" },
-            { key: "action", label: "Acción" },
+            { key: "note", label: "Conciliación" },
           ]}
-          rows={rows.map((row) => ({
+          rows={result.rows.map((row) => ({
             key: row.commerceOrder,
             cells: {
               order: (
@@ -135,16 +109,8 @@ export function PaymentsScreen({
               status: <PaymentStatusBadge status={row.status} />,
               date: formatDateTime(row.createdAt),
               checked: row.lastCheckedAt ? formatDateTime(row.lastCheckedAt) : "Sin consultas",
-              action: isReconcilable(row) ? (
-                <Link
-                  href={
-                    `/admin/pagos${toPaymentSearch({ ...query, order: row.orderId })}#conciliar` as Route
-                  }
-                  className={TEXT_ACTION}
-                  aria-label={`Consultar estado en Flow del pedido ${row.orderId}`}
-                >
-                  Consultar estado en Flow
-                </Link>
+              note: row.reconcilable ? (
+                <StatusBadge tone="yellow">Por conciliar</StatusBadge>
               ) : (
                 <span className="text-text-secondary">
                   {row.current ? "Resuelto" : "Intento anterior"}
@@ -153,46 +119,27 @@ export function PaymentsScreen({
             },
           }))}
           empty={
-            query.status === "todos" ? (
-              "Todavía no hay intentos de pago."
-            ) : (
+            filtered ? (
               <>
-                No hay pagos «{PAYMENT_STATUS_LABEL[query.status]}».{" "}
+                No hay pagos
+                {query.status === "todos" ? "" : ` «${ATTEMPT_STATUS_LABEL[query.status]}»`}
+                {query.order ? ` del pedido #${query.order}` : ""}.{" "}
                 <Link href="/admin/pagos" className="font-extrabold text-brand-blue underline">
                   Ver todos
                 </Link>
               </>
+            ) : (
+              "Todavía no hay intentos de pago."
             )
           }
-          footer={`${rows.length} intento${rows.length === 1 ? "" : "s"} · Datos de demostración`}
+          footer={`${result.total} intento${result.total === 1 ? "" : "s"} · página ${result.page} de ${result.pageCount}`}
         />
-      </AdminPanel>
-
-      <AdminPanel
-        id="conciliar"
-        title="Simular consulta a Flow"
-        description="Elige un pago pendiente o en revisión y la respuesta que daría la consulta de estado."
-      >
-        {reconcilable.length > 0 ? (
-          <ReconcileForm
-            key={`${preselected}-${notice ?? ""}`}
-            action={reconcileAction}
-            preselected={preselected}
-            options={reconcilable.map((row) => ({
-              value: row.orderId,
-              label: `#${row.orderId} · ${row.commerceOrder} · ${PAYMENT_STATUS_LABEL[row.status]}`,
-            }))}
-          />
-        ) : (
-          <AdminMuted>No hay pagos pendientes ni en revisión por conciliar.</AdminMuted>
-        )}
-        <div className="mt-4">
-          <AdminMuted>
-            Pagado confirma el pedido (si estaba vencido o cerrado, queda en revisión: RN-05).
-            Rechazado lo deja pendiente para un nuevo intento. Sin respuesta, queda en revisión: no
-            se asume rechazo (RN-04).
-          </AdminMuted>
-        </div>
+        <PaginationNav
+          label="Páginas de pagos"
+          page={result.page}
+          pageCount={result.pageCount}
+          hrefFor={(page) => `/admin/pagos${toPaymentSearch({ ...query, page })}` as Route}
+        />
       </AdminPanel>
     </>
   );

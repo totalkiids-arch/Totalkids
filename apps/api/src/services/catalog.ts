@@ -10,8 +10,10 @@ import type { PrismaClient } from "../lib/prisma.js";
  * - Disponibilidad (UI-11): `en_stock` si alguna variante tiene unidades
  *   (físico − reservado > 0); si no, `a_pedido` (se fabrica y se compra como reserva).
  * - Más vendidos: unidades de pedidos con pago confirmado (confirmado en adelante).
- * - Búsqueda sin tildes ni mayúsculas, por palabras: todas deben aparecer en el
- *   nombre, el resumen o la categoría.
+ * - Búsqueda sin tildes ni mayúsculas, por palabras (RF-02): todas deben aparecer
+ *   en el nombre, el resumen, la descripción, la categoría principal o una
+ *   adicional activa.
+ * - Color (RF-01): alguna variante activa tiene ese color, sin tildes ni mayúsculas.
  */
 
 export const SORTS = ["best_selling", "price_asc", "price_desc", "newest"] as const;
@@ -25,6 +27,7 @@ export interface CatalogFilters extends Pagination {
   category?: string | undefined;
   ageGroups?: string[] | undefined;
   materials?: string[] | undefined;
+  colors?: string[] | undefined;
   priceMin?: number | undefined;
   priceMax?: number | undefined;
   onSale?: boolean | undefined;
@@ -46,6 +49,8 @@ export interface ProductSummaryDto {
   category: { slug: string; name: string };
   ageGroups: string[];
   materials: string[];
+  /** Colores de las variantes activas, sin repetir y en su orden. */
+  colors: string[];
   /** Menor precio entre las variantes; null mientras no esté definido. */
   price: number | null;
   /** Precio anterior de la variante más barata, si está en oferta. */
@@ -134,6 +139,15 @@ function fromWhere(filters: CatalogFilters): Prisma.Sql {
   if (filters.materials?.length) {
     conditions.push(Prisma.sql`p."materials" && ${filters.materials}::text[]`);
   }
+  if (filters.colors?.length) {
+    conditions.push(Prisma.sql`EXISTS (
+        SELECT 1 FROM "product_variants" cv
+        WHERE cv."product_id" = p."id" AND cv."active"
+          AND tk_search_normalize(cv."color") IN (
+            SELECT tk_search_normalize(x) FROM unnest(${filters.colors}::text[]) AS x
+          )
+      )`);
+  }
   if (filters.priceMin !== undefined) {
     conditions.push(Prisma.sql`vs."min_price" >= ${filters.priceMin}`);
   }
@@ -144,15 +158,27 @@ function fromWhere(filters: CatalogFilters): Prisma.Sql {
   if (filters.availability) {
     conditions.push(Prisma.sql`vs."in_stock" = ${filters.availability === "en_stock"}`);
   }
-  for (const word of searchWords(filters.q)) {
+  const words = searchWords(filters.q);
+  for (const word of words) {
     conditions.push(Prisma.sql`tk_search_normalize(
-        p."name" || ' ' || coalesce(p."summary", '') || ' ' || c."name"
+        p."name" || ' ' || coalesce(p."summary", '') || ' ' || p."description" || ' ' ||
+        c."name" || ' ' || coalesce(ac."names", '')
       ) LIKE tk_search_normalize(${likePattern(word)}) ESCAPE '\\'`);
   }
+  // Nombres de las categorías adicionales activas, solo si hay búsqueda.
+  const additionalNames = words.length
+    ? Prisma.sql`LEFT JOIN LATERAL (
+        SELECT string_agg(x."name", ' ') AS "names"
+        FROM "product_categories" pc
+        JOIN "categories" x ON x."id" = pc."category_id"
+        WHERE pc."product_id" = p."id" AND x."active"
+      ) ac ON true`
+    : Prisma.empty;
 
   return Prisma.sql`
     FROM "products" p
     JOIN "categories" c ON c."id" = p."category_id"
+    ${additionalNames}
     JOIN (
       SELECT "product_id",
              min("price") AS "min_price",
@@ -213,6 +239,9 @@ function toSummary(product: SummaryRow): ProductSummaryDto {
     category: { slug: product.category.slug, name: product.category.name },
     ageGroups: product.ageGroups,
     materials: product.materials,
+    colors: [
+      ...new Set(product.variants.flatMap((v) => (v.color?.trim() ? [v.color.trim()] : []))),
+    ],
     price: cheapest?.price ?? null,
     compareAtPrice: cheapest?.compareAtPrice ?? null,
     onSale: product.variants.some((v) => v.compareAtPrice !== null),

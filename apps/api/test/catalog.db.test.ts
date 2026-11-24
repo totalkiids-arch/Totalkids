@@ -103,7 +103,7 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
         materials: ["madera"],
         publishedAt: new Date("2026-01-01"),
       },
-      [{ price: 50_000, compareAtPrice: 60_000, stockPhysical: 0 }],
+      [{ price: 50_000, compareAtPrice: 60_000, stockPhysical: 0, color: "Café" }],
     );
     const cuna = await product(
       {
@@ -117,15 +117,28 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
         publishedAt: new Date("2026-03-01"),
       },
       [
-        { price: 150_000, stockPhysical: 0, optionLabel: "2 plazas", sortOrder: 2 },
+        {
+          price: 150_000,
+          stockPhysical: 0,
+          optionLabel: "2 plazas",
+          sortOrder: 2,
+          color: "Azul marino",
+        },
         {
           price: 120_000,
           stockPhysical: 3,
           stockReserved: 1,
           optionLabel: "1 plaza",
           sortOrder: 1,
+          color: "Blanco",
         },
-        { price: 99_000, active: false, optionLabel: "Descontinuada", sortOrder: 3 },
+        {
+          price: 99_000,
+          active: false,
+          optionLabel: "Descontinuada",
+          sortOrder: 3,
+          color: "Rojo",
+        },
       ],
     );
     await product(
@@ -267,6 +280,7 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
       category: { slug: "cat-cunas", name: "Cunas y camas" },
       ageGroups: ["sala-cuna", "nivel-medio"],
       materials: ["madera", "metal"],
+      colors: ["Blanco", "Azul marino"],
       price: 120_000,
       compareAtPrice: null,
       onSale: false,
@@ -285,7 +299,7 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
     });
   });
 
-  it("busca sin tildes ni mayúsculas, por palabras, en nombre, resumen y categoría", async () => {
+  it("busca sin tildes ni mayúsculas, por palabras, en nombre, resumen, descripción y categoría", async () => {
     expect(slugs(await get("/products?q=baul"))).toEqual(["baul-montessori"]);
     expect(slugs(await get("/products?q=BAÚL"))).toEqual(["baul-montessori"]);
     expect(slugs(await get(`/products?q=${encodeURIComponent("cuna JUNJI")}`))).toEqual([
@@ -296,6 +310,8 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
       "baul-montessori",
       "mesa-redonda",
     ]);
+    // Descripción (RF-02).
+    expect(slugs(await get("/products?q=RESISTENTE"))).toEqual(["cuna-alta-junji"]);
     expect(slugs(await get("/products?q=cojin%20mesa"))).toEqual([]);
     expect(slugs(await get("/products?q=inexistente"))).toEqual([]);
   });
@@ -308,7 +324,7 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
     expect(slugs(await get("/products?q=_"))).toEqual([]);
   });
 
-  it("filtra por categoría, nivel, material, precio, oferta y disponibilidad", async () => {
+  it("filtra por categoría, nivel, material, color, precio, oferta y disponibilidad", async () => {
     const sorted = async (query: string) => slugs(await get(`/products?${query}`)).sort();
     expect(await sorted("category=cat-cunas")).toEqual(["cojin-algodon", "cuna-alta-junji"]);
     expect(await sorted("ageGroup=nivel-medio")).toEqual(["cuna-alta-junji"]);
@@ -328,6 +344,14 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
       "cojin-algodon",
     ]);
     expect(await sorted("category=cat-oculta")).toEqual([]);
+    // Color de una variante activa, sin tildes ni mayúsculas; una inactiva no cuenta.
+    expect(await sorted("color=cafe")).toEqual(["baul-montessori"]);
+    expect(await sorted(`color=${encodeURIComponent("AZUL  marino")},blanco`)).toEqual([
+      "cuna-alta-junji",
+    ]);
+    expect(await sorted("color=Blanco&color=Café")).toEqual(["baul-montessori", "cuna-alta-junji"]);
+    expect(await sorted("color=rojo")).toEqual([]);
+    expect(await sorted("color=blanco&material=melamina")).toEqual([]);
   });
 
   it("ordena por precio (sin precio al final) y por novedades", async () => {
@@ -369,6 +393,7 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
       "availability=agotado",
       "onSale=quizas",
       `q=${"a".repeat(101)}`,
+      `color=${"a".repeat(61)}`,
     ]) {
       const res = await get(`/products?${query}`);
       expect(res.status, query).toBe(422);
@@ -392,7 +417,7 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
       {
         sku: "cuna-alta-junji-1",
         optionLabel: "1 plaza",
-        color: null,
+        color: "Blanco",
         size: null,
         price: 120_000,
         compareAtPrice: null,
@@ -402,7 +427,7 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
       {
         sku: "cuna-alta-junji-0",
         optionLabel: "2 plazas",
-        color: null,
+        color: "Azul marino",
         size: null,
         price: 150_000,
         compareAtPrice: null,

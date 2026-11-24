@@ -34,14 +34,13 @@ describe("canAccessSection", () => {
     expect(visibleFor("admin")).toEqual([...ADMIN_SECTIONS]);
   });
 
-  it("el operador ve solo resumen, pedidos, pagos, solicitudes, correos y reportes", () => {
+  it("el operador ve solo resumen, pedidos, pagos, solicitudes y correos", () => {
     expect(visibleFor("operator")).toEqual([
       "resumen",
       "pedidos",
       "pagos",
       "solicitudes",
       "correos",
-      "reportes",
     ]);
   });
 
@@ -52,6 +51,7 @@ describe("canAccessSection", () => {
       "cupones",
       "usuarios",
       "actividad",
+      "reportes",
     ] as const) {
       expect(canAccessSection("operator", section)).toBe(false);
     }

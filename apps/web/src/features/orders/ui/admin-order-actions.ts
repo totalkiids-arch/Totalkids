@@ -5,50 +5,50 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { getAdminSession } from "@/features/auth";
-import type { ReconcileFormState } from "@/features/payments";
-import { ADMIN_ROLE_LABEL, canAccessSection, type AdminSection } from "@/features/users";
+import { canAccessSection } from "@/features/users";
+import { attemptPanel, isPanelFailure } from "@/shared/lib/panel-errors";
 
 import { adminOrderPanel } from "../container";
+import type { FieldErrors } from "../domain/admin-order";
 import { normalizeOrderId } from "../domain/guest-lookup";
-import type { FieldErrors } from "../domain/order-workflow";
 
 /*
- * Mutaciones del panel de pedidos y pagos. Cada acción:
- * 1. comprueba la sesión (DEMO, ver features/auth) y el rol: la pantalla ya
- *    oculta lo que no corresponde, pero una acción se puede invocar directamente.
- *    El reembolso manual es solo del Administrador (tabla de la API de la SRS);
+ * Mutaciones del panel de pedidos. Cada acción:
+ * 1. comprueba la sesión y el rol: la pantalla ya oculta lo que no corresponde,
+ *    pero una acción se puede invocar directamente. Reembolsos y corrección de
+ *    folio son solo del Administrador (y la API lo vuelve a exigir);
  * 2. valida la forma del formulario con zod;
- * 3. delega en el puerto AdminOrderPanel, que valida con las reglas del dominio.
- *    El actor sale de la sesión, nunca del formulario.
+ * 3. delega en la API, que aplica las reglas y registra el actor de la sesión.
+ * Las reglas de negocio vuelven por campo; 403 o la API caída, como mensaje.
  * Los formularios funcionan sin JavaScript (useActionState + redirect).
  */
 
 const FORBIDDEN = "Tu sesión no puede gestionar pedidos. Vuelve a ingresar al panel.";
-const FORBIDDEN_REFUND = "Solo el Administrador registra reembolsos manuales.";
+const ADMIN_ONLY_REFUND = "Solo el Administrador registra reembolsos manuales.";
+const ADMIN_ONLY_INVOICE = "Solo el Administrador corrige el folio de una factura registrada.";
 const UNREADABLE = "No pudimos leer el formulario. Recarga la página.";
 
-async function sessionFor(section: AdminSection) {
+async function currentRole() {
   const session = await getAdminSession();
-  return session && canAccessSection(session.role, section) ? session : null;
+  if (!session) redirect("/admin/ingresar");
+  return session.role;
 }
 
-async function adminSession() {
-  const session = await getAdminSession();
-  return session?.role === "admin" ? session : null;
+async function canManageOrders() {
+  return canAccessSection(await currentRole(), "pedidos");
 }
 
 const str = (max: number) => z.string().max(max);
 
-/** Revalida todas las vistas que muestran el pedido. */
-function revalidateOrder(id: string) {
-  revalidatePath(`/admin/pedidos/${id}`);
+/** Revalida las vistas que muestran el pedido. */
+function revalidateOrder(ref: string) {
+  revalidatePath(`/admin/pedidos/${ref}`);
   revalidatePath("/admin/pedidos");
   revalidatePath("/admin/pagos");
   revalidatePath("/admin");
-  revalidatePath(`/seguimiento/${id}`);
 }
 
-/** "$30.000", "30 000" o "30000" → 30000; cualquier otra cosa → NaN (el dominio lo rechaza). */
+/** "$30.000", "30 000" o "30000" → 30000; cualquier otra cosa → NaN (la API lo rechaza). */
 function parseClp(text: string): number {
   const clean = text.replace(/[$.\s]/g, "");
   return /^\d{1,12}$/.test(clean) ? Number(clean) : Number.NaN;
@@ -74,8 +74,7 @@ export async function changeOrderStatusAction(
   previous: StatusFormState,
   formData: FormData,
 ): Promise<StatusFormState> {
-  const session = await sessionFor("pedidos");
-  if (!session) return { ...previous, errors: { form: FORBIDDEN } };
+  if (!(await canManageOrders())) return { ...previous, errors: { form: FORBIDDEN } };
 
   const parsed = StatusForm.safeParse({
     id: formData.get("id") ?? "",
@@ -85,19 +84,20 @@ export async function changeOrderStatusAction(
     code: formData.get("code") ?? "",
     restock: formData.get("restock") === "1",
   });
-  const id = parsed.success ? normalizeOrderId(parsed.data.id) : null;
-  if (!parsed.success || !id) return { ...previous, errors: { form: UNREADABLE } };
+  const ref = parsed.success ? normalizeOrderId(parsed.data.id) : null;
+  if (!parsed.success || !ref) return { ...previous, errors: { form: UNREADABLE } };
 
   const { to, reason, carrier, code, restock } = parsed.data;
   const values = { to, reason, carrier, code, restock };
-  const result = await adminOrderPanel.changeStatus(id, values, ADMIN_ROLE_LABEL[session.role]);
+  const result = await attemptPanel(() => adminOrderPanel.changeStatus(ref, values));
+  if (isPanelFailure(result)) return { values, errors: { form: result.failed } };
   if (!result.ok) return { values, errors: result.errors };
 
-  revalidateOrder(id);
-  redirect(`/admin/pedidos/${id}?aviso=estado#historial`);
+  revalidateOrder(ref);
+  redirect(`/admin/pedidos/${ref}?aviso=estado#historial`);
 }
 
-// ── Reembolso manual (RF-32) ─────────────────────────────────────────────────
+// ── Reembolso manual (RF-32), solo Administrador ────────────────────────────
 
 export interface RefundFormState {
   values: { amount: string; date: string; reference: string; status: string };
@@ -116,24 +116,23 @@ export async function registerRefundAction(
   previous: RefundFormState,
   formData: FormData,
 ): Promise<RefundFormState> {
-  const session = await adminSession();
-  if (!session) return { ...previous, errors: { form: FORBIDDEN_REFUND } };
+  if ((await currentRole()) !== "admin")
+    return { ...previous, errors: { form: ADMIN_ONLY_REFUND } };
 
   const parsed = RefundForm.safeParse(Object.fromEntries(formData));
-  const id = parsed.success ? normalizeOrderId(parsed.data.id) : null;
-  if (!parsed.success || !id) return { ...previous, errors: { form: UNREADABLE } };
+  const ref = parsed.success ? normalizeOrderId(parsed.data.id) : null;
+  if (!parsed.success || !ref) return { ...previous, errors: { form: UNREADABLE } };
 
   const { amount, date, reference, status } = parsed.data;
   const values = { amount, date, reference, status };
-  const result = await adminOrderPanel.registerRefund(
-    id,
-    { amount: parseClp(amount), date, reference, status },
-    ADMIN_ROLE_LABEL[session.role],
+  const result = await attemptPanel(() =>
+    adminOrderPanel.registerRefund(ref, { amount: parseClp(amount), date, reference, status }),
   );
+  if (isPanelFailure(result)) return { values, errors: { form: result.failed } };
   if (!result.ok) return { values, errors: result.errors };
 
-  revalidateOrder(id);
-  redirect(`/admin/pedidos/${id}?aviso=reembolso#reembolso`);
+  revalidateOrder(ref);
+  redirect(`/admin/pedidos/${ref}?aviso=reembolso#reembolso`);
 }
 
 const ResolveRefund = z.object({
@@ -145,83 +144,66 @@ const ResolveRefund = z.object({
 /** Marca un reembolso solicitado como procesado o fallido (botones, sin JavaScript). */
 export async function resolveRefundAction(formData: FormData) {
   const parsed = ResolveRefund.safeParse(Object.fromEntries(formData));
-  const id = parsed.success ? normalizeOrderId(parsed.data.id) : null;
-  if (!parsed.success || !id) redirect("/admin/pedidos");
+  const ref = parsed.success ? normalizeOrderId(parsed.data.id) : null;
+  if (!parsed.success || !ref) redirect("/admin/pedidos");
 
-  const session = await adminSession();
-  if (!session) redirect(`/admin/pedidos/${id}?aviso=sin-permiso#reembolso`);
+  if ((await currentRole()) !== "admin")
+    redirect(`/admin/pedidos/${ref}?aviso=sin-permiso#reembolso`);
 
-  const result = await adminOrderPanel.resolveRefund(
-    id,
-    { refundId: parsed.data.refundId, status: parsed.data.status },
-    ADMIN_ROLE_LABEL[session.role],
+  const result = await attemptPanel(() =>
+    adminOrderPanel.resolveRefund(ref, parsed.data.refundId, parsed.data.status),
   );
-  revalidateOrder(id);
+  revalidateOrder(ref);
+  const ok = !isPanelFailure(result) && result.ok;
   redirect(
-    `/admin/pedidos/${id}?aviso=${result.ok ? "reembolso-resuelto" : "reembolso-no-resuelto"}#reembolso`,
+    `/admin/pedidos/${ref}?aviso=${ok ? "reembolso-resuelto" : "reembolso-no-resuelto"}#reembolso`,
   );
 }
 
 // ── Factura emitida por Total Kids ──────────────────────────────────────────
 
-const InvoiceForm = z.object({ id: str(40), number: str(20) });
+export interface InvoiceFormState {
+  values: { number: string; reason: string };
+  errors: FieldErrors;
+}
+
+const InvoiceForm = z.object({
+  id: str(40),
+  number: str(40),
+  reason: str(2000),
+  replace: z.boolean(),
+});
 
 /**
  * Registra el folio de la factura que Total Kids emitió (Flow solo cubre la
- * boleta). Quien gestiona pedidos puede hacerlo; queda en el historial.
+ * boleta), o lo corrige: corregir es solo del Administrador, con motivo.
  */
-export async function registerInvoiceAction(formData: FormData) {
-  const parsed = InvoiceForm.safeParse(Object.fromEntries(formData));
-  const id = parsed.success ? normalizeOrderId(parsed.data.id) : null;
-  if (!parsed.success || !id) redirect("/admin/pedidos");
-
-  const session = await sessionFor("pedidos");
-  if (!session) redirect(`/admin/pedidos/${id}?aviso=factura-sin-permiso#facturacion`);
-
-  const result = await adminOrderPanel.registerInvoice(
-    id,
-    { number: parsed.data.number },
-    ADMIN_ROLE_LABEL[session.role],
-  );
-  revalidateOrder(id);
-  redirect(`/admin/pedidos/${id}?aviso=${result.ok ? "factura" : "factura-invalida"}#facturacion`);
-}
-
-// ── Conciliación con Flow (RF-33), la usa la pantalla de Pagos ──────────────
-
-const ReconcileForm = z.object({
-  order: str(40),
-  result: str(20),
-  reason: str(2000),
-});
-
-const RESULT_NOTICE: Record<string, string> = {
-  paid: "pagado",
-  rejected: "rechazado",
-  uncertain: "incierto",
-};
-
-export async function reconcilePaymentAction(
-  previous: ReconcileFormState,
+export async function registerInvoiceAction(
+  previous: InvoiceFormState,
   formData: FormData,
-): Promise<ReconcileFormState> {
-  const session = await sessionFor("pagos");
-  if (!session) return { ...previous, errors: { form: FORBIDDEN } };
+): Promise<InvoiceFormState> {
+  const role = await currentRole();
+  if (!canAccessSection(role, "pedidos")) return { ...previous, errors: { form: FORBIDDEN } };
 
-  const parsed = ReconcileForm.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { ...previous, errors: { form: UNREADABLE } };
-  const values = parsed.data;
-  const id = normalizeOrderId(values.order);
-  if (!id)
-    return { values, errors: { order: "Elige un pedido con pago pendiente o en revisión." } };
+  const parsed = InvoiceForm.safeParse({
+    id: formData.get("id") ?? "",
+    number: formData.get("number") ?? "",
+    reason: formData.get("reason") ?? "",
+    replace: formData.get("replace") === "1",
+  });
+  const ref = parsed.success ? normalizeOrderId(parsed.data.id) : null;
+  if (!parsed.success || !ref) return { ...previous, errors: { form: UNREADABLE } };
 
-  const result = await adminOrderPanel.reconcile(
-    id,
-    { result: values.result, reason: values.reason },
-    ADMIN_ROLE_LABEL[session.role],
+  const { number, reason, replace } = parsed.data;
+  const values = { number, reason };
+  if (replace && role !== "admin") return { values, errors: { form: ADMIN_ONLY_INVOICE } };
+
+  const result = await attemptPanel(() =>
+    adminOrderPanel.registerInvoice(ref, { number, replace, reason }),
   );
+  if (isPanelFailure(result)) return { values, errors: { form: result.failed } };
   if (!result.ok) return { values, errors: result.errors };
 
-  revalidateOrder(id);
-  redirect(`/admin/pagos?aviso=${RESULT_NOTICE[values.result] ?? "consultado"}&pedido=${id}`);
+  revalidateOrder(ref);
+  redirect(`/admin/pedidos/${ref}?aviso=${replace ? "factura-corregida" : "factura"}#facturacion`);
 }

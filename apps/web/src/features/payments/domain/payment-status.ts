@@ -17,3 +17,20 @@ export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 export function isPaymentStatus(value: unknown): value is PaymentStatus {
   return typeof value === "string" && (PAYMENT_STATUSES as readonly string[]).includes(value);
 }
+
+/**
+ * Estados de un intento de pago en el panel: los de la API, que además anula
+ * los intentos que un pago posterior dejó sin efecto ("voided").
+ */
+export const ATTEMPT_STATUSES = [...PAYMENT_STATUSES, "voided"] as const;
+
+export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number];
+
+export const ATTEMPT_STATUS_LABEL: Record<AttemptStatus, string> = {
+  ...PAYMENT_STATUS_LABEL,
+  voided: "Anulado",
+};
+
+export function isAttemptStatus(value: unknown): value is AttemptStatus {
+  return typeof value === "string" && (ATTEMPT_STATUSES as readonly string[]).includes(value);
+}

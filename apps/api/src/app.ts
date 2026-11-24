@@ -4,23 +4,39 @@ import cors from "cors";
 import express, { type Express, type Router } from "express";
 import helmet from "helmet";
 
-import { parseTrustProxy, type Env } from "./config/env.js";
+import { DEV_ADMIN_TO, DEV_IMAGES_URL, parseTrustProxy, type Env } from "./config/env.js";
 import { httpLogger, type Logger } from "./lib/logger.js";
 import type { PrismaClient } from "./lib/prisma.js";
 import { bodyParsers, isFlowCallbackPath, requireContentType } from "./middleware/body.js";
-import { storeCsrfSessionKey } from "./middleware/cart-session.js";
+import { combinedCsrfSessionKey } from "./middleware/cart-session.js";
 import { csrfProtection, type CsrfSessionKey } from "./middleware/csrf.js";
 import { createErrorHandler, notFound } from "./middleware/error-handler.js";
 import { requirePanel } from "./middleware/panel-auth.js";
 import { globalLimiter } from "./middleware/rate-limit.js";
 import { requestId } from "./middleware/request-id.js";
+import { adminCatalogRouter } from "./routes/admin-catalog.js";
+import { adminConfigRouter } from "./routes/admin-config.js";
+import { adminDeskRouter } from "./routes/admin-desk.js";
+import { adminEmailsRouter } from "./routes/admin-emails.js";
+import { adminOrdersRouter } from "./routes/admin-orders.js";
+import { adminPanelRouter } from "./routes/admin-panel.js";
+import { adminReportsRouter } from "./routes/admin-reports.js";
+import { adminUsersRouter } from "./routes/admin-users.js";
 import { authRouter } from "./routes/auth.js";
 import { cartRouter } from "./routes/cart.js";
 import { ordersRouter } from "./routes/orders.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { csrfRouter } from "./routes/csrf.js";
 import { docsRouter } from "./routes/docs.js";
+import { formsRouter } from "./routes/forms.js";
 import { healthRouter } from "./routes/health.js";
+import { shippingRouter } from "./routes/shipping.js";
+import { storeRouter } from "./routes/store.js";
+import { cartTtlMs } from "./services/cart/session.js";
+import { LocalDiskImageStorage } from "./services/images/local-disk.js";
+import type { ImageStorage } from "./services/images/storage.js";
+import type { ShippingQuoter } from "./services/shipping/quoter.js";
+import { ZoneShippingQuoter } from "./services/shipping/zone-quoter.js";
 
 export interface AppDeps {
   env: Pick<
@@ -32,7 +48,8 @@ export interface AppDeps {
     | "RATE_LIMIT_MAX"
     | "CSRF_SECRET"
     | "API_DOCS"
-  >;
+  > &
+    Partial<Pick<Env, "IMAGES_DIR" | "IMAGES_PUBLIC_URL" | "CART_TTL_DAYS" | "EMAIL_ADMIN_TO">>;
   logger: Logger;
   prisma: PrismaClient;
   /**
@@ -41,10 +58,20 @@ export interface AppDeps {
    */
   registerRoutes?: (v1: Router) => void;
   /**
-   * Clave de la sesión actual a la que se ata el token CSRF. Por defecto, el hash
-   * de la cookie del panel (LN-04) más el de la cookie del carrito (LN-06).
+   * Clave de la sesión actual a la que se ata el token CSRF. Por defecto, la del
+   * panel si hay sesión (LN-04) y si no, la del carrito (LN-06).
    */
   csrfSessionKey?: CsrfSessionKey;
+  /**
+   * Almacenamiento de las imágenes del catálogo (LN-12). Por defecto, disco
+   * local en IMAGES_DIR; los tests inyectan uno en una carpeta temporal.
+   */
+  imageStorage?: ImageStorage;
+  /**
+   * Cotización de entrega (LN-06). Por defecto, zonas y tarifas del panel; un
+   * courier se enchufa aquí con otro adaptador del puerto.
+   */
+  shippingQuoter?: ShippingQuoter;
 }
 
 /** CSRF_SECRET es obligatorio en producción (env.ts); fuera de ella se genera uno. */
@@ -61,11 +88,17 @@ export function createApp({
   prisma,
   registerRoutes,
   csrfSessionKey,
+  imageStorage,
+  shippingQuoter,
 }: AppDeps): Express {
   const app = express();
   const isProduction = env.NODE_ENV === "production";
-  const sessionKey = csrfSessionKey ?? storeCsrfSessionKey(isProduction);
+  const sessionKey = csrfSessionKey ?? combinedCsrfSessionKey(isProduction);
   const csrfSecret = resolveCsrfSecret(env, logger);
+  const quoter = shippingQuoter ?? new ZoneShippingQuoter(prisma);
+  const storage =
+    imageStorage ??
+    new LocalDiskImageStorage(env.IMAGES_DIR ?? "uploads", env.IMAGES_PUBLIC_URL ?? DEV_IMAGES_URL);
 
   // La API recibe tráfico a través de Next.js: confiar en X-Forwarded-For del proxy
   // para que req.ip (y express-rate-limit) vean la IP real del navegador.
@@ -99,13 +132,42 @@ export function createApp({
   v1.use(csrfRouter({ secret: csrfSecret, isProduction, sessionKey }));
   v1.use(authRouter({ prisma, isProduction }));
   v1.use(catalogRouter(prisma));
-  v1.use(cartRouter({ prisma, isProduction }));
-  v1.use(ordersRouter({ prisma, isProduction, accessSecret: csrfSecret }));
+  v1.use(
+    cartRouter({
+      prisma,
+      isProduction,
+      ttlMs: cartTtlMs(env.CART_TTL_DAYS ?? 30),
+      csrfSecret,
+      sessionKey,
+    }),
+  );
+  v1.use(shippingRouter({ prisma, isProduction, quoter }));
+  // Pedidos de invitado (LN-09): cotiza la entrega con el mismo puerto que el carrito.
+  v1.use(ordersRouter({ prisma, isProduction, accessSecret: csrfSecret, quoter }));
+  // Formularios públicos (LN-08): solicitudes de servicio y newsletter.
+  v1.use(formsRouter({ prisma, adminEmail: env.EMAIL_ADMIN_TO ?? DEV_ADMIN_TO }));
+  // Tienda (LN-16): plantilla activa y banners vigentes que se configuran en el panel.
+  v1.use(storeRouter(prisma));
   // Panel: todo /admin exige sesión del equipo (denegar por defecto, RF-31). Cada
   // ruta agrega el rol que necesita con requireRole.
   v1.use("/admin", requirePanel(prisma, isProduction));
+  v1.use(adminEmailsRouter(prisma));
+  v1.use(adminCatalogRouter(prisma, storage));
+  v1.use(adminOrdersRouter(prisma));
+  // Panel admin (LN-16): configuración, solicitudes, reportes, usuarios y lecturas.
+  v1.use(adminConfigRouter(prisma));
+  v1.use(adminDeskRouter(prisma));
+  v1.use(adminUsersRouter(prisma));
+  v1.use(adminReportsRouter(prisma));
+  v1.use(adminPanelRouter(prisma));
   registerRoutes?.(v1);
   app.use("/api/v1", v1);
+
+  // Imágenes subidas desde el panel: la API las sirve solo fuera de producción.
+  // En producción las sirve el proxy del VPS (o un almacenamiento externo).
+  if (!isProduction && storage instanceof LocalDiskImageStorage) {
+    app.use("/uploads", storage.staticHandler());
+  }
 
   // Contrato OpenAPI: activo en desarrollo; en producción solo si API_DOCS=enabled
   // (SRS 4.4.2). Deshabilitado, /api/docs cae en el 404 estándar.

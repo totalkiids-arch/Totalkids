@@ -41,8 +41,9 @@ export const ADMIN_SECTIONS = [
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 
 /**
- * El operador consulta y gestiona pedidos y solicitudes, sin catálogo,
- * configuración ni usuarios (SRS 2.3). El detalle de pedido es parte de "pedidos".
+ * El operador consulta y gestiona pedidos, pagos, solicitudes y correos, sin catálogo,
+ * configuración, reportes ni usuarios (SRS 2.3; igual que los x-roles de la API).
+ * El detalle de pedido es parte de "pedidos".
  */
 export const OPERATOR_SECTIONS: readonly AdminSection[] = [
   "resumen",
@@ -50,7 +51,6 @@ export const OPERATOR_SECTIONS: readonly AdminSection[] = [
   "pagos",
   "solicitudes",
   "correos",
-  "reportes",
 ];
 
 export function canAccessSection(role: AdminRole, section: AdminSection): boolean {

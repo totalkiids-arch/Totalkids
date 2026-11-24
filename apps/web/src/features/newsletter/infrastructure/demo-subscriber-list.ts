@@ -1,6 +1,5 @@
 import "server-only";
 
-import type { NewsletterGateway } from "../application/ports";
 import type { SubscriberAdmin } from "../application/subscriber-admin";
 import {
   registerUnsubscribe,
@@ -16,11 +15,10 @@ import { CONSENT_VERSION } from "../domain/subscription";
  * ═══════════════════════════════════════════════════════════════════════════
  *  - Vive en la memoria del servidor de Next.js: se pierde al reiniciar o
  *    redesplegar y no se comparte entre instancias.
- *  - Recibe las altas y bajas del formulario público (/suscripcion y la
- *    portada) y las muestra en el panel (/admin/suscriptores). No envía correos.
- *  - LN-08/LN-13 lo reemplazan por adaptadores que llaman a la API
- *    (POST /newsletter, /newsletter/unsubscribe y GET /admin/newsletter), con
- *    las mismas interfaces NewsletterGateway y SubscriberAdmin.
+ *  - Solo alimenta el panel (/admin/suscriptores). El formulario público ya
+ *    usa la API (LN-08), así que las altas reales no aparecen aquí.
+ *  - LN-13 lo reemplaza por un adaptador de GET /admin/newsletter con la misma
+ *    interfaz SubscriberAdmin.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -58,28 +56,8 @@ function seed(): DemoState {
 const holder = globalThis as typeof globalThis & { __tkDemoSubscribers?: DemoState };
 const state = () => (holder.__tkDemoSubscribers ??= seed());
 
-/** Implementa el puerto del formulario público y el del panel sobre los mismos datos. */
-export const demoSubscriberList: NewsletterGateway & SubscriberAdmin = {
-  async subscribe(email, consent) {
-    const s = state();
-    const index = s.subscribers.findIndex((x) => x.email === email);
-    const existing = s.subscribers[index] ?? null;
-    if (!existing) s.sequence += 1;
-    const next = subscribeWithConsent(existing, `SUB-${s.sequence}`, email, consent);
-    if (existing) s.subscribers[index] = next;
-    else s.subscribers.push(next);
-  },
-
-  // Formulario público. Igual que la API: no informa si el correo estaba en la lista.
-  async unsubscribe(email) {
-    const s = state();
-    const index = s.subscribers.findIndex((x) => x.email === email);
-    const current = s.subscribers[index];
-    if (!current) return;
-    const result = registerUnsubscribe(current, SUBSCRIBER_ACTOR, new Date().toISOString());
-    if (result.ok) s.subscribers[index] = result.subscriber;
-  },
-
+/** Implementa el puerto del panel sobre datos de demostración. */
+export const demoSubscriberList: SubscriberAdmin = {
   async registerUnsubscribe(id, actor) {
     const s = state();
     const index = s.subscribers.findIndex((x) => x.id === id);

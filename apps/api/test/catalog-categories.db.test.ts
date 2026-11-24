@@ -97,6 +97,20 @@ describe.skipIf(!url)("catálogo: categorías adicionales y extras por producto"
     });
   });
 
+  it("la búsqueda encuentra el producto por el nombre de su categoría adicional activa", async () => {
+    await inRollback(async (tx) => {
+      const { junji, product } = await fixture(tx);
+      const id = product.slug.split("-").pop() ?? "";
+      const search = (q: string) =>
+        listProducts(tx, { q, sort: "newest", page: 1, pageSize: 20 }).then(({ items }) =>
+          items.map((i) => i.slug),
+        );
+      expect(await search(`linea ${id}`)).toEqual([product.slug]);
+      await tx.category.update({ where: { id: junji.id }, data: { active: false } });
+      expect(await search(`linea ${id}`)).toEqual([]);
+    });
+  });
+
   it("la ficha trae nombre de la opción, plazo y el precio del extra propio del producto", async () => {
     await inRollback(async (tx) => {
       const { product } = await fixture(tx);
