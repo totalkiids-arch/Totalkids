@@ -27,6 +27,16 @@ const LN12_PATHS = [
 ];
 /** Carrito, cupón y cotización de entrega (LN-06). */
 const LN06_PATHS = ["/cart", "/cart/items", "/cart/items/{id}", "/cart/coupon", "/shipping/quote"];
+/** Pedidos del panel (LN-13): rol por path (reembolsos, solo Administrador). */
+const LN13_ROLES: Record<string, string[]> = {
+  "/admin/orders": ["admin", "operator"],
+  "/admin/orders/{id}": ["admin", "operator"],
+  "/admin/orders/{id}/status": ["admin", "operator"],
+  "/admin/orders/{id}/invoice": ["admin", "operator"],
+  "/admin/orders/{id}/refund-records": ["admin"],
+  "/admin/orders/{id}/refund-records/{refundId}": ["admin"],
+};
+const LN13_PATHS = Object.keys(LN13_ROLES);
 /** Paths ya implementados; todo lo demás debe estar marcado como pendiente. */
 const IMPLEMENTED = new Set([
   // LN-02
@@ -57,6 +67,8 @@ const IMPLEMENTED = new Set([
   "/orders",
   "/orders/lookup",
   "/orders/{orderNumber}",
+  // LN-13
+  ...LN13_PATHS,
 ]);
 
 function operations() {
@@ -161,6 +173,28 @@ describe("contrato OpenAPI", () => {
         expect(JSON.stringify(op.requestBody ?? {}), `${method} ${path}`).not.toContain(
           "PendingJson",
         );
+      }
+    }
+  });
+
+  it("los pedidos del panel (LN-13) declaran roles, cuerpos y respuestas reales", () => {
+    const declared = Object.keys(paths).filter((p) => p.startsWith("/admin/orders"));
+    expect(declared.sort()).toEqual([...LN13_PATHS].sort());
+    for (const path of LN13_PATHS) {
+      const ops = operations().filter((o) => o.path === path);
+      expect(ops.length, path).toBeGreaterThan(0);
+      for (const { method, op } of ops) {
+        const where = `${method.toUpperCase()} ${path}`;
+        expect(op["x-roles"], where).toEqual(LN13_ROLES[path]);
+        expect(op.summary, where).not.toContain("Pendiente");
+        expect(JSON.stringify(op.requestBody ?? {}), where).not.toContain("PendingJson");
+        if (MUTATING.has(method)) expect(op.requestBody, where).toBeDefined();
+        const responses = op.responses as Json;
+        const ok = (responses["200"] ?? responses["201"]) as Json | undefined;
+        expect(JSON.stringify(ok?.content ?? null), where).toContain("#/components/schemas/");
+        if (MUTATING.has(method)) {
+          expect(Object.keys(responses), where).toEqual(expect.arrayContaining(["409", "422"]));
+        }
       }
     }
   });

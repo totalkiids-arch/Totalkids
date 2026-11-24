@@ -1338,50 +1338,119 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
 
   # ───────────────────────── Panel: pedidos (LN-13) ─────────────────────────
+  # Pedidos, estados y factura: Administrador y Operador. Reembolsos: solo
+  # Administrador. `{id}` es el uuid del pedido o su número visible ("TK-1048" o
+  # "1048"). Los cambios bloquean la fila del pedido (FOR UPDATE) y quedan en
+  # audit_log con actor, motivo y requestId. Errores de forma: 422 con un issue
+  # por campo y el texto del panel; conflictos con el estado del pedido: 409 con
+  # `details.field` (campo del formulario del panel: to, restock, amount, number o form).
   /admin/orders:
     get:
       operationId: adminListOrders
-      summary: "[Pendiente LN-13] Pedidos filtrables"
-      x-pending-task: LN-13
+      summary: Pedidos filtrables
+      description: |
+        Más recientes primero. `q` busca por número ("TK-1048" o "1048"), nombre
+        o correo del comprador, sin distinguir tildes ni mayúsculas. `status` y
+        `paymentStatus` aceptan varios valores (`?status=a&status=b` o `a,b`);
+        el estado de pago es el del último intento (`none` = nunca se intentó).
+        `from` y `to` son días de Chile, ambos inclusive. `invoicePending` =
+        pedido con factura, pagado y sin folio.
       x-roles: [admin, operator]
       tags: [Panel - Pedidos]
       security: [{ panelSession: [] }]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PageSize"
+        - { name: q, in: query, schema: { type: string, maxLength: 80 } }
+        - name: status
+          in: query
+          style: form
+          explode: true
+          schema: { type: array, items: { $ref: "#/components/schemas/OrderStatus" } }
+        - name: paymentStatus
+          in: query
+          style: form
+          explode: true
+          schema: { type: array, items: { $ref: "#/components/schemas/OrderPaymentStatus" } }
+        - { name: deliveryMethod, in: query, schema: { type: string, enum: [shipping, pickup] } }
+        - { name: invoicePending, in: query, schema: { type: string, enum: ["true", "false"] } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
       responses:
-        "200": { description: Página de pedidos }
+        "200":
+          description: Página de pedidos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminOrderSummary" } }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/orders/{id}:
     get:
       operationId: adminGetOrder
-      summary: "[Pendiente LN-13] Detalle de pedido con pagos, historial y factura"
-      x-pending-task: LN-13
+      summary: Detalle de pedido con pagos, reembolsos, historial, actividad y correos
+      description: |
+        Incluye las transiciones disponibles ya calculadas (`availableTransitions`),
+        si se puede registrar la reposición al cancelar y si un pago sin resolver
+        bloquea cancelar o vencer, para que el panel no repita reglas.
       x-roles: [admin, operator]
       tags: [Panel - Pedidos]
       security: [{ panelSession: [] }]
-      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      parameters: [{ $ref: "#/components/parameters/OrderRef" }]
       responses:
-        "200": { description: Pedido }
+        "200":
+          description: Pedido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminOrderDetail" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/orders/{id}/status:
     patch:
       operationId: adminChangeOrderStatus
-      summary: "[Pendiente LN-13] Transición de estado autorizada"
-      description: Un pedido no pagado no se despacha; registra actor, fecha y motivo (RF-27).
-      x-pending-task: LN-13
+      summary: Transición de estado autorizada
+      description: |
+        Tabla de la SRS: pendiente de pago → confirmado, cancelado o vencido; pago
+        en revisión → confirmado o cancelado; confirmado → en preparación o
+        cancelado; en preparación → despachado o cancelado; despachado →
+        entregado. Entregado, cancelado y vencido son terminales. Registra
+        historial con actor, fecha y motivo (RF-27) y auditoría `order.status_changed`.
+
+        - Confirmar exige un pago confirmado y ya asentado (reservas y cupón, LN-10).
+          Un pedido sin pago confirmado no se despacha (409, `field: to`).
+        - RN-04: con el último pago pendiente o en revisión no se cancela ni vence.
+        - Despachado a domicilio exige `carrier` y `code` (422). En retiro en taller,
+          "Despachado" es "listo para retiro" y no los lleva.
+        - Cancelar o vencer libera las reservas (movimiento `release`) y, si no hubo
+          pago, el uso del cupón. Cancelar un pedido pagado no devuelve dinero.
+        - `restock: true` solo al cancelar un pedido pagado, una vez (RN-06): repone
+          lo que la venta descontó (movimiento `restock`, `order.restock_recorded`).
+        - Encola `order_shipped` (con la plantilla de retiro en taller si corresponde)
+          y `order_delivered`, sin duplicar.
       x-roles: [admin, operator]
       tags: [Panel - Pedidos]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/OrderRef"
         - $ref: "#/components/parameters/CsrfTokenHeader"
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrderStatusChangeInput" }
       responses:
-        "200": { description: Pedido actualizado }
+        "200":
+          description: Pedido actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminOrderDetail" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1390,18 +1459,68 @@ paths:
   /admin/orders/{id}/refund-records:
     post:
       operationId: adminRecordRefund
-      summary: "[Pendiente LN-13] Registrar reembolso manual"
-      description: Monto, fecha, referencia y responsable; no ejecuta devoluciones (RF-32).
-      x-pending-task: LN-13
+      summary: Registrar reembolso manual
+      description: |
+        Registra una devolución hecha fuera del sistema (RF-32): nunca modifica el
+        pago ni el estado del pedido. Solo pedidos con pago confirmado (409
+        `field: form`). El monto es entero en CLP y, sumado a los reembolsos
+        solicitados y procesados, no supera lo cobrado (422 en `amount` con lo
+        que queda; los fallidos no cuentan). La fecha, en días de Chile, no es
+        futura ni anterior al cobro. Registrado como `processed` queda resuelto.
+        Auditoría `order.refund_recorded`.
       x-roles: [admin]
       tags: [Panel - Pedidos]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/OrderRef"
         - $ref: "#/components/parameters/CsrfTokenHeader"
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefundRecordInput" }
       responses:
-        "201": { description: Reembolso registrado }
+        "201":
+          description: Reembolso registrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RefundResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/orders/{id}/refund-records/{refundId}:
+    patch:
+      operationId: adminResolveRefund
+      summary: Resolver un reembolso solicitado (procesado o fallido)
+      description: |
+        Solo sobre uno `requested`, una sola vez (409 «Ese reembolso ya fue
+        resuelto.»). Un fallido deja de contar para el tope. 404 «El reembolso ya
+        no existe.» si no es de este pedido. Auditoría `order.refund_resolved`.
+      x-roles: [admin]
+      tags: [Panel - Pedidos]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrderRef"
+        - { name: refundId, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status: { type: string, enum: [processed, failed] }
+      responses:
+        "200":
+          description: Reembolso resuelto
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RefundResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1410,21 +1529,48 @@ paths:
   /admin/orders/{id}/invoice:
     post:
       operationId: adminRegisterInvoice
-      summary: "[Pendiente LN-13] Registrar el folio de la factura emitida por Total Kids"
+      summary: Registrar o corregir el folio de la factura emitida por Total Kids
       description: |
         Cambio del cliente: Flow solo cubre la boleta (su comprobante la reemplaza).
         Para pedidos con factura y pago confirmado, que quedan como "Factura
-        pendiente" hasta registrar el folio. Queda en el historial del pedido.
-      x-pending-task: LN-13
+        pendiente" hasta registrar el folio. Solo dígitos (hasta 10); se quitan los
+        ceros a la izquierda. El folio es único entre pedidos (409 `field: number`).
+
+        - Administrador y Operador registran el primer folio (201,
+          `order.invoice_registered`).
+        - Ya registrado y sin `replace`: 409 «La factura de este pedido ya está registrada.»
+        - Corregir (`replace: true`) es solo del Administrador (Operador → 403), con
+          `reason` obligatorio y un folio distinto (200, `order.invoice_replaced`).
+        - Con boleta o sin pago confirmado: 409 `field: form`.
       x-roles: [admin, operator]
       tags: [Panel - Pedidos]
       security: [{ panelSession: [], csrfCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/OrderRef"
         - $ref: "#/components/parameters/CsrfTokenHeader"
-      requestBody: { $ref: "#/components/requestBodies/PendingJson" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [number]
+              properties:
+                number: { type: string, maxLength: 20, pattern: "^\\s*\\d{1,20}\\s*$" }
+                replace: { type: boolean, default: false }
+                reason: { type: string, maxLength: 500 }
       responses:
-        "201": { description: Folio registrado }
+        "200":
+          description: Folio corregido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvoiceResult" }
+        "201":
+          description: Folio registrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvoiceResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -2793,6 +2939,325 @@ components:
             total:
               type: integer
               description: subtotal − descuento + despacho (un despacho null no suma).
+    # ── Panel: pedidos (LN-13) ──
+    OrderStatus:
+      type: string
+      enum:
+        [pending_payment, in_review, confirmed, preparing, shipped, delivered, cancelled, expired]
+    OrderPaymentStatus:
+      type: string
+      description: Estado del último intento de pago; `none` si nunca se intentó.
+      enum: [pending, paid, rejected, voided, in_review, expired, none]
+    AdminOrderSummary:
+      type: object
+      required:
+        [
+          id,
+          number,
+          ref,
+          createdAt,
+          buyerName,
+          buyerEmail,
+          status,
+          statusLabel,
+          paymentStatus,
+          paymentLabel,
+          deliveryMethod,
+          taxDocument,
+          invoicePending,
+          shippingCost,
+          total,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: integer }
+        ref: { type: string, example: TK-1048 }
+        createdAt: { type: string, format: date-time }
+        buyerName: { type: string }
+        buyerEmail: { type: string, format: email }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        statusLabel: { type: string, example: Confirmado }
+        paymentStatus: { $ref: "#/components/schemas/OrderPaymentStatus" }
+        paymentLabel: { type: string, example: Pagado }
+        deliveryMethod: { type: string, enum: [shipping, pickup] }
+        taxDocument: { type: string, enum: [boleta, factura] }
+        invoicePending: { type: boolean }
+        shippingCost: { type: [integer, "null"], description: null = despacho a coordinar. }
+        total: { type: integer }
+    AdminRefundRecord:
+      type: object
+      required:
+        [
+          id,
+          paymentId,
+          amount,
+          date,
+          reference,
+          status,
+          statusLabel,
+          registeredBy,
+          registeredByName,
+          registeredAt,
+          resolvedBy,
+          resolvedByName,
+          resolvedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        paymentId: { type: string, format: uuid }
+        amount: { type: integer, minimum: 1 }
+        date: { type: string, format: date }
+        reference: { type: string }
+        status: { type: string, enum: [requested, processed, failed] }
+        statusLabel: { type: string }
+        registeredBy: { type: string, description: Rol de quien lo registró. }
+        registeredByName: { type: [string, "null"] }
+        registeredAt: { type: string, format: date-time }
+        resolvedBy: { type: [string, "null"] }
+        resolvedByName: { type: [string, "null"] }
+        resolvedAt: { type: [string, "null"], format: date-time }
+    RefundTotals:
+      type: object
+      required: [charged, committed, processed, refundable, state]
+      properties:
+        charged: { type: integer, description: Monto del pago confirmado. }
+        committed: { type: integer, description: Solicitados + procesados (cuentan para el tope). }
+        processed: { type: integer }
+        refundable: { type: integer, description: Lo que aún se puede registrar. }
+        state: { type: string, enum: [not_requested, requested, processed, failed] }
+    RefundRecordInput:
+      type: object
+      additionalProperties: false
+      required: [amount, date, reference, status]
+      properties:
+        amount: { type: integer, minimum: 1, description: CLP entero. }
+        date: { type: string, format: date, description: Día de Chile (AAAA-MM-DD). }
+        reference: { type: string, minLength: 3, maxLength: 120 }
+        status: { type: string, enum: [requested, processed] }
+    RefundResult:
+      type: object
+      required: [refund, refundTotals]
+      properties:
+        refund: { $ref: "#/components/schemas/AdminRefundRecord" }
+        refundTotals: { $ref: "#/components/schemas/RefundTotals" }
+    InvoiceResult:
+      type: object
+      required: [invoice, previousNumber, invoicePending]
+      properties:
+        invoice:
+          type: object
+          required: [number, issuedAt, issuedBy, issuedByName]
+          properties:
+            number: { type: string, pattern: "^\\d{1,10}$" }
+            issuedAt: { type: string, format: date-time }
+            issuedBy: { type: string }
+            issuedByName: { type: [string, "null"] }
+        previousNumber:
+          type: [string, "null"]
+          description: Folio anterior cuando se corrigió; null al registrar el primero.
+        invoicePending: { type: boolean, enum: [false] }
+    OrderStatusChangeInput:
+      type: object
+      additionalProperties: false
+      required: [to, reason]
+      properties:
+        to: { $ref: "#/components/schemas/OrderStatus" }
+        reason: { type: string, minLength: 3, maxLength: 500 }
+        carrier:
+          type: string
+          maxLength: 80
+          description: Obligatorio al despachar a domicilio.
+        code:
+          type: string
+          maxLength: 80
+          description: Código de seguimiento; obligatorio al despachar a domicilio.
+        restock:
+          type: boolean
+          default: false
+          description: Registrar la reposición al cancelar un pedido pagado (RN-06).
+    AdminOrderDetail:
+      type: object
+      required:
+        [
+          id,
+          number,
+          ref,
+          status,
+          statusLabel,
+          buyer,
+          delivery,
+          billing,
+          items,
+          amounts,
+          payment,
+          payments,
+          refunds,
+          refundTotals,
+          statusHistory,
+          activity,
+          emails,
+          canRecordRestock,
+          availableTransitions,
+          blockedByUnresolvedPayment,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: integer }
+        ref: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        statusLabel: { type: string }
+        buyer:
+          type: object
+          required: [name, rut, email, phone]
+          properties:
+            name: { type: string }
+            rut: { type: string }
+            email: { type: string }
+            phone: { type: string }
+        delivery:
+          type: object
+          properties:
+            method: { type: string, enum: [shipping, pickup] }
+            region: { type: [string, "null"] }
+            commune: { type: [string, "null"] }
+            street: { type: [string, "null"] }
+            unit: { type: [string, "null"] }
+            notes: { type: [string, "null"] }
+            leadTime: { type: [string, "null"] }
+            pickupDetails: { type: [string, "null"] }
+            carrier: { type: [string, "null"] }
+            trackingCode: { type: [string, "null"] }
+        billing:
+          type: object
+          properties:
+            document: { type: string, enum: [boleta, factura] }
+            rut: { type: [string, "null"] }
+            businessName: { type: [string, "null"] }
+            activity: { type: [string, "null"] }
+            email: { type: [string, "null"] }
+            address: { type: [string, "null"] }
+            commune: { type: [string, "null"] }
+            purchaseOrderRequired: { type: boolean }
+            invoice:
+              oneOf:
+                - type: object
+                  required: [number, issuedAt, issuedBy, issuedByName]
+                  properties:
+                    number: { type: string }
+                    issuedAt: { type: string, format: date-time }
+                    issuedBy: { type: string }
+                    issuedByName: { type: [string, "null"] }
+                - { type: "null" }
+            invoicePending: { type: boolean }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              variantId: { type: [string, "null"], format: uuid }
+              productName: { type: string }
+              sku: { type: string }
+              optionLabel: { type: [string, "null"] }
+              quantity: { type: integer }
+              unitPrice: { type: integer }
+              extrasUnitPrice: { type: integer }
+              lineTotal: { type: integer }
+              madeToOrder:
+                type: boolean
+                description: Al menos parte de la línea se fabrica a pedido (UI-11).
+              leadTime: { type: [string, "null"] }
+              extras:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    code: { type: string }
+                    name: { type: string }
+                    unitPrice: { type: [integer, "null"] }
+                    text: { type: [string, "null"] }
+        amounts:
+          type: object
+          properties:
+            currency: { type: string }
+            subtotal: { type: integer }
+            discount: { type: integer }
+            shippingCost: { type: [integer, "null"] }
+            total: { type: integer }
+            couponCode: { type: [string, "null"] }
+        payment:
+          type: object
+          properties:
+            status: { $ref: "#/components/schemas/OrderPaymentStatus" }
+            label: { type: string }
+            paymentDueAt: { type: string, format: date-time }
+            paidAt: { type: [string, "null"], format: date-time }
+        payments:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              attempt: { type: integer }
+              commerceOrder: { type: string }
+              flowOrder: { type: [string, "null"] }
+              status: { type: string }
+              label: { type: string }
+              amount: { type: integer }
+              paymentMethod: { type: [string, "null"] }
+              paidAt: { type: [string, "null"], format: date-time }
+              lastCheckedAt: { type: [string, "null"], format: date-time }
+              createdAt: { type: string, format: date-time }
+        refunds: { type: array, items: { $ref: "#/components/schemas/AdminRefundRecord" } }
+        refundTotals: { $ref: "#/components/schemas/RefundTotals" }
+        statusHistory:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              from: { oneOf: [{ $ref: "#/components/schemas/OrderStatus" }, { type: "null" }] }
+              to: { $ref: "#/components/schemas/OrderStatus" }
+              toLabel: { type: string }
+              actorLabel: { type: string }
+              actorName: { type: [string, "null"] }
+              reason: { type: [string, "null"] }
+              at: { type: string, format: date-time }
+        activity:
+          type: array
+          description: |
+            audit_log del pedido: `order.status_changed`, `order.restock_recorded`,
+            `order.refund_recorded`, `order.refund_resolved`,
+            `order.invoice_registered`, `order.invoice_replaced`.
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              action: { type: string }
+              actorLabel: { type: string }
+              actorName: { type: [string, "null"] }
+              reason: { type: [string, "null"] }
+              details: { type: object }
+              at: { type: string, format: date-time }
+        emails:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              event: { type: string }
+              recipient: { type: string }
+              status: { type: string }
+              resendOfId: { type: [string, "null"], format: uuid }
+              createdAt: { type: string, format: date-time }
+              updatedAt: { type: string, format: date-time }
+        cancelledAt: { type: [string, "null"], format: date-time }
+        restockRecordedAt: { type: [string, "null"], format: date-time }
+        canRecordRestock: { type: boolean }
+        availableTransitions: { type: array, items: { $ref: "#/components/schemas/OrderStatus" } }
+        blockedByUnresolvedPayment: { type: boolean }
 
   parameters:
     Page:
@@ -2808,6 +3273,12 @@ components:
       in: path
       required: true
       schema: { type: string }
+    OrderRef:
+      name: id
+      in: path
+      required: true
+      description: Uuid del pedido o su número visible ("TK-1048" o "1048").
+      schema: { type: string, example: TK-1048 }
     IdempotencyKey:
       name: Idempotency-Key
       in: header

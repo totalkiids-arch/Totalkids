@@ -337,6 +337,47 @@ Solicitudes de servicio y newsletter, sin sesión: CSRF (middleware global) y l�
 - **La baja no borra nada:** queda `unsubscribed` con fecha y `unsubscribed_by = "Suscriptor"`; los pedidos no cambian.
 - **Pendiente:** el plazo de respuesta de los correos de solicitudes (`RESPONSE_TIME`, "2 días hábiles") y las versiones de los textos (`v1-provisional`) son provisionales hasta CL-02. El seguimiento de solicitudes y suscriptores en el panel llega con LN-13.
 
+## Pedidos admin (LN-13)
+
+Panel de pedidos (RF-27, RF-32, RF-34; RN-04 a RN-06; UI-12). Rutas en [`src/routes/admin-orders.ts`](src/routes/admin-orders.ts) y reglas en [`src/services/admin-orders/`](src/services/admin-orders/). Las reglas puras (`rules.ts`) usan la misma tabla de transiciones y los mismos textos que el dominio del panel (`apps/web/src/features/orders/domain/order-workflow.ts`), así LN-16 muestra lo que devuelve la API; `test/admin-orders-rules.test.ts` lo comprueba. `{id}` es el uuid del pedido o su número visible (`TK-1048` o `1048`).
+
+### Endpoints
+
+| Método y ruta                                        | Roles                   | Qué hace                                                                                                                                                                         |
+| ---------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/orders`                                  | Administrador, Operador | Listado paginado. `q` (número, nombre o correo, sin tildes), `status`, `paymentStatus` (`none` = sin intentos), `deliveryMethod`, `invoicePending`, `from`/`to` (días de Chile). |
+| `GET /admin/orders/{id}`                             | Administrador, Operador | Ficha: comprador, entrega, factura, líneas, pagos, reembolsos y sus totales, historial, actividad (`audit_log`), correos y `availableTransitions`.                               |
+| `PATCH /admin/orders/{id}/status`                    | Administrador, Operador | `{ to, reason, carrier?, code?, restock? }`. 200 con la ficha.                                                                                                                   |
+| `POST /admin/orders/{id}/invoice`                    | Administrador, Operador | `{ number, replace?, reason? }`. 201 al registrar, 200 al corregir (`replace` solo el Administrador).                                                                            |
+| `POST /admin/orders/{id}/refund-records`             | Administrador           | `{ amount, date, reference, status: requested \| processed }`. 201 con `{ refund, refundTotals }`.                                                                               |
+| `PATCH /admin/orders/{id}/refund-records/{refundId}` | Administrador           | `{ status: processed \| failed }`. 200 con `{ refund, refundTotals }`.                                                                                                           |
+
+### Errores
+
+- **422 (forma):** un issue por campo con el texto del panel (`reason`, `carrier`, `code`, `amount`, `date`, `reference`, `status`, `number`). El tope de reembolso también va aquí, en `amount`: «El monto supera lo cobrado: quedan $N por registrar.» o «El pedido ya tiene registrado todo lo cobrado.».
+- **409 (estado):** `details.field` dice a qué parte del formulario corresponde:
+  - `to`: transición fuera de la tabla, confirmar sin pago confirmado y asentado, despachar sin pago, cancelar o vencer con un pago sin resolver (RN-04);
+  - `restock`: reposición ya registrada o pedido no pagado;
+  - `form`: reembolso sin pago confirmado, reembolso ya resuelto, factura con boleta, sin pago o ya registrada;
+  - `number`: folio repetido en otro pedido (índice único, `P2002`);
+  - `amount`: el trigger `refund_records_within_charge` rechazó el reembolso (`check_violation`). Con el pedido bloqueado no debería ocurrir; si ocurre es 409 y nunca 500.
+- **403:** el Operador en reembolsos o al corregir un folio. **404:** el pedido o el reembolso no existen (o el reembolso es de otro pedido).
+
+### Reglas
+
+- **Bloqueo:** cada escritura bloquea el pedido (`SELECT … FOR UPDATE`) y valida contra lo ya confirmado. Historial, auditoría, inventario, cupón y correos se confirman juntos o no se confirma nada. Las variantes se bloquean en orden de id.
+- **Estados:** la tabla de la SRS. Confirmar a mano exige un pago `paid` **y ya asentado** (sin reservas activas ni cupón reservado: eso lo hace LN-10). Cancelar o vencer libera las reservas (`releaseOrderReservations`, movimiento `release`) y, si no hubo pago, el uso del cupón (`releaseCouponUse`). Cancelar un pedido pagado no devuelve dinero (la auditoría lo avisa) y, con `restock: true`, repone **una sola vez** lo que la venta descontó (reservas `consumed`, movimiento `restock`, RN-06). Una línea a pedido puede tener parte reservada (LN-09): se libera o repone solo esa parte.
+- **Retiro en taller (nota para LN-16):** «Despachado» significa «listo para retiro», no pide transportista ni código y encola `order_shipped` con la plantilla de retiro (`pickupDetails`). El panel debería rotular el botón y el estado como «Listo para retiro» cuando `delivery.method = pickup`.
+- **Reembolsos (RF-32):** solo el Administrador. Nunca modifican el `Payment` ni el estado del pedido. Monto entero > 0; los `requested` y `processed` no superan lo cobrado (un `failed` libera el tope). La fecha, en días de Chile, no puede ser futura ni anterior al cobro (`paidAt`). Referencia de 3 a 120 caracteres. Registrado como `processed` queda resuelto en el acto. Un `requested` se resuelve una sola vez. Auditoría: `order.refund_recorded` y `order.refund_resolved`.
+- **Factura (UI-12):** solo para pedidos con factura y pagados. Folio de solo dígitos (hasta 10), sin ceros a la izquierda, único entre pedidos. Guarda `invoiceIssuedAt`, `invoiceIssuedByUserId` e `invoiceIssuedByLabel`. Administrador y Operador registran el primero (`order.invoice_registered`). Corregir exige `replace: true`, ser Administrador, un motivo y un folio distinto (`order.invoice_replaced`, con antes y después). `replace: true` sin folio previo registra el primero.
+- **Correos:** `order_shipped` y `order_delivered` se encolan en la misma transacción con `enqueueEmail` y su `eventKey`, así que repetir no duplica.
+
+### Lo que queda para LN-10 y LN-15
+
+- **Venta de stock al confirmar el pago (LN-10):** pasar las reservas `active` a `consumed`, bajar físico y reservado con un movimiento `sale`, y llamar a `consumeCouponUse`. Hasta entonces el panel no deja confirmar a mano un pedido con reservas o cupón sin asentar.
+- **`purchase_confirmed` y `new_sale` (LN-10):** se encolan al verificar el pago, no desde el panel.
+- **Vencimiento automático (LN-15):** el job que vence los pedidos sin pagar al pasar `paymentDueAt` debe reutilizar `releaseOrderReservations` (en `services/admin-orders/inventory.ts`) y `releaseCouponUse` dentro de su transacción, con el pedido bloqueado y respetando RN-04 (no vencer con un pago pendiente o en revisión).
+
 ## Correos y worker (LN-14)
 
 Correos transaccionales de la SRS 4.4.3 (RF-20, RF-21). El código está en [`src/services/email/`](src/services/email/) y el proceso del worker en [`src/worker.ts`](src/worker.ts).
@@ -383,17 +424,17 @@ await prisma.$transaction(async (tx) => {
 
 `data` se valida con el esquema del evento (`EMAIL_DATA_SCHEMAS` en `events.ts`): si falta un campo, lanza (es un error de programación). Es una foto del momento y **nunca** lleva contraseñas, tokens ni datos de pago.
 
-| Tarea | Evento                                             | Destinatario     | `eventKey`                          | Referencia         |
-| ----- | -------------------------------------------------- | ---------------- | ----------------------------------- | ------------------ |
-| LN-09 | `order_received` (pendiente de pago)               | comprador        | `order_received:<orderId>`          | `orderId`          |
-| LN-09 | `purchase_confirmed` (solo tras verificar el pago) | comprador        | `purchase_confirmed:<orderId>`      | `orderId`          |
-| LN-09 | `new_sale` (sin datos del comprador)               | `EMAIL_ADMIN_TO` | `new_sale:<orderId>`                | `orderId`          |
-| LN-09 | `payment_rejected` (`outcome: rejected/cancelled`) | comprador        | `payment_rejected:<paymentId>`      | `orderId`          |
-| LN-10 | `order_shipped` (transportista y seguimiento)      | comprador        | `order_shipped:<orderId>`           | `orderId`          |
-| LN-10 | `order_delivered` (cuidados del producto)          | comprador        | `order_delivered:<orderId>`         | `orderId`          |
-| LN-08 | `service_request` (`audience: requester`)          | solicitante      | `service_request:<id>:requester`    | `serviceRequestId` |
-| LN-08 | `service_request` (`audience: admin`)              | `EMAIL_ADMIN_TO` | `service_request:<id>:admin`        | `serviceRequestId` |
-| LN-04 | `password_recovery` (ya conectado)                 | cuenta del panel | `password_recovery:<userId>:<uuid>` | —                  |
+| Tarea | Evento                                                                        | Destinatario     | `eventKey`                          | Referencia         |
+| ----- | ----------------------------------------------------------------------------- | ---------------- | ----------------------------------- | ------------------ |
+| LN-09 | `order_received` (pendiente de pago)                                          | comprador        | `order_received:<orderId>`          | `orderId`          |
+| LN-09 | `purchase_confirmed` (solo tras verificar el pago)                            | comprador        | `purchase_confirmed:<orderId>`      | `orderId`          |
+| LN-09 | `new_sale` (sin datos del comprador)                                          | `EMAIL_ADMIN_TO` | `new_sale:<orderId>`                | `orderId`          |
+| LN-09 | `payment_rejected` (`outcome: rejected/cancelled`)                            | comprador        | `payment_rejected:<paymentId>`      | `orderId`          |
+| LN-13 | `order_shipped` (transportista y seguimiento; en retiro, «listo para retiro») | comprador        | `order_shipped:<orderId>`           | `orderId`          |
+| LN-13 | `order_delivered` (cuidados del producto)                                     | comprador        | `order_delivered:<orderId>`         | `orderId`          |
+| LN-08 | `service_request` (`audience: requester`)                                     | solicitante      | `service_request:<id>:requester`    | `serviceRequestId` |
+| LN-08 | `service_request` (`audience: admin`)                                         | `EMAIL_ADMIN_TO` | `service_request:<id>:admin`        | `serviceRequestId` |
+| LN-04 | `password_recovery` (ya conectado)                                            | cuenta del panel | `password_recovery:<userId>:<uuid>` | —                  |
 
 ### Plantillas
 

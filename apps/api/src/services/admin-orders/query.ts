@@ -303,14 +303,7 @@ export interface AdminOrderDetail {
     createdAt: string;
   }[];
   refunds: AdminRefundRecord[];
-  refundTotals: {
-    charged: number;
-    /** Solicitados + procesados: cuentan para el tope. */
-    committed: number;
-    processed: number;
-    refundable: number;
-    state: OrderRefundState;
-  };
+  refundTotals: RefundTotals;
   statusHistory: {
     id: string;
     from: OrderStatus | null;
@@ -346,6 +339,27 @@ export interface AdminOrderDetail {
   canRecordRestock: boolean;
   availableTransitions: OrderStatus[];
   blockedByUnresolvedPayment: boolean;
+}
+
+export interface RefundTotals {
+  charged: number;
+  /** Solicitados + procesados: cuentan para el tope. */
+  committed: number;
+  processed: number;
+  refundable: number;
+  state: OrderRefundState;
+}
+
+/** Totales de reembolso del pedido (RF-32): lo cobrado, lo comprometido y lo que queda. */
+export function refundTotalsOf(flow: WorkflowOrder): RefundTotals {
+  const refunds = flow.refunds ?? [];
+  return {
+    charged: chargedAmount(flow),
+    committed: committedRefunds(refunds),
+    processed: processedRefunds(refunds),
+    refundable: refundableAmount(flow),
+    state: refundState(refunds),
+  };
 }
 
 export interface AdminRefundRecord {
@@ -518,13 +532,7 @@ export async function getAdminOrder(db: DetailClient, ref: OrderRef): Promise<Ad
       createdAt: p.createdAt.toISOString(),
     })),
     refunds: refunds.map(refundDto),
-    refundTotals: {
-      charged: chargedAmount(flow),
-      committed: committedRefunds(refunds),
-      processed: processedRefunds(refunds),
-      refundable: refundableAmount(flow),
-      state: refundState(refunds),
-    },
+    refundTotals: refundTotalsOf(flow),
     statusHistory: o.statusHistory.map((h) => ({
       id: h.id,
       from: h.fromStatus,

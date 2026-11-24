@@ -86,9 +86,11 @@ export async function releaseOrderReservations(
 /**
  * Reposición tras cancelar un pedido pagado (RN-06): las unidades que la venta
  * descontó (reservas `consumed`) vuelven al stock físico, con un movimiento
- * `restock` por variante. Las líneas a pedido no reservaron ni descontaron
- * stock, así que no reponen nada. El llamador garantiza que se registra una
- * sola vez (`orders.restock_recorded_at`).
+ * `restock` por variante. Se repone exactamente lo reservado y vendido: una
+ * línea a pedido puede tener parte reservada (LN-09 reserva las unidades
+ * terminadas y marca la línea a pedido por el resto), y solo esa parte vuelve;
+ * lo fabricado a pedido nunca descontó stock. El llamador garantiza que se
+ * registra una sola vez (`orders.restock_recorded_at`).
  */
 export async function restockOrder(
   tx: Tx,

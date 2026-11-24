@@ -8,10 +8,13 @@ import type {
 import type { PrismaClient } from "../src/lib/prisma.js";
 
 /**
- * Pedidos de prueba del panel (LN-13). LN-09 aún no crea pedidos, así que se
- * arman directo en la base respetando sus CHECK: importes (RN-01), pago con
- * fecha en estados pagados, despacho con transportista, reservas solo en
- * líneas con stock (las líneas a pedido no reservan).
+ * Pedidos de prueba del panel (LN-13), armados directo en la base para cubrir
+ * estados que la tienda (LN-09) todavía no produce (pagados, despachados…),
+ * respetando sus CHECK: importes (RN-01), pago con fecha en estados pagados,
+ * despacho con transportista. Las reservas siguen a LN-09: una por variante,
+ * con las unidades terminadas; una línea a pedido puede tener parte reservada
+ * (`reserved`) y el resto se fabrica. El test de integración con el
+ * `createOrder` real de LN-09 está en admin-orders-status.db.test.ts.
  */
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -40,10 +43,16 @@ export interface LineSpec {
   /** Sin variante: línea suelta (snapshot), p. ej. de un producto ya borrado. */
   variantId?: string;
   quantity?: number;
-  /** A pedido (UI-11): no reserva ni descuenta stock. */
+  /** A pedido (UI-11): lo que no se reservó se fabrica (no descuenta stock). */
   madeToOrder?: boolean;
-  /** Reserva de la línea (por variante); se omite en las líneas a pedido. */
+  /** Reserva de la línea (se agrupa por variante, como en LN-09). */
   reservation?: ReservationStatus;
+  /**
+   * Unidades reservadas de la línea. Por defecto, toda la cantidad; en una
+   * línea a pedido, 0 (con un número, reserva parcial: LN-09 marca la línea a
+   * pedido aunque haya reservado parte de ella).
+   */
+  reserved?: number;
   extras?: { code: string; name: string; unitPrice?: number | null; text?: string | null }[];
 }
 
@@ -157,10 +166,11 @@ export async function createOrder(db: PrismaClient, spec: OrderSpec = {}) {
         },
       },
     });
-    if (line.variantId && line.reservation && !line.madeToOrder) {
+    const reserved = line.reserved ?? (line.madeToOrder ? 0 : line.quantity);
+    if (line.variantId && line.reservation && reserved > 0) {
       const prev = reservations.get(line.variantId);
       reservations.set(line.variantId, {
-        quantity: (prev?.quantity ?? 0) + line.quantity,
+        quantity: (prev?.quantity ?? 0) + reserved,
         status: line.reservation,
       });
     }

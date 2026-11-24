@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
+
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPrismaClient, type PrismaClient } from "../src/lib/prisma.js";
-import { createCoupon } from "./cart-helpers.js";
+import { CartClient, createCoupon, setSettings, shopFixture } from "./cart-helpers.js";
 import { buildTestApp } from "./helpers.js";
 import { createOrder, createVariant } from "./order-fixtures.js";
 import { inRollback, panelHeaders, panelSession } from "./panel-helpers.js";
@@ -455,6 +457,167 @@ describe.skipIf(!url)("PATCH /admin/orders/{id}/status (PostgreSQL real)", () =>
           "restock",
         );
         expect(await db.orderStatusHistory.count({ where: { orderId: done.id } })).toBe(0);
+      });
+    });
+  });
+
+  describe("reservas parciales (como las crea LN-09)", () => {
+    it("línea a pedido con 2 reservadas: cancelar sin pagar libera 2", async () => {
+      await run(async (db, app) => {
+        // 3 pedidas, 2 terminadas reservadas y 1 a fabricar (la línea queda a pedido).
+        const variant = await createVariant(db, 2, 2);
+        const order = await createOrder(db, {
+          lines: [
+            {
+              variantId: variant.id,
+              quantity: 3,
+              madeToOrder: true,
+              reserved: 2,
+              reservation: "active",
+            },
+          ],
+        });
+        const res = await patch(app, order.id, change("cancelled"));
+        expect(res.status, JSON.stringify(res.body)).toBe(200);
+        expect(
+          await db.productVariant.findUniqueOrThrow({ where: { id: variant.id } }),
+        ).toMatchObject({ stockPhysical: 2, stockReserved: 0 });
+        const movements = await db.inventoryMovement.findMany({ where: { orderId: order.id } });
+        expect(movements).toEqual([
+          expect.objectContaining({ kind: "release", reservedDelta: -2, reservedAfter: 0 }),
+        ]);
+      });
+    });
+
+    it("pagado con 2 vendidas de una línea a pedido: la reposición repone 2", async () => {
+      await run(async (db, app) => {
+        // La venta (LN-10) ya descontó las 2 terminadas: quedan 0 físicas.
+        const variant = await createVariant(db, 0, 0);
+        const order = await createOrder(db, {
+          status: "preparing",
+          payments: ["paid"],
+          lines: [
+            {
+              variantId: variant.id,
+              quantity: 3,
+              madeToOrder: true,
+              reserved: 2,
+              reservation: "consumed",
+            },
+          ],
+        });
+        const res = await patch(app, order.id, change("cancelled", { restock: true }));
+        expect(res.status, JSON.stringify(res.body)).toBe(200);
+        expect(
+          await db.productVariant.findUniqueOrThrow({ where: { id: variant.id } }),
+        ).toMatchObject({ stockPhysical: 2, stockReserved: 0 });
+        const movements = await db.inventoryMovement.findMany({ where: { orderId: order.id } });
+        expect(movements).toEqual([
+          expect.objectContaining({ kind: "restock", physicalDelta: 2, physicalAfter: 2 }),
+        ]);
+        const audit = await db.auditLog.findFirstOrThrow({
+          where: { resourceId: order.id, action: "order.restock_recorded" },
+        });
+        expect(audit.details).toMatchObject({ units: [{ sku: variant.sku, quantity: 2 }] });
+      });
+    });
+  });
+
+  describe("con el pedido real de LN-09 (POST /orders)", () => {
+    it("crear con reserva parcial y cupón, y cancelar desde el panel: nada queda descuadrado", async () => {
+      await run(async (db, app) => {
+        await setSettings(db, { pickupEnabled: true, freeShippingThreshold: null });
+        const shop = await shopFixture(db); // skuA: 5 terminadas a $10.000
+        const coupon = await createCoupon(db, { maxUses: 5, usesCount: 0 });
+
+        // El comprador pide 7: LN-09 reserva 5 y marca la línea a pedido por las 2 restantes.
+        const buyer = new CartClient(app);
+        const added = await buyer.post("/cart/items", { sku: shop.skuA, quantity: 7 });
+        expect(added.status, JSON.stringify(added.body)).toBe(201);
+        const applied = await buyer.post("/cart/coupon", { code: coupon.code });
+        expect(applied.status, JSON.stringify(applied.body)).toBe(200);
+        const quote = await buyer.get("/shipping/quote?method=retiro");
+        expect(quote.status, JSON.stringify(quote.body)).toBe(200);
+        const expectedTotal = (quote.body as { totals: { total: number } }).totals.total;
+        const created = await request(app)
+          .post("/api/v1/orders")
+          .set(buyer.headers())
+          .set("Idempotency-Key", randomUUID())
+          .send({
+            buyer: {
+              name: "María González",
+              rut: "12345678-5",
+              email: "maria@correo.cl",
+              phone: "+56 9 1234 5678",
+            },
+            delivery: { method: "retiro" },
+            billing: { document: "boleta" },
+            termsAccepted: true,
+            expectedTotal,
+          });
+        expect(created.status, JSON.stringify(created.body)).toBe(201);
+        const ref = (created.body as { orderNumber: string }).orderNumber;
+
+        const order = await db.order.findUniqueOrThrow({
+          where: { number: Number(ref.replace(/\D/g, "")) },
+          include: { items: true, reservations: true, redemption: true },
+        });
+        expect(order.items).toEqual([expect.objectContaining({ quantity: 7, madeToOrder: true })]);
+        expect(order.reservations).toEqual([
+          expect.objectContaining({ variantId: shop.variantA, quantity: 5, status: "active" }),
+        ]);
+        expect(order.redemption?.status).toBe("reserved");
+        expect(
+          await db.productVariant.findUniqueOrThrow({ where: { id: shop.variantA } }),
+        ).toMatchObject({ stockPhysical: 5, stockReserved: 5 });
+        expect((await db.coupon.findUniqueOrThrow({ where: { id: coupon.id } })).usesCount).toBe(1);
+
+        // El panel lo ve pendiente de pago, sin poder confirmarlo a mano.
+        const detail = await request(app)
+          .get(`/api/v1/admin/orders/${ref}`)
+          .set(panelHeaders(admin));
+        expect(detail.status).toBe(200);
+        expect(detail.body).toMatchObject({
+          status: "pending_payment",
+          payment: { status: "none" },
+          availableTransitions: ["cancelled", "expired"],
+          statusHistory: [{ to: "pending_payment", actorLabel: "Comprador" }],
+        });
+        expectConflict(
+          await patch(app, ref, change("confirmed")),
+          "Primero concilia y confirma el pago en Pagos y conciliación.",
+        );
+
+        // Cancelar: reservas, cupón y stock vuelven a como estaban antes de la compra.
+        const cancelled = await patch(app, ref, change("cancelled"));
+        expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+        expect(
+          await db.productVariant.findUniqueOrThrow({ where: { id: shop.variantA } }),
+        ).toMatchObject({ stockPhysical: 5, stockReserved: 0 });
+        const reservations = await db.stockReservation.findMany({ where: { orderId: order.id } });
+        expect(reservations.map((r) => r.status)).toEqual(["released"]);
+        expect(
+          (await db.couponRedemption.findUniqueOrThrow({ where: { orderId: order.id } })).status,
+        ).toBe("released");
+        expect((await db.coupon.findUniqueOrThrow({ where: { id: coupon.id } })).usesCount).toBe(0);
+
+        const movements = await db.inventoryMovement.findMany({
+          where: { orderId: order.id },
+          orderBy: { createdAt: "asc" },
+        });
+        expect(movements.map((m) => [m.kind, m.physicalDelta, m.reservedDelta])).toEqual([
+          ["reservation", 0, 5],
+          ["release", 0, -5],
+        ]);
+        expect(movements.at(-1)).toMatchObject({ physicalAfter: 5, reservedAfter: 0 });
+        const history = await db.orderStatusHistory.findMany({
+          where: { orderId: order.id },
+          orderBy: { createdAt: "asc" },
+        });
+        expect(history.map((h) => [h.fromStatus, h.toStatus])).toEqual([
+          [null, "pending_payment"],
+          ["pending_payment", "cancelled"],
+        ]);
       });
     });
   });
