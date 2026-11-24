@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attemptPanel,
+  businessFieldErrors,
+  isPanelFailure,
   fromApiResponse,
   PANEL_MESSAGES,
   panelErrorMessage,
@@ -35,6 +38,15 @@ describe("fromApiResponse", () => {
     const error = fromApiResponse(409, body("CONFLICT", "El folio ya está registrado"));
     expect(error.kind).toBe("conflict");
     expect(error.message).toBe("El folio ya está registrado");
+    expect(error.fieldErrors).toEqual({});
+  });
+
+  it("409 con details.field deja el mensaje en ese campo", () => {
+    const error = fromApiResponse(
+      409,
+      body("CONFLICT", "Ese folio ya está en otro pedido.", { field: "number" }),
+    );
+    expect(error.fieldErrors).toEqual({ number: "Ese folio ya está en otro pedido." });
   });
 
   it("422 → errores por campo (el primero de cada campo)", () => {
@@ -86,5 +98,46 @@ describe("mensajes", () => {
   it("panelErrorMessage usa el aviso de caída para errores desconocidos", () => {
     expect(panelErrorMessage(unavailableError())).toBe(PANEL_MESSAGES.unavailable);
     expect(panelErrorMessage(new Error("boom"))).toBe(PANEL_MESSAGES.unavailable);
+  });
+});
+
+describe("businessFieldErrors", () => {
+  it("422 y 409 vuelven como errores por campo o como mensaje general", () => {
+    const validation = fromApiResponse(
+      422,
+      body("VALIDATION_ERROR", "x", { issues: [{ path: "amount", message: "Máximo $5.000" }] }),
+    );
+    expect(businessFieldErrors(validation)).toEqual({ amount: "Máximo $5.000" });
+    expect(businessFieldErrors(fromApiResponse(409, body("CONFLICT", "Ya resuelto")))).toEqual({
+      form: "Ya resuelto",
+    });
+    expect(businessFieldErrors(fromApiResponse(404, null), "Ya no existe.")).toEqual({
+      form: "Ya no existe.",
+    });
+  });
+
+  it("403, caída y errores ajenos se relanzan", () => {
+    expect(() => businessFieldErrors(fromApiResponse(403, null))).toThrow(PANEL_MESSAGES.forbidden);
+    expect(() => businessFieldErrors(unavailableError())).toThrow(PANEL_MESSAGES.unavailable);
+    expect(() => businessFieldErrors(new Error("otro"))).toThrow("otro");
+  });
+});
+
+describe("attemptPanel", () => {
+  it("devuelve el valor o el mensaje del error", async () => {
+    expect(await attemptPanel(async () => 5)).toBe(5);
+    const failure = await attemptPanel(async () => {
+      throw fromApiResponse(403, null);
+    });
+    expect(isPanelFailure(failure) && failure.failed).toBe(PANEL_MESSAGES.forbidden);
+  });
+
+  it("relanza los errores internos de Next (redirect)", async () => {
+    const redirect = Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;x" });
+    await expect(
+      attemptPanel(async () => {
+        throw redirect;
+      }),
+    ).rejects.toBe(redirect);
   });
 });

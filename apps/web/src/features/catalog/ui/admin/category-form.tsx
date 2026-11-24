@@ -16,7 +16,7 @@ import { saveCategoryAction, type CategoryFormState } from "./admin-catalog-acti
 export function CategoryForm({
   editing,
 }: {
-  editing: { slug: string; name: string; active: boolean } | null;
+  editing: { id: string; slug: string; name: string; active: boolean } | null;
 }) {
   const [state, action, pending] = useActionState<CategoryFormState, FormData>(saveCategoryAction, {
     values: { name: editing?.name ?? "", active: editing?.active ?? true },
@@ -29,7 +29,7 @@ export function CategoryForm({
 
   return (
     <form action={action} noValidate aria-busy={pending} className="flex flex-col gap-4">
-      <input type="hidden" name="slug" value={editing?.slug ?? ""} />
+      <input type="hidden" name="id" value={editing?.id ?? ""} />
       <FormErrorSummary errors={summary} />
       <div id={fieldId("name")} className="max-w-xl scroll-mt-24">
         <TextField

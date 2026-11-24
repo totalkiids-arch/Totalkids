@@ -21,6 +21,7 @@ const LN12_PATHS = [
   "/admin/products/{id}/images/{imageId}",
   "/admin/products/{id}/stock-adjustments",
   "/admin/products/{id}/stock-movements",
+  "/admin/inventory",
   "/admin/categories",
   "/admin/categories/{id}",
   "/admin/extras",

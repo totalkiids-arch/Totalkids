@@ -6,7 +6,7 @@ import { FormErrorSummary } from "@/shared/ui/admin/notice";
 import { Button } from "@/shared/ui/button";
 import { RadioGroup, TextField } from "@/shared/ui/form";
 
-import { REFERENCE_MAX } from "../../domain/order-workflow";
+import { REFERENCE_MAX } from "../../domain/admin-order";
 import { registerRefundAction, type RefundFormState } from "../admin-order-actions";
 import { errorSummary } from "./form-errors";
 

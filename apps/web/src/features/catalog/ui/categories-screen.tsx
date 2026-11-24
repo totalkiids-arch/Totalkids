@@ -2,7 +2,7 @@ import type { Route } from "next";
 import Link from "next/link";
 
 import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
-import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
+import { LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { AdminPanel } from "@/shared/ui/admin/panel";
 import { ActiveBadge } from "@/shared/ui/admin/status-badge";
@@ -11,7 +11,7 @@ import { PlusIcon } from "@/shared/ui/icons";
 
 import { adminCatalog } from "../container";
 import { toggleCategoryAction } from "./admin/admin-catalog-actions";
-import { DEMO_STORE_NOTE, param, type AdminSearchParams } from "./admin/admin-format";
+import { param, type AdminSearchParams } from "./admin/admin-format";
 import { CategoryForm } from "./admin/category-form";
 
 const NOTICES: Record<string, string> = {
@@ -20,6 +20,7 @@ const NOTICES: Record<string, string> = {
   activada: "Categoría activada.",
   desactivada: "Categoría desactivada. Sus productos se conservan.",
   "no-existe": "Esa categoría ya no existe.",
+  error: "No pudimos actualizar la categoría. Intenta de nuevo en unos minutos.",
 };
 
 const products = (n: number) => `${n} producto${n === 1 ? "" : "s"}`;
@@ -31,10 +32,8 @@ export async function CategoriesScreen({
   searchParams?: AdminSearchParams;
 }) {
   const categories = await adminCatalog.listCategories();
-  const editing = categories.find((c) => c.slug === param(searchParams, "editar")) ?? null;
-  const confirming = categories.find(
-    (c) => c.slug === param(searchParams, "confirmar") && c.active,
-  );
+  const editing = categories.find((c) => c.id === param(searchParams, "editar")) ?? null;
+  const confirming = categories.find((c) => c.id === param(searchParams, "confirmar") && c.active);
   const notice = NOTICES[param(searchParams, "aviso")];
 
   return (
@@ -49,8 +48,12 @@ export async function CategoriesScreen({
           </ButtonLink>
         }
       />
-      {notice ? <LiveNotice message={notice} /> : null}
-      <InfoNote>{DEMO_STORE_NOTE}</InfoNote>
+      {notice ? (
+        <LiveNotice
+          message={notice}
+          tone={param(searchParams, "aviso") === "error" ? "warning" : "success"}
+        />
+      ) : null}
 
       {confirming ? (
         <section
@@ -63,12 +66,13 @@ export async function CategoriesScreen({
             ¿Desactivar «{confirming.name}»?
           </h2>
           <p id="confirmar-texto" className="mt-1.5 text-on-yellow">
-            {products(confirming.productCount)} la usan. Seguirán publicados y con sus pedidos, pero
-            la categoría dejará de mostrarse en la tienda. Puedes reactivarla cuando quieras.
+            {products(confirming.productCount)} la usan y conservan sus pedidos, pero la categoría
+            dejará de mostrarse en la tienda y los publicados que la tienen como principal dejan de
+            verse hasta reasignarlos o reactivarla. Puedes reactivarla cuando quieras.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <form action={toggleCategoryAction}>
-              <input type="hidden" name="slug" value={confirming.slug} />
+              <input type="hidden" name="id" value={confirming.id} />
               <input type="hidden" name="active" value="0" />
               <input type="hidden" name="confirmar" value="1" />
               <Button type="submit" variant="danger">
@@ -92,7 +96,7 @@ export async function CategoriesScreen({
             { key: "actions", label: "Acciones" },
           ]}
           rows={categories.map((category) => ({
-            key: category.slug,
+            key: category.id,
             cells: {
               name: <CellTitle title={category.name} meta={category.slug} />,
               count: products(category.productCount),
@@ -101,7 +105,7 @@ export async function CategoriesScreen({
                 <span className="flex items-center gap-1">
                   <Link
                     href={
-                      `/admin/categorias?editar=${encodeURIComponent(category.slug)}#editor` as Route
+                      `/admin/categorias?editar=${encodeURIComponent(category.id)}#editor` as Route
                     }
                     className={TEXT_ACTION}
                     aria-label={`Editar ${category.name}`}
@@ -109,7 +113,7 @@ export async function CategoriesScreen({
                     Editar
                   </Link>
                   <form action={toggleCategoryAction}>
-                    <input type="hidden" name="slug" value={category.slug} />
+                    <input type="hidden" name="id" value={category.id} />
                     <input type="hidden" name="active" value={category.active ? "0" : "1"} />
                     <button
                       type="submit"
@@ -128,7 +132,7 @@ export async function CategoriesScreen({
 
       <AdminPanel id="editor" title={editing ? `Editar «${editing.name}»` : "Nueva categoría"}>
         {/* key: al cambiar de categoría el formulario parte con sus datos. */}
-        <CategoryForm key={editing?.slug ?? "nueva"} editing={editing} />
+        <CategoryForm key={editing?.id ?? "nueva"} editing={editing} />
       </AdminPanel>
     </>
   );

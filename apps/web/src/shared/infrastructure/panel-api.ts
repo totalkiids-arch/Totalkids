@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { CSRF_COOKIES, PANEL_API_COOKIES } from "@/shared/config/panel-cookies";
 import { fromApiResponse, isPanelApiError, unavailableError } from "@/shared/lib/panel-errors";
@@ -21,8 +22,9 @@ import { requestContext } from "./request-context";
  * - Un error de la API se lanza como PanelApiError (shared/lib/panel-errors);
  *   timeout o caída, como PanelApiError("unavailable").
  *
- * panelGet sirve en componentes de servidor (no escriben cookies). panelSend,
- * solo en Server Actions o Route Handlers.
+ * panelGet y panelDownload sirven en componentes de servidor y Route Handlers
+ * (no escriben cookies). panelSend y panelSendForm, solo en Server Actions o
+ * Route Handlers. Un 401 lleva al ingreso salvo que se pida "throw".
  *
  * El tramo navegador → Next queda protegido por las Server Actions (Next
  * compara Origin con Host) y por SameSite=Lax en las cookies.
@@ -118,16 +120,61 @@ async function guarded<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Qué hacer con un 401: por defecto la sesión terminó y se va al ingreso
+ * (redirect lanza NEXT_REDIRECT, así corta el render o la acción). La sesión y
+ * el ingreso piden "throw": para ellas un 401 es una respuesta esperada.
+ */
+type OnUnauthorized = "login" | "throw";
+
+async function withSession<T>(onUnauthorized: OnUnauthorized, run: () => Promise<T>): Promise<T> {
+  try {
+    return await guarded(run);
+  } catch (error) {
+    if (onUnauthorized === "login" && isPanelApiError(error) && error.kind === "unauthorized")
+      redirect("/admin/ingresar");
+    throw error;
+  }
+}
+
+export interface PanelGetOptions {
+  onUnauthorized?: OnUnauthorized;
+  /** Tiempo máximo de espera en ms (por defecto el de apiFetch). */
+  timeoutMs?: number;
+}
+
 /** GET a /api/v1{path} con la sesión del navegador. Para componentes de servidor. */
-export async function panelGet(path: `/${string}`): Promise<unknown> {
+export async function panelGet(
+  path: `/${string}`,
+  { onUnauthorized = "login", timeoutMs }: PanelGetOptions = {},
+): Promise<unknown> {
   const context = await requestContext();
   const cookie = cookieHeader(browserCookies(await cookies()));
-  return guarded(async () => {
+  return withSession(onUnauthorized, async () => {
     const response = await apiFetch(`/api/v1${path}`, {
       ...context,
+      ...(timeoutMs ? { timeoutMs } : {}),
       headers: cookie ? { cookie } : {},
     });
     return (await toResult(response)).body;
+  });
+}
+
+/**
+ * GET de una descarga (CSV) con la sesión del navegador. Devuelve la respuesta
+ * de la API tal cual para reenviarla al navegador; un error se lanza traducido.
+ */
+export async function panelDownload(path: `/${string}`): Promise<Response> {
+  const context = await requestContext();
+  const cookie = cookieHeader(browserCookies(await cookies()));
+  return withSession("login", async () => {
+    const response = await apiFetch(`/api/v1${path}`, {
+      ...context,
+      timeoutMs: 30_000,
+      headers: { accept: "text/csv, application/json", ...(cookie ? { cookie } : {}) },
+    });
+    if (response.status >= 400) await toResult(response);
+    return response;
   });
 }
 
@@ -159,12 +206,17 @@ async function issueCsrf(
 /** POST/PUT/PATCH/DELETE a /api/v1{path} con CSRF. Solo en Server Actions o Route Handlers. */
 export async function panelSend(
   path: `/${string}`,
-  { method = "POST", body, renewCsrf = false }: PanelSendOptions = {},
+  {
+    method = "POST",
+    body,
+    renewCsrf = false,
+    onUnauthorized = "login",
+  }: PanelSendOptions & { onUnauthorized?: OnUnauthorized } = {},
 ): Promise<PanelResponse> {
   const context = await requestContext();
   const jar = await cookies();
   const values = browserCookies(jar);
-  return guarded(async () => {
+  return withSession(onUnauthorized, async () => {
     const token = await issueCsrf(jar, values, context);
     const response = await apiFetch(`/api/v1${path}`, {
       ...context,
@@ -185,5 +237,25 @@ export async function panelSend(
       await issueCsrf(jar, values, context).catch(() => undefined);
     }
     return result;
+  });
+}
+
+/** POST multipart (subida de imágenes) a /api/v1{path} con CSRF. Solo en Server Actions. */
+export async function panelSendForm(path: `/${string}`, form: FormData): Promise<PanelResponse> {
+  const context = await requestContext();
+  const jar = await cookies();
+  const values = browserCookies(jar);
+  return withSession("login", async () => {
+    const token = await issueCsrf(jar, values, context);
+    // Sin content-type: fetch arma el multipart con su boundary.
+    const response = await apiFetch(`/api/v1${path}`, {
+      ...context,
+      method: "POST",
+      timeoutMs: 30_000,
+      headers: { cookie: cookieHeader(values), "x-csrf-token": token },
+      body: form,
+    });
+    applySetCookies(jar, values, response);
+    return toResult(response);
   });
 }

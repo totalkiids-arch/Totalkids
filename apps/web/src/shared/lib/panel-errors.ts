@@ -109,8 +109,15 @@ export function fromApiResponse(
       return new PanelApiError("forbidden", PANEL_MESSAGES.forbidden, base);
     case 404:
       return new PanelApiError("not-found", apiMessage ?? PANEL_MESSAGES.notFound, base);
-    case 409:
-      return new PanelApiError("conflict", apiMessage ?? PANEL_MESSAGES.conflict, base);
+    case 409: {
+      // Los conflictos de pedidos indican el campo del formulario (details.field).
+      const field = (data.details as { field?: unknown } | null)?.field;
+      const message = apiMessage ?? PANEL_MESSAGES.conflict;
+      return new PanelApiError("conflict", message, {
+        ...base,
+        fieldErrors: typeof field === "string" && field ? { [field]: message } : {},
+      });
+    }
     case 422:
       return new PanelApiError("validation", apiMessage ?? PANEL_MESSAGES.validation, {
         ...base,
@@ -142,7 +149,49 @@ export function unavailableError(cause?: unknown): PanelApiError {
   return new PanelApiError("unavailable", PANEL_MESSAGES.unavailable, { cause });
 }
 
+/**
+ * Errores de negocio (422, 409, 404) → errores por campo del formulario
+ * ("form" = mensaje general). Cualquier otro error (403, caída, uno que no es
+ * de la API) se relanza para que lo muestre la pantalla.
+ */
+export function businessFieldErrors(
+  error: unknown,
+  notFound: string = PANEL_MESSAGES.notFound,
+): Record<string, string> {
+  if (!isPanelApiError(error)) throw error;
+  if (error.kind === "validation" || error.kind === "conflict") {
+    return Object.keys(error.fieldErrors).length > 0
+      ? { ...error.fieldErrors }
+      : { form: error.message };
+  }
+  if (error.kind === "not-found") return { form: notFound };
+  throw error;
+}
+
 /** Mensaje para mostrar al equipo a partir de cualquier error. */
 export function panelErrorMessage(error: unknown): string {
   return isPanelApiError(error) ? error.message : PANEL_MESSAGES.unavailable;
+}
+
+/** Resultado de `attemptPanel` cuando la llamada falló. */
+export interface PanelFailure {
+  failed: string;
+}
+
+/**
+ * Para Server Actions: ejecuta la llamada y, si falla (403, API caída…),
+ * devuelve el mensaje para el formulario en vez de romper la página. Los
+ * errores internos de Next (redirect, notFound: traen `digest`) se relanzan.
+ */
+export async function attemptPanel<T>(run: () => Promise<T>): Promise<T | PanelFailure> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof Error && "digest" in error) throw error;
+    return { failed: panelErrorMessage(error) };
+  }
+}
+
+export function isPanelFailure(value: unknown): value is PanelFailure {
+  return typeof value === "object" && value !== null && "failed" in value;
 }

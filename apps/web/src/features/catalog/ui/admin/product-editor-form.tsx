@@ -9,8 +9,14 @@ import { Button, buttonClasses } from "@/shared/ui/button";
 import { Checkbox, SelectField, TextareaField, TextField } from "@/shared/ui/form";
 import { PlusIcon, TrashIcon } from "@/shared/ui/icons";
 
-import { PRODUCT_NAME_MAX, availableStock } from "../../domain/admin-product";
-import { fieldId, type ProductFormValues } from "../../domain/admin-product-form";
+import {
+  DIMENSIONS_MAX,
+  PRODUCT_NAME_MAX,
+  PRODUCT_STATUS_LABEL,
+  TEXT_LIMIT,
+  availableStock,
+} from "../../domain/admin-product";
+import { fieldId, isNewVariantId, type ProductFormValues } from "../../domain/admin-product-form";
 import { LEVELS, MATERIALS } from "../../domain/product";
 import { saveProductAction, type ProductFormState } from "./admin-catalog-actions";
 import { ImagePicker } from "./image-picker";
@@ -77,7 +83,7 @@ export function ProductEditorForm({
 }: {
   productId: string;
   initial: ProductFormValues;
-  categories: readonly { slug: string; name: string }[];
+  categories: readonly { id: string; name: string }[];
 }) {
   const [state, action, pending] = useActionState<ProductFormState, FormData>(saveProductAction, {
     values: initial,
@@ -126,7 +132,7 @@ export function ProductEditorForm({
                   label="Categoría principal"
                   name="category"
                   defaultValue={values.category}
-                  options={categories.map((c) => ({ value: c.slug, label: c.name }))}
+                  options={categories.map((c) => ({ value: c.id, label: c.name }))}
                   error={errors.category}
                 />
               </Slot>
@@ -135,7 +141,7 @@ export function ProductEditorForm({
                   legend="También aparece en"
                   hint="Opcional. La categoría principal se incluye siempre."
                   name="categories"
-                  options={categories.map((c) => ({ value: c.slug, label: c.name }))}
+                  options={categories.map((c) => ({ value: c.id, label: c.name }))}
                   checked={values.categories}
                   error={errors.categories}
                 />
@@ -154,6 +160,7 @@ export function ProductEditorForm({
                   label="Medidas (ancho × fondo × alto)"
                   name="dimensions"
                   defaultValue={values.dimensions}
+                  maxLength={DIMENSIONS_MAX}
                   hint="Opcional. Ej.: Ancho 1,0 m · Fondo 40 cm · Alto 50 cm."
                   error={errors.dimensions}
                 />
@@ -176,7 +183,7 @@ export function ProductEditorForm({
 
           <AdminPanel
             title="Variantes e inventario"
-            description="Cada variante tiene SKU único, precio y stock propios. Disponible = físico − reservado."
+            description="Cada variante tiene SKU único, precio y stock propios. Disponible = físico − reservado. El stock de una variante guardada se cambia en Inventario, con motivo."
           >
             <Slot path="variants" className="flex flex-col gap-4">
               {errors.variants ? (
@@ -251,16 +258,32 @@ export function ProductEditorForm({
                           {...NUMERIC}
                         />
                       </Slot>
-                      <Slot path={at("physical")}>
-                        <TextField
-                          label="Stock físico"
-                          name="variant_physical"
-                          defaultValue={variant.physical}
-                          hint={`${variant.reserved} reservada${variant.reserved === 1 ? "" : "s"}: el físico no puede ser menor.`}
-                          error={errors[at("physical")]}
-                          {...NUMERIC}
-                        />
-                      </Slot>
+                      {isNewVariantId(variant.id) ? (
+                        <Slot path={at("physical")}>
+                          <TextField
+                            label="Stock inicial"
+                            name="variant_physical"
+                            defaultValue={variant.physical}
+                            hint="Unidades terminadas. 0 = se vende a pedido."
+                            error={errors[at("physical")]}
+                            {...NUMERIC}
+                          />
+                        </Slot>
+                      ) : (
+                        <div className="flex min-w-0 flex-col gap-1.5">
+                          <input type="hidden" name="variant_physical" value={variant.physical} />
+                          <span className="text-sm font-extrabold">Stock físico</span>
+                          <span className="flex h-12 items-center text-base">
+                            {variant.physical} un.
+                          </span>
+                          <Link
+                            href={`/admin/inventario?sku=${encodeURIComponent(variant.sku)}#ajuste`}
+                            className="text-[13px] font-bold text-brand-blue underline-offset-4 hover:underline"
+                          >
+                            Ajustar en Inventario
+                          </Link>
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <AdminMuted>
@@ -307,58 +330,93 @@ export function ProductEditorForm({
 
           <AdminPanel
             title="Extras compatibles"
-            description="0 = el extra no está disponible para este producto."
+            description="Marca los extras que se ofrecen con este producto. Sin precio propio se usa el general del extra; si no tiene, queda «por confirmar» y no suma al total."
           >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Slot path="assemblyPrice">
-                <TextField
-                  label="Armado CLP"
-                  name="assemblyPrice"
-                  defaultValue={values.assemblyPrice}
-                  error={errors.assemblyPrice}
-                  {...NUMERIC}
-                />
-              </Slot>
-              <Slot path="personalizationPrice">
-                <TextField
-                  label="Personalización CLP"
-                  name="personalizationPrice"
-                  defaultValue={values.personalizationPrice}
-                  error={errors.personalizationPrice}
-                  {...NUMERIC}
-                />
-              </Slot>
-              <Slot path="personalizationMaxLength">
-                <TextField
-                  label="Límite de caracteres del nombre"
-                  name="personalizationMaxLength"
-                  defaultValue={values.personalizationMaxLength}
-                  hint="Entre 1 y 100."
-                  error={errors.personalizationMaxLength}
-                  {...NUMERIC}
-                />
-              </Slot>
-            </div>
+            {values.extras.length === 0 ? (
+              <AdminMuted>La tienda aún no tiene extras configurados.</AdminMuted>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {values.extras.map((extra, index) => {
+                  const at = (field: string) => `extras.${index}.${field}`;
+                  return (
+                    <fieldset
+                      key={extra.code}
+                      className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-background/50 p-4"
+                    >
+                      <legend className="px-1 text-sm font-extrabold">{extra.name}</legend>
+                      <input type="hidden" name="extra_code" value={extra.code} />
+                      <Checkbox
+                        name="extra_offered"
+                        value={extra.code}
+                        label={`Ofrecer ${extra.name.toLowerCase()}`}
+                        defaultChecked={extra.offered}
+                      />
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Slot path={at("price")}>
+                          <TextField
+                            label="Precio propio CLP"
+                            name="extra_price"
+                            defaultValue={extra.price}
+                            hint={
+                              extra.defaultPrice === null
+                                ? "Opcional. Vacío = por confirmar."
+                                : `Opcional. Vacío = ${extra.defaultPrice} (precio general).`
+                            }
+                            error={errors[at("price")]}
+                            {...NUMERIC}
+                          />
+                        </Slot>
+                        {extra.requiresText ? (
+                          <Slot path={at("textMaxLength")}>
+                            <TextField
+                              label="Límite de caracteres"
+                              name="extra_limit"
+                              defaultValue={extra.textMaxLength}
+                              hint={`Opcional, entre ${TEXT_LIMIT.min} y ${TEXT_LIMIT.max}.${
+                                extra.defaultTextMaxLength === null
+                                  ? ""
+                                  : ` Vacío = ${extra.defaultTextMaxLength}.`
+                              }`}
+                              error={errors[at("textMaxLength")]}
+                              {...NUMERIC}
+                            />
+                          </Slot>
+                        ) : (
+                          <input type="hidden" name="extra_limit" value="" />
+                        )}
+                      </div>
+                      {errors[at("code")] ? (
+                        <p className="text-sm font-bold text-brand-red">{errors[at("code")]}</p>
+                      ) : null}
+                    </fieldset>
+                  );
+                })}
+              </div>
+            )}
           </AdminPanel>
         </div>
 
         <div className="min-w-0">
           <AdminPanel title="Publicación">
-            <Checkbox
-              name="active"
-              value="1"
-              label="Visible en el catálogo"
-              defaultChecked={values.active}
-              description="Desactivar conserva el producto y sus pedidos históricos; solo impide nuevas compras."
-            />
+            <Slot path="publish" className="flex flex-col gap-3">
+              {values.status ? (
+                <AdminMuted>Estado actual: {PRODUCT_STATUS_LABEL[values.status]}.</AdminMuted>
+              ) : null}
+              <Checkbox
+                name="publish"
+                value="1"
+                label="Visible en el catálogo"
+                defaultChecked={values.publish}
+                description="Para publicar necesita categoría activa, precio en cada variante y al menos una imagen con descripción. Retirarlo conserva el producto y sus pedidos; solo impide nuevas compras."
+              />
+              {errors.publish ? (
+                <p className="text-sm font-bold text-brand-red">{errors.publish}</p>
+              ) : null}
+            </Slot>
           </AdminPanel>
 
           <AdminPanel title="Imágenes">
-            <ImagePicker
-              images={values.images}
-              newImageAlt={values.newImage?.alt ?? ""}
-              errors={errors}
-            />
+            <ImagePicker images={values.images} newImageAlt={values.newImageAlt} errors={errors} />
           </AdminPanel>
         </div>
       </div>

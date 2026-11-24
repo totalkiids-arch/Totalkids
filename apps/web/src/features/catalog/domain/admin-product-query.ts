@@ -2,16 +2,24 @@
  * Consulta del listado de productos del panel. Todo vive en la URL
  * (`/admin/productos?q=&estado=&pagina=`), igual que el catálogo público:
  * se puede compartir, funciona con atrás/adelante y sin JavaScript.
+ * La búsqueda (nombre o SKU), el filtro y la paginación los resuelve la API.
  */
-import type { AdminProduct } from "./admin-product";
-import { normalizeSku } from "./admin-product";
+import type { AdminProductListItem, ProductStatus } from "./admin-product";
 
 export const PUBLICATION_FILTERS = [
   { value: "todos", label: "Todos" },
-  { value: "activo", label: "Activo" },
+  { value: "activo", label: "Publicado" },
+  { value: "borrador", label: "Borrador" },
   { value: "inactivo", label: "Inactivo" },
 ] as const;
 export type PublicationFilter = (typeof PUBLICATION_FILTERS)[number]["value"];
+
+const FILTER_STATUS: Record<PublicationFilter, ProductStatus | null> = {
+  todos: null,
+  activo: "active",
+  borrador: "draft",
+  inactivo: "inactive",
+};
 
 export const ADMIN_PAGE_SIZE = 20;
 const Q_MAX = 80;
@@ -50,44 +58,18 @@ export function toAdminProductSearch(query: AdminProductQuery): string {
   return text ? `?${text}` : "";
 }
 
-/** Sin tildes ni mayúsculas, para buscar "cuna" y encontrar "Cuna". */
-function fold(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+/** Parámetros de GET /admin/products para la consulta del panel. */
+export function toApiProductSearch(query: AdminProductQuery, pageSize = ADMIN_PAGE_SIZE): string {
+  const params = new URLSearchParams({ page: String(query.page), pageSize: String(pageSize) });
+  if (query.q) params.set("q", query.q);
+  const status = FILTER_STATUS[query.status];
+  if (status) params.set("status", status);
+  return params.toString();
 }
 
 export interface AdminProductPage {
-  items: AdminProduct[];
+  items: AdminProductListItem[];
   total: number;
   page: number;
   pageCount: number;
-}
-
-/** Busca por nombre o SKU, filtra por publicación y pagina (la página se ajusta al rango). */
-export function applyAdminProductQuery(
-  products: readonly AdminProduct[],
-  query: AdminProductQuery,
-  pageSize = ADMIN_PAGE_SIZE,
-): AdminProductPage {
-  const term = fold(query.q);
-  const skuTerm = normalizeSku(query.q);
-  const matches = products.filter((product) => {
-    if (query.status === "activo" && !product.active) return false;
-    if (query.status === "inactivo" && product.active) return false;
-    if (term === "") return true;
-    return (
-      fold(product.name).includes(term) ||
-      product.variants.some((v) => normalizeSku(v.sku).includes(skuTerm))
-    );
-  });
-  const pageCount = Math.max(1, Math.ceil(matches.length / pageSize));
-  const page = Math.min(query.page, pageCount);
-  return {
-    items: matches.slice((page - 1) * pageSize, page * pageSize),
-    total: matches.length,
-    page,
-    pageCount,
-  };
 }

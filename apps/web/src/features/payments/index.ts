@@ -5,11 +5,11 @@ export {
   isPaymentStatus,
   PAYMENT_STATUS_LABEL,
   PAYMENT_STATUSES,
+  type AttemptStatus,
   type PaymentStatus,
 } from "./domain/payment-status";
 export {
   parsePaymentQuery,
   type PaymentAttemptRow,
   type PaymentQuery,
-  type ReconcileFormState,
 } from "./domain/payment-query";

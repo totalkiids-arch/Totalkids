@@ -5,6 +5,7 @@
  * el listado de productos: se puede compartir, funciona con atrás/adelante y
  * sin JavaScript.
  */
+import type { AdminOrderListItem } from "./admin-order";
 import {
   ORDER_STATUS_LABEL,
   ORDER_STATUSES,
@@ -89,6 +90,24 @@ export function toAdminOrderSearch(
   if (query.page && query.page > 1) params.set("pagina", String(query.page));
   const text = params.toString();
   return text ? `?${text}` : "";
+}
+
+/** Parámetros de GET /admin/orders: búsqueda, estado y página (la API pagina y ordena). */
+export function toApiOrderSearch(
+  query: AdminOrderQuery,
+  pageSize = ADMIN_ORDERS_PAGE_SIZE,
+): string {
+  const params = new URLSearchParams({ page: String(query.page), pageSize: String(pageSize) });
+  if (query.q) params.set("q", query.q);
+  if (query.status !== "todos") params.set("status", query.status);
+  return params.toString();
+}
+
+export interface AdminOrderListPage {
+  items: AdminOrderListItem[];
+  total: number;
+  page: number;
+  pageCount: number;
 }
 
 /** Sin tildes ni mayúsculas, para que "gonzalez" encuentre "González". */

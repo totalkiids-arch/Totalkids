@@ -188,6 +188,7 @@ Panel de catálogo e inventario (RF-26, RF-34, RN-01 a RN-03). Rutas en [`src/ro
 | `DELETE /admin/products/{id}/images/{imageId}`           | Borra la fila y el archivo. 204.                                                                                |
 | `POST /admin/products/{id}/stock-adjustments`            | Ajuste de stock: `{ variantId, stockPhysical, reason }`. 201 con la variante y el movimiento.                   |
 | `GET /admin/products/{id}/stock-movements`               | Historial (todos los tipos), más reciente primero; filtro `variantId`, paginado.                                |
+| `GET /admin/inventory`                                   | Todas las variantes del catálogo (activas e inactivas) con físico, reservado y disponible; `q`, paginado.       |
 | `GET /admin/categories`                                  | Todas (activas e inactivas) con `productCount` (principal o adicional, cada producto una vez).                  |
 | `POST /admin/categories`, `PATCH /admin/categories/{id}` | Crea o edita (`name`, `description`, `sortOrder`, `active`).                                                    |
 | `DELETE /admin/categories/{id}`                          | Desactiva y responde 200 con `productsUsingCount`, `hiddenProductsCount` y `warning`.                           |

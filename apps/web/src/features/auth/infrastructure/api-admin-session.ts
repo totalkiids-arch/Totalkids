@@ -17,7 +17,7 @@ import { toAdminSession, toAuthFailure } from "./auth-api-results";
 /** Una sola llamada a /auth/session por petición, aunque la pidan layout, página y acciones. */
 const readSession = cache(async () => {
   try {
-    return toAdminSession(await panelGet("/auth/session"));
+    return toAdminSession(await panelGet("/auth/session", { onUnauthorized: "throw" }));
   } catch (error) {
     if (isPanelApiError(error) && error.kind === "unauthorized") return null;
     throw error;
@@ -29,7 +29,12 @@ export const apiAdminSession: AdminSessionReader = { read: readSession };
 export const apiAdminAuth: AdminAuthGateway = {
   async signIn(email, password) {
     try {
-      await panelSend("/auth/login", { body: { email, password }, renewCsrf: true });
+      await panelSend("/auth/login", {
+        body: { email, password },
+        renewCsrf: true,
+        // Un 401 aquí son credenciales inválidas, no una sesión vencida.
+        onUnauthorized: "throw",
+      });
       return { ok: true };
     } catch (error) {
       return toAuthFailure(error);
@@ -38,7 +43,7 @@ export const apiAdminAuth: AdminAuthGateway = {
 
   async signOut() {
     try {
-      await panelSend("/auth/logout", { renewCsrf: true });
+      await panelSend("/auth/logout", { renewCsrf: true, onUnauthorized: "throw" });
     } catch {
       // Sin API no se puede revocar en la base, pero la sesión vence sola (2 h
       // sin uso). La acción igual lleva al ingreso.
@@ -47,7 +52,7 @@ export const apiAdminAuth: AdminAuthGateway = {
 
   async requestPasswordReset(email) {
     try {
-      await panelSend("/auth/password-reset/request", { body: { email } });
+      await panelSend("/auth/password-reset/request", { body: { email }, onUnauthorized: "throw" });
       return { ok: true };
     } catch (error) {
       return toAuthFailure(error);
@@ -59,6 +64,7 @@ export const apiAdminAuth: AdminAuthGateway = {
       await panelSend("/auth/password-reset/confirm", {
         body: { token, password },
         renewCsrf: true,
+        onUnauthorized: "throw",
       });
       return { ok: true };
     } catch (error) {

@@ -3,13 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   availableStock,
   canRemoveVariant,
-  countProductsInCategory,
   findDuplicateSkus,
   IMAGE_MAX_BYTES,
   inventoryStatus,
-  lowestPrice,
+  requestedStatus,
   slugify,
-  totalAvailable,
+  stockStatus,
   validateCategoryName,
   validateClp,
   validateCompareAt,
@@ -52,10 +51,10 @@ describe("SKU único (RF-26)", () => {
     expect(validateSkuFormat("X".repeat(41))).toMatch(/máximo/);
   });
 
-  it("detecta repetidos sin distinguir mayúsculas, en otros productos y en el mismo", () => {
-    expect(findDuplicateSkus(["tk-1"], ["TK-1"])).toEqual([0]);
-    expect(findDuplicateSkus(["TK-2", " tk-2 "], [])).toEqual([1]);
-    expect(findDuplicateSkus(["TK-3", "TK-4"], ["TK-1"])).toEqual([]);
+  it("detecta repetidos dentro del producto sin distinguir mayúsculas (entre productos, la API)", () => {
+    expect(findDuplicateSkus(["TK-2", " tk-2 "])).toEqual([1]);
+    expect(findDuplicateSkus(["TK-3", "TK-4"])).toEqual([]);
+    expect(findDuplicateSkus(["", ""])).toEqual([]);
   });
 });
 
@@ -69,6 +68,8 @@ describe("stock (RN-03)", () => {
     expect(inventoryStatus({ physical: 3, reserved: 3 })).toBe("out");
     expect(inventoryStatus({ physical: 4, reserved: 1 })).toBe("low");
     expect(inventoryStatus({ physical: 10, reserved: 1 })).toBe("ok");
+    expect(stockStatus(0)).toBe("out");
+    expect(stockStatus(2)).toBe("low");
   });
 
   it("el físico es entero y no menor que las reservas", () => {
@@ -78,12 +79,17 @@ describe("stock (RN-03)", () => {
     expect(validatePhysicalStock(-1, 0)).toMatch(/negativo/);
   });
 
-  it("un ajuste exige motivo", () => {
-    expect(validateStockAdjustment({ physical: 8, reserved: 2, reason: "Conteo" })).toEqual({});
-    expect(validateStockAdjustment({ physical: 1, reserved: 2, reason: " " })).toEqual({
+  it("un ajuste exige motivo y un valor distinto del actual", () => {
+    expect(
+      validateStockAdjustment({ physical: 8, current: 5, reserved: 2, reason: "Conteo" }),
+    ).toEqual({});
+    expect(validateStockAdjustment({ physical: 1, current: 5, reserved: 2, reason: " " })).toEqual({
       physical: expect.stringMatching(/reservadas/),
       reason: "Escribe el motivo del ajuste.",
     });
+    expect(
+      validateStockAdjustment({ physical: 5, current: 5, reserved: 0, reason: "Conteo" }).physical,
+    ).toMatch(/ya es 5/);
   });
 
   it("no se quita una variante con reservas", () => {
@@ -114,8 +120,8 @@ describe("imágenes (RF-26)", () => {
 
 describe("categorías", () => {
   const existing = [
-    { slug: "mesas", name: "Mesas", active: true },
-    { slug: "montessori-pikler", name: "Montessori y Pikler", active: true },
+    { id: "c1", slug: "mesas", name: "Mesas", active: true },
+    { id: "c2", slug: "montessori-pikler", name: "Montessori y Pikler", active: true },
   ];
 
   it("arma el slug sin tildes ni símbolos", () => {
@@ -132,24 +138,14 @@ describe("categorías", () => {
   });
 
   it("al editar se compara solo con las demás", () => {
-    expect(validateCategoryName("Mesas", existing, "mesas")).toBeNull();
-    expect(validateCategoryName("Mesas", existing, "montessori-pikler")).toMatch(/ese nombre/);
-  });
-
-  it("cuenta productos por categoría principal o adicional", () => {
-    const products = [
-      { categories: ["mesas", "junji"] },
-      { categories: ["junji"] },
-      { categories: ["sillas"] },
-    ];
-    expect(countProductsInCategory(products, "junji")).toBe(2);
-    expect(countProductsInCategory(products, "cunas")).toBe(0);
+    expect(validateCategoryName("Mesas", existing, "c1")).toBeNull();
+    expect(validateCategoryName("Mesas", existing, "c2")).toMatch(/ese nombre/);
   });
 });
 
 describe("validateProductDraft", () => {
   const variant = {
-    id: "v1",
+    id: "v1" as string | null,
     sku: "TK-10",
     option: null,
     price: 49990,
@@ -166,17 +162,21 @@ describe("validateProductDraft", () => {
     dimensions: "",
     optionName: "",
     variants: [variant],
-    assemblyPrice: 0,
-    personalizationPrice: 0,
-    personalizationMaxLength: 20,
-    active: true,
+    extras: [
+      { code: "armado", offered: true, price: null, textMaxLength: null },
+      { code: "nombre", offered: true, price: 5000, textMaxLength: 12 },
+    ],
+    publish: true,
     imageAlts: ["Mesa de madera"],
     newImage: null,
   };
   const context: ProductDraftContext = {
-    otherProductSkus: ["TK-20"],
     currentVariants: [{ id: "v1", sku: "TK-10", reserved: 2 }],
     allowedCategories: ["mesas", "junji"],
+    extraOptions: [
+      { code: "armado", name: "Armado", requiresText: false, price: null, textMaxLength: null },
+      { code: "nombre", name: "Nombre", requiresText: true, price: 4000, textMaxLength: 20 },
+    ],
   };
 
   it("acepta un producto válido", () => {
@@ -190,10 +190,13 @@ describe("validateProductDraft", () => {
         name: "",
         category: "inexistente",
         variants: [
-          { id: "v1", sku: "tk-20", option: null, price: 100, compareAtPrice: 50, physical: 1 },
+          { id: null, sku: "TK 20", option: null, price: 100, compareAtPrice: 50, physical: -1 },
         ],
-        assemblyPrice: -1,
-        personalizationMaxLength: 0,
+        extras: [
+          { code: "armado", offered: true, price: -1, textMaxLength: null },
+          { code: "nombre", offered: true, price: null, textMaxLength: 0 },
+          { code: "fantasma", offered: true, price: null, textMaxLength: null },
+        ],
         imageAlts: [""],
         newImage: { type: "image/gif", size: 10, alt: "" },
       },
@@ -201,26 +204,46 @@ describe("validateProductDraft", () => {
     );
     expect(Object.keys(errors).sort()).toEqual(
       [
-        "assemblyPrice",
         "category",
+        "extras.0.price",
+        "extras.1.textMaxLength",
+        "extras.2.code",
         "images.0.alt",
         "name",
         "newImage",
         "newImage.alt",
-        "personalizationMaxLength",
+        "variants",
         "variants.0.compareAtPrice",
         "variants.0.physical",
         "variants.0.sku",
       ].sort(),
     );
-    expect(errors["variants.0.sku"]).toBe("Ese SKU ya existe. Usa un código único.");
+    expect(errors["variants.0.sku"]).toMatch(/espacios/);
+    // La variante v1 (con reservas) no viene en el borrador.
+    expect(errors.variants).toMatch(/TK-10 tiene unidades reservadas/);
+  });
+
+  it("el stock de una variante guardada no se valida (se ajusta en Inventario)", () => {
+    const errors = validateProductDraft(
+      { ...base, variants: [{ ...variant, physical: Number.NaN }] },
+      context,
+    );
+    expect(errors).toEqual({});
+  });
+
+  it("un extra no ofrecido no se valida", () => {
+    const errors = validateProductDraft(
+      { ...base, extras: [{ code: "armado", offered: false, price: -5, textMaxLength: null }] },
+      context,
+    );
+    expect(errors).toEqual({});
   });
 
   it("exige al menos una variante y no quitar las que tienen reservas", () => {
     const errors = validateProductDraft({ ...base, variants: [] }, context);
     expect(errors.variants).toBe("Agrega al menos una variante.");
     const removed = validateProductDraft(
-      { ...base, variants: [{ ...variant, id: "v2", sku: "TK-11" }] },
+      { ...base, variants: [{ ...variant, id: null, sku: "TK-11" }] },
       context,
     );
     expect(removed.variants).toMatch(/TK-10 tiene unidades reservadas/);
@@ -232,7 +255,7 @@ describe("validateProductDraft", () => {
         ...base,
         variants: [
           { ...variant, option: "Azul" },
-          { ...variant, id: "v2", sku: "TK-11", option: "azul", physical: 0 },
+          { ...variant, id: null, sku: "TK-11", option: "azul", physical: 0 },
         ],
       },
       context,
@@ -242,15 +265,16 @@ describe("validateProductDraft", () => {
   });
 });
 
-describe("resumen del listado", () => {
-  const product = {
-    variants: [
-      { price: 300, physical: 5, reserved: 1 },
-      { price: 200, physical: 2, reserved: 2 },
-    ],
-  };
-  it("muestra el menor precio y la suma de disponibles", () => {
-    expect(lowestPrice(product as never)).toBe(200);
-    expect(totalAvailable(product as never)).toBe(4);
+describe("requestedStatus", () => {
+  it("visible = publicado", () => {
+    expect(requestedStatus(true, null)).toBe("active");
+    expect(requestedStatus(true, "inactive")).toBe("active");
+  });
+
+  it("sin publicar: un borrador o un producto nuevo sigue en borrador; uno publicado pasa a inactivo", () => {
+    expect(requestedStatus(false, null)).toBe("draft");
+    expect(requestedStatus(false, "draft")).toBe("draft");
+    expect(requestedStatus(false, "active")).toBe("inactive");
+    expect(requestedStatus(false, "inactive")).toBe("inactive");
   });
 });

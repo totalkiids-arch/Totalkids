@@ -37,6 +37,7 @@ import {
   idParams,
   imageParams,
   imageUploadFields,
+  inventoryQuery,
   movementsQuery,
   reorderImagesBody,
   stockAdjustmentBody,
@@ -44,7 +45,7 @@ import {
   updateImageBody,
   updateProductBody,
 } from "../services/admin-catalog/schemas.js";
-import { adjustStock, listMovements } from "../services/admin-catalog/stock.js";
+import { adjustStock, listInventory, listMovements } from "../services/admin-catalog/stock.js";
 import { actorOf } from "../services/audit.js";
 import { detectImage, type DetectedImage } from "../services/images/image-bytes.js";
 import type { ImageStorage } from "../services/images/storage.js";
@@ -187,6 +188,17 @@ export function adminCatalogRouter(prisma: PrismaClient, storage: ImageStorage):
           res.json(await listMovements(prisma, params.id, query));
         },
       ),
+    )
+    .all(methodNotAllowed("GET"));
+
+  // Inventario de todo el catálogo (una fila por variante), para la pantalla Inventario.
+  router
+    .route("/admin/inventory")
+    .get(
+      admin,
+      validated({ query: inventoryQuery }, async ({ query }, _req, res) => {
+        res.json(await listInventory(prisma, query));
+      }),
     )
     .all(methodNotAllowed("GET"));
 

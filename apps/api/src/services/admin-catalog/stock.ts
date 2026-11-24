@@ -192,3 +192,67 @@ export async function listMovements(
   ]);
   return { items: rows.map(toDto), meta: pageMeta(total, query) };
 }
+
+export interface InventoryRowDto {
+  variantId: string;
+  sku: string;
+  optionLabel: string | null;
+  variantActive: boolean;
+  productId: string;
+  productName: string;
+  productSlug: string;
+  productStatus: "draft" | "active" | "inactive";
+  stockPhysical: number;
+  stockReserved: number;
+  available: number;
+}
+
+/**
+ * Inventario de todo el catálogo, una fila por variante (RF-34, RN-03): lo que
+ * lista la pantalla Inventario del panel sin pedir producto por producto.
+ * Orden estable por nombre de producto y orden de la variante. `q` busca en el
+ * nombre del producto o el SKU, sin distinguir mayúsculas.
+ */
+export async function listInventory(
+  prisma: Pick<PrismaClient, "productVariant">,
+  query: Pagination & { q?: string | undefined },
+): Promise<{ items: InventoryRowDto[]; meta: PageMeta }> {
+  const where = query.q
+    ? {
+        OR: [
+          { sku: { contains: query.q, mode: "insensitive" as const } },
+          { product: { name: { contains: query.q, mode: "insensitive" as const } } },
+        ],
+      }
+    : {};
+  const [total, rows] = await Promise.all([
+    prisma.productVariant.count({ where }),
+    prisma.productVariant.findMany({
+      where,
+      include: { product: { select: { id: true, name: true, slug: true, status: true } } },
+      orderBy: [
+        { product: { name: "asc" } },
+        { productId: "asc" },
+        { sortOrder: "asc" },
+        { id: "asc" },
+      ],
+      ...pageWindow(query),
+    }),
+  ]);
+  return {
+    items: rows.map((v) => ({
+      variantId: v.id,
+      sku: v.sku,
+      optionLabel: v.optionLabel,
+      variantActive: v.active,
+      productId: v.product.id,
+      productName: v.product.name,
+      productSlug: v.product.slug,
+      productStatus: v.product.status,
+      stockPhysical: v.stockPhysical,
+      stockReserved: v.stockReserved,
+      available: available(v),
+    })),
+    meta: pageMeta(total, query),
+  };
+}

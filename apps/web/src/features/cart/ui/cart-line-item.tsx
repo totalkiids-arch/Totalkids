@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useTransition } from "react";
 
-import { ProductPhoto } from "@/features/catalog";
 import { TrashIcon } from "@/shared/ui/icons";
+import { ProductPhoto } from "@/shared/ui/product-photo";
 
 import type { PricedLine } from "../application/price-cart";
 import { removeLineAction, updateQuantityAction } from "./cart-actions";

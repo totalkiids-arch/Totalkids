@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AdminOrderPanel, PanelResult } from "../application/admin-order-panel";
+import type { DemoOrderPanel } from "../application/admin-order-panel";
 import type { OrderRepository } from "../application/ports";
 import { orderTotal, type Order } from "../domain/order";
 import {
@@ -11,10 +11,13 @@ import {
   registerInvoice,
   resolveRefund,
   type AdminOrderRecord,
+  type FieldErrors,
   type PaymentAttempt,
   type WorkflowResult,
 } from "../domain/order-workflow";
 import { demoOrderRepository } from "./demo-orders";
+
+type PanelResult = { ok: true; record: AdminOrderRecord } | { ok: false; errors: FieldErrors };
 
 /*
  * ═══════════════════════════════════════════════════════════════════════════
@@ -147,7 +150,7 @@ async function commit(
 
 const now = () => new Date().toISOString();
 
-export const demoAdminOrderPanel: AdminOrderPanel & OrderRepository = {
+export const demoAdminOrderPanel: DemoOrderPanel & OrderRepository = {
   async list() {
     return clone(await records());
   },

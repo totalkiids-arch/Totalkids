@@ -3,17 +3,17 @@ import Link from "next/link";
 
 import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
 import { FilterBar } from "@/shared/ui/admin/filter-bar";
-import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
+import { LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { PaginationNav } from "@/shared/ui/admin/pagination-nav";
 import { AdminPanel } from "@/shared/ui/admin/panel";
-import { ActiveBadge, StatusBadge } from "@/shared/ui/admin/status-badge";
+import { StatusBadge } from "@/shared/ui/admin/status-badge";
 import { ButtonLink } from "@/shared/ui/button";
 import { SelectField, TextField } from "@/shared/ui/form";
 import { PlusIcon } from "@/shared/ui/icons";
 
 import { adminCatalog } from "../container";
-import { inventoryStatus, lowestPrice, totalAvailable } from "../domain/admin-product";
+import { PRODUCT_STATUS_LABEL, stockStatus, type ProductStatus } from "../domain/admin-product";
 import {
   PUBLICATION_FILTERS,
   parseAdminProductQuery,
@@ -22,7 +22,7 @@ import {
 } from "../domain/admin-product-query";
 import { formatClp } from "../domain/product";
 import { toggleProductAction } from "./admin/admin-catalog-actions";
-import { DEMO_STORE_NOTE, param, units, type AdminSearchParams } from "./admin/admin-format";
+import { param, units, type AdminSearchParams } from "./admin/admin-format";
 
 const NOTICES: Record<string, { message: string; tone: "success" | "info" | "warning" }> = {
   creado: { message: "Producto creado.", tone: "success" },
@@ -30,15 +30,22 @@ const NOTICES: Record<string, { message: string; tone: "success" | "info" | "war
     message: "Producto guardado. Los pedidos anteriores conservan sus datos.",
     tone: "success",
   },
-  "guardado-sin-imagen": {
-    message:
-      "Producto guardado. La imagen elegida no se guardó: la carga de imágenes todavía no está disponible.",
+  activado: {
+    message: "Publicación actualizada: el producto está publicado en la tienda.",
+    tone: "success",
+  },
+  borrador: {
+    message: "El producto sigue en borrador: nunca se publicó, así que no hay nada que retirar.",
     tone: "info",
   },
-  activado: {
+  "no-publicable": {
     message:
-      "Publicación actualizada: el producto está activo. Los pedidos históricos se conservan.",
-    tone: "success",
+      "No se pudo publicar: el producto necesita categoría activa, precio en cada variante y al menos una imagen con descripción. Complétalo en Editar.",
+    tone: "warning",
+  },
+  error: {
+    message: "No pudimos actualizar la publicación. Intenta de nuevo en unos minutos.",
+    tone: "warning",
   },
   desactivado: {
     message:
@@ -46,6 +53,12 @@ const NOTICES: Record<string, { message: string; tone: "success" | "info" | "war
     tone: "success",
   },
   "no-existe": { message: "Ese producto ya no existe.", tone: "warning" },
+};
+
+const STATUS_TONE: Record<ProductStatus, "green" | "yellow" | "neutral"> = {
+  active: "green",
+  draft: "yellow",
+  inactive: "neutral",
 };
 
 const listHref = (query: AdminProductQuery) =>
@@ -58,11 +71,7 @@ export async function AdminProductsScreen({
   searchParams?: AdminSearchParams;
 }) {
   const query = parseAdminProductQuery(searchParams);
-  const [result, categories] = await Promise.all([
-    adminCatalog.listProducts(query),
-    adminCatalog.listCategories(),
-  ]);
-  const categoryName = new Map(categories.map((c) => [c.slug, c.name]));
+  const result = await adminCatalog.listProducts(query);
   const notice = NOTICES[param(searchParams, "aviso")];
   const back = toAdminProductSearch({ ...query, page: result.page });
 
@@ -79,7 +88,6 @@ export async function AdminProductsScreen({
         }
       />
       {notice ? <LiveNotice message={notice.message} tone={notice.tone} /> : null}
-      <InfoNote>{DEMO_STORE_NOTE}</InfoNote>
 
       <FilterBar label="Buscar productos">
         <TextField
@@ -109,8 +117,8 @@ export async function AdminProductsScreen({
             { key: "actions", label: "Acciones" },
           ]}
           rows={result.items.map((product) => {
-            const [first, ...rest] = product.variants;
-            const lowStock = product.variants.some((v) => inventoryStatus(v) !== "ok");
+            const lowStock = stockStatus(product.available) === "low";
+            const published = product.status === "active";
             return {
               key: product.id,
               cells: {
@@ -118,29 +126,30 @@ export async function AdminProductsScreen({
                   <CellTitle
                     title={product.name}
                     meta={[
-                      first?.sku,
-                      rest.length > 0
-                        ? `+${rest.length} variante${rest.length === 1 ? "" : "s"}`
-                        : null,
-                      categoryName.get(product.category) ?? product.category,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                      `${product.variantCount} variante${product.variantCount === 1 ? "" : "s"}`,
+                      product.categoryName,
+                    ].join(" · ")}
                   />
                 ),
                 price: (
                   <>
-                    {rest.length > 0 ? <span className="text-text-secondary">desde </span> : null}
-                    {formatClp(lowestPrice(product))}
+                    {product.variantCount > 1 && product.price !== null ? (
+                      <span className="text-text-secondary">desde </span>
+                    ) : null}
+                    {product.price === null ? "Por definir" : formatClp(product.price)}
                   </>
                 ),
                 available: (
                   <span className="inline-flex items-center gap-2">
                     {lowStock ? <StatusBadge tone="yellow">Stock bajo</StatusBadge> : null}
-                    {units(totalAvailable(product))}
+                    {units(product.available)}
                   </span>
                 ),
-                status: <ActiveBadge active={product.active} />,
+                status: (
+                  <StatusBadge tone={STATUS_TONE[product.status]}>
+                    {PRODUCT_STATUS_LABEL[product.status]}
+                  </StatusBadge>
+                ),
                 actions: (
                   <span className="flex items-center gap-1">
                     <Link
@@ -152,14 +161,14 @@ export async function AdminProductsScreen({
                     </Link>
                     <form action={toggleProductAction}>
                       <input type="hidden" name="id" value={product.id} />
-                      <input type="hidden" name="active" value={product.active ? "0" : "1"} />
+                      <input type="hidden" name="active" value={published ? "0" : "1"} />
                       <input type="hidden" name="volver" value={back} />
                       <button
                         type="submit"
                         className={TEXT_ACTION}
-                        aria-label={`${product.active ? "Desactivar" : "Activar"} ${product.name}`}
+                        aria-label={`${published ? "Retirar" : "Publicar"} ${product.name}`}
                       >
-                        {product.active ? "Desactivar" : "Activar"}
+                        {published ? "Retirar" : "Publicar"}
                       </button>
                     </form>
                   </span>
@@ -167,7 +176,7 @@ export async function AdminProductsScreen({
               },
             };
           })}
-          footer={`${result.total} producto${result.total === 1 ? "" : "s"} · página ${result.page} de ${result.pageCount} · Datos de demostración`}
+          footer={`${result.total} producto${result.total === 1 ? "" : "s"} · página ${result.page} de ${result.pageCount}`}
         />
         <PaginationNav
           label="Páginas de productos"

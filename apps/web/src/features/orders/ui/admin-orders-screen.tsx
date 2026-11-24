@@ -1,9 +1,9 @@
 import type { Route } from "next";
 import Link from "next/link";
 
+import { getAdminSession } from "@/features/auth";
 import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
 import { FilterBar } from "@/shared/ui/admin/filter-bar";
-import { InfoNote } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { PaginationNav } from "@/shared/ui/admin/pagination-nav";
 import { AdminPanel } from "@/shared/ui/admin/panel";
@@ -13,22 +13,14 @@ import { formatPrice } from "@/shared/ui/format-price";
 import { SelectField, TextField } from "@/shared/ui/form";
 
 import { listAdminOrders } from "../container";
+import { statusOptionLabel, type OrderPaymentState } from "../domain/admin-order";
 import {
   ORDER_STATUS_FILTERS,
-  PAYMENT_STATUS_LABEL,
   parseAdminOrderQuery,
-  paymentStatus,
   toAdminOrderSearch,
   type AdminOrderQuery,
-  type PaymentStatus,
 } from "../domain/admin-order-query";
-import {
-  invoicePending,
-  ORDER_STATUS_LABEL,
-  orderTone,
-  orderTotal,
-  type OrderTone,
-} from "../domain/order";
+import { orderTone, type OrderTone } from "../domain/order";
 import { formatDateTime } from "./order-format";
 
 const STATUS_TONE: Record<OrderTone, StatusTone> = {
@@ -38,11 +30,14 @@ const STATUS_TONE: Record<OrderTone, StatusTone> = {
   closed: "red",
 };
 
-const PAYMENT_TONE: Record<PaymentStatus, StatusTone> = {
+const PAYMENT_TONE: Record<OrderPaymentState, StatusTone> = {
   paid: "green",
   pending: "yellow",
-  uncertain: "yellow",
-  unpaid: "neutral",
+  in_review: "yellow",
+  rejected: "red",
+  voided: "neutral",
+  expired: "neutral",
+  none: "neutral",
 };
 
 const listHref = (query: AdminOrderQuery) => `/admin/pedidos${toAdminOrderSearch(query)}` as Route;
@@ -54,7 +49,9 @@ export async function AdminOrdersScreen({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const query = parseAdminOrderQuery(searchParams);
-  const result = await listAdminOrders(query);
+  const [result, session] = await Promise.all([listAdminOrders(query), getAdminSession()]);
+  // Exportar pedidos a CSV es solo del Administrador (lo exige también la API).
+  const canExport = session?.role === "admin";
   const filtered = query.q !== "" || query.status !== "todos";
 
   return (
@@ -63,18 +60,17 @@ export async function AdminOrdersScreen({
         title="Pedidos"
         description="Consulta compras y acompaña cada pedido hasta su entrega."
         actions={
-          // Enlace normal (no <Link>): la respuesta es un archivo, no una página.
-          <a
-            href={`/admin/pedidos/exportar${toAdminOrderSearch({ ...query, page: 1 })}`}
-            className={buttonClasses({ variant: "outline" })}
-          >
-            Exportar CSV
-          </a>
+          canExport ? (
+            // Enlace normal (no <Link>): la respuesta es un archivo, no una página.
+            <a
+              href={`/admin/pedidos/exportar${toAdminOrderSearch({ ...query, page: 1 })}`}
+              className={buttonClasses({ variant: "outline" })}
+            >
+              Exportar CSV
+            </a>
+          ) : null
         }
       />
-      <InfoNote>
-        Pedidos de ejemplo. Por ahora se pueden buscar, revisar y exportar, pero no modificar.
-      </InfoNote>
 
       <FilterBar label="Buscar pedidos">
         <TextField
@@ -105,33 +101,39 @@ export async function AdminOrdersScreen({
             { key: "actions", label: "Acción" },
           ]}
           rows={result.items.map((order) => {
-            const payment = paymentStatus(order.status);
             return {
-              key: order.id,
+              key: order.ref,
               cells: {
-                order: <CellTitle title={`#${order.id}`} meta={formatDateTime(order.createdAt)} />,
+                order: (
+                  <CellTitle
+                    title={`#${order.ref}`}
+                    meta={`${formatDateTime(order.createdAt)} · ${
+                      order.deliveryMethod === "pickup" ? "Retiro" : "Despacho"
+                    }`}
+                  />
+                ),
                 customer: <CellTitle title={order.buyerName} meta={order.email} />,
                 status: (
                   <span className="inline-flex flex-wrap gap-1.5">
                     <StatusBadge tone={STATUS_TONE[orderTone(order.status)]}>
-                      {ORDER_STATUS_LABEL[order.status]}
+                      {statusOptionLabel(order.status, order.deliveryMethod)}
                     </StatusBadge>
-                    {invoicePending(order) ? (
+                    {order.invoicePending ? (
                       <StatusBadge tone="yellow">Factura pendiente</StatusBadge>
                     ) : null}
                   </span>
                 ),
                 payment: (
-                  <StatusBadge tone={PAYMENT_TONE[payment]}>
-                    {PAYMENT_STATUS_LABEL[payment]}
+                  <StatusBadge tone={PAYMENT_TONE[order.paymentStatus]}>
+                    {order.paymentLabel}
                   </StatusBadge>
                 ),
-                total: formatPrice(orderTotal(order)),
+                total: formatPrice(order.total),
                 actions: (
                   <Link
-                    href={`/admin/pedidos/${order.id}` as Route}
+                    href={`/admin/pedidos/${order.ref}` as Route}
                     className={TEXT_ACTION}
-                    aria-label={`Ver pedido ${order.id}`}
+                    aria-label={`Ver pedido ${order.ref}`}
                   >
                     Ver pedido
                   </Link>
@@ -151,7 +153,7 @@ export async function AdminOrdersScreen({
               "Todavía no hay pedidos."
             )
           }
-          footer={`${result.total} pedido${result.total === 1 ? "" : "s"} · página ${result.page} de ${result.pageCount} · Datos de demostración`}
+          footer={`${result.total} pedido${result.total === 1 ? "" : "s"} · página ${result.page} de ${result.pageCount}`}
         />
         <PaginationNav
           label="Páginas de pedidos"

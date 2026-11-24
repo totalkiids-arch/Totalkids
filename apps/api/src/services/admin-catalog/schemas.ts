@@ -251,6 +251,11 @@ export const stockAdjustmentBody = z.strictObject({
 });
 export type StockAdjustmentInput = z.output<typeof stockAdjustmentBody>;
 
+/** Inventario de todo el catálogo: nombre de producto o SKU. */
+export const inventoryQuery = paginationQuery.extend({
+  q: z.string().trim().max(100).optional(),
+});
+
 export const movementsQuery = paginationQuery.extend({
   variantId: z.uuid("Variante inválida").optional(),
 });

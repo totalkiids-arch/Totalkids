@@ -1,4 +1,4 @@
-import { PaymentStatusBadge, type PaymentStatus } from "@/features/payments";
+import { PaymentStatusBadge, type AttemptStatus } from "@/features/payments";
 import { StatusBadge, type StatusTone } from "@/shared/ui/admin/status-badge";
 
 import {
@@ -23,6 +23,6 @@ export function AdminOrderStatusBadge({ status }: { status: OrderStatus }) {
 }
 
 /** Estado del pago del pedido (el de su último intento en Flow). */
-export function AdminPaymentBadge({ status }: { status: PaymentStatus | null }) {
+export function AdminPaymentBadge({ status }: { status: AttemptStatus | null }) {
   return <PaymentStatusBadge status={status} srPrefix="Pago: " />;
 }

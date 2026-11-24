@@ -1272,6 +1272,37 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /admin/inventory:
+    get:
+      operationId: adminListInventory
+      summary: Inventario de todo el catálogo (una fila por variante)
+      description: |
+        Para la pantalla Inventario del panel (RF-34, RN-03): todas las variantes,
+        activas e inactivas, de productos en cualquier estado, con stock físico,
+        reservado y disponible. Orden por nombre de producto y orden de la
+        variante. `q` busca en el nombre del producto o el SKU (sin distinguir
+        mayúsculas). El ajuste se hace con `POST /admin/products/{id}/stock-adjustments`.
+      x-roles: [admin]
+      tags: [Panel - Catálogo]
+      security: [{ panelSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+      responses:
+        "200":
+          description: Página de variantes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, meta]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/InventoryRow" } }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/categories:
     get:
       operationId: adminListCategories
@@ -3156,6 +3187,35 @@ components:
           type: string
           description: 'Rol al momento ("Administrador" o "Sistema").'
         actorName: { type: [string, "null"] }
+    InventoryRow:
+      type: object
+      required:
+        [
+          variantId,
+          sku,
+          optionLabel,
+          variantActive,
+          productId,
+          productName,
+          productSlug,
+          productStatus,
+          stockPhysical,
+          stockReserved,
+          available,
+        ]
+      properties:
+        variantId: { type: string, format: uuid }
+        sku: { type: string }
+        optionLabel: { type: [string, "null"] }
+        variantActive: { type: boolean }
+        productId: { type: string, format: uuid }
+        productName: { type: string }
+        productSlug: { type: string }
+        productStatus: { type: string, enum: [draft, active, inactive] }
+        stockPhysical: { type: integer, minimum: 0 }
+        stockReserved: { type: integer, minimum: 0 }
+        available:
+          { type: integer, minimum: 0, description: físico − reservado (RN-03); 0 = a pedido. }
     StockAdjustmentResult:
       type: object
       required: [variant, movement]
