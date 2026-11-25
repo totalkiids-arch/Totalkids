@@ -4,9 +4,13 @@ import { createPrismaClient } from "./lib/prisma.js";
 import { purgeExpiredCarts } from "./services/cart/session.js";
 import { createEmailSender } from "./services/email/create-sender.js";
 import { createEmailWorker } from "./services/email/worker.js";
+import { createFlowClient } from "./services/flow/client.js";
+import { parseFlowConfig } from "./services/flow/config.js";
+import { RECONCILE_INTERVAL_MS, runReconciliation } from "./services/flow/reconcile.js";
 
 /**
- * Proceso del worker de correos (LN-14), separado de la API:
+ * Proceso del worker, separado de la API: correos (LN-14), limpieza de carritos
+ * (LN-06) y conciliación y vencimientos (LN-15):
  *
  *   pnpm --filter @totalkids/api worker:dev   # desarrollo (EMAIL_PROVIDER=fake por defecto)
  *   pnpm --filter @totalkids/api worker       # producción (tras build)
@@ -52,15 +56,45 @@ void purgeCarts();
 const cartPurgeTimer = setInterval(() => void purgeCarts(), CART_PURGE_INTERVAL_MS);
 cartPurgeTimer.unref();
 
+// Conciliación con Flow y vencimientos (LN-15), cada 2 min y sin solaparse.
+const flowConfig = parseFlowConfig(process.env);
+if (!flowConfig) logger.warn("Flow sin configurar: solo se vencen pedidos sin cobro abierto");
+const flow = flowConfig && {
+  client: createFlowClient(flowConfig),
+  sealSecret: flowConfig.secretKey,
+};
 let shuttingDown = false;
+let reconciling: Promise<void> | null = null;
+async function reconcile() {
+  try {
+    const run = await runReconciliation(prisma, flow, {
+      adminEmail: env.EMAIL_ADMIN_TO,
+      logger,
+      shouldStop: () => shuttingDown,
+    });
+    if (run.reconciled + run.expired + run.failed > 0) logger.info(run, "Conciliación de pagos");
+  } catch (err) {
+    logger.error({ err }, "No se pudo conciliar los pagos");
+  }
+}
+function startReconciliation() {
+  reconciling ??= reconcile().finally(() => {
+    reconciling = null;
+  });
+}
+startReconciliation();
+const reconcileTimer = setInterval(startReconciliation, RECONCILE_INTERVAL_MS);
+reconcileTimer.unref();
 
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   clearInterval(cartPurgeTimer);
-  logger.info(`${signal} recibido, deteniendo el worker de correos`);
+  clearInterval(reconcileTimer);
+  logger.info(`${signal} recibido, deteniendo el worker`);
   // Termina el lote en curso (no deja envíos a medias) y no toma más.
   await worker.stop();
+  await reconciling;
   await prisma.$disconnect();
   process.exit(0);
 }

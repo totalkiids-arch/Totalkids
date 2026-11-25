@@ -72,6 +72,7 @@ const SAMPLES: { [E in EmailEvent]: EmailDataInput<E> } = {
   },
   password_recovery: { userId: "0195f3a0-0000-7000-8000-000000000001" },
   newsletter_unsubscribe: { subscriberId: "0195f3a0-0000-7000-8000-000000000002" },
+  payment_review: { orderNumber: 1048, reason: "uncertain" },
 };
 
 const SUBJECTS: Record<EmailEvent, string> = {
@@ -84,6 +85,7 @@ const SUBJECTS: Record<EmailEvent, string> = {
   service_request: "Recibimos tu solicitud #SOL-1002",
   password_recovery: "Restablece tu contraseña del panel",
   newsletter_unsubscribe: "Confirma tu baja del newsletter de Total Kids",
+  payment_review: "Revisar el pago del pedido #TK-1048",
 };
 
 const RESET_EXPIRES = new Date("2026-11-23T15:00:00.000Z");

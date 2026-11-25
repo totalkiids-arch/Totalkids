@@ -114,7 +114,7 @@ export type AdminOrdersQuery = z.output<typeof adminOrdersQuery>;
 
 // ── Cambio de estado ─────────────────────────────────────────────────────────
 
-const reason = z
+export const reason = z
   .string(MESSAGES.reasonShort)
   .trim()
   .min(REASON_MIN, MESSAGES.reasonShort)

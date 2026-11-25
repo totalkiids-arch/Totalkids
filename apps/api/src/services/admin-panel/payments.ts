@@ -9,9 +9,9 @@ import { parseOrderRef } from "../admin-orders/schemas.js";
 
 /**
  * Pagos del panel (LN-16, RF-33): intentos de cobro en Flow, de solo lectura,
- * para la pantalla «Pagos y conciliación». Administrador y Operador. La
- * conciliación con Flow (consultar el estado real y resolver) es de LN-15:
- * aquí solo se marca qué intento se podrá conciliar (`reconcilable`).
+ * para la pantalla «Pagos y conciliación». Administrador y Operador. Aquí solo
+ * se marca qué intento se puede conciliar (`reconcilable`); la conciliación con
+ * Flow está en services/flow/reconcile.ts (LN-15).
  */
 
 const PAYMENT_STATUSES = ["pending", "paid", "rejected", "voided", "in_review", "expired"] as const;
@@ -50,7 +50,7 @@ export interface AdminPaymentRow {
   lastCheckedAt: string | null;
   /** Es el último intento del pedido (el único que se concilia). */
   current: boolean;
-  /** Último intento y sigue pendiente o en revisión: lo conciliará LN-15. */
+  /** Último intento y sigue pendiente o en revisión (LN-15). */
   reconcilable: boolean;
 }
 

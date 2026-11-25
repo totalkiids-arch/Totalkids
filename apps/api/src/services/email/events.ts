@@ -19,6 +19,7 @@ export const EMAIL_EVENTS = [
   "service_request",
   "password_recovery",
   "newsletter_unsubscribe",
+  "payment_review",
 ] as const satisfies readonly EmailEvent[];
 
 /** Prefijo del tipo de trabajo en outbox: "email.purchase_confirmed". */
@@ -43,6 +44,7 @@ export const EVENT_KEY_MAX = 160;
  *
  * - `order_received:<orderId>`, `purchase_confirmed:<orderId>`, `new_sale:<orderId>`
  * - `payment_rejected:<paymentId>` (un pedido puede tener varios intentos de pago)
+ * - `payment_review:<paymentId>:<causa>` (aviso al equipo, una vez por causa)
  * - `order_shipped:<orderId>`, `order_delivered:<orderId>`
  * - `service_request:<serviceRequestId>:requester` y `…:admin`
  * - `password_recovery:<userId>:<uuid>` (cada solicitud es un hecho distinto)
@@ -185,6 +187,11 @@ export const EMAIL_DATA_SCHEMAS = {
    */
   newsletter_unsubscribe: z.object({
     subscriberId: z.uuid(),
+  }),
+  /** Equipo: un pago requiere revisión (RN-04, RN-05). Sin datos del comprador. */
+  payment_review: z.object({
+    orderNumber,
+    reason: z.enum(["mismatch", "late_review", "double_charge", "uncertain"]),
   }),
 } satisfies Record<EmailEvent, z.ZodType>;
 

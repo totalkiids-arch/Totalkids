@@ -182,7 +182,7 @@ describe.skipIf(!url)("pagos con Flow (PostgreSQL real)", () => {
         order: "in_review",
         payments: ["in_review"],
         stock: [5, 2],
-        emails: [],
+        emails: ["payment_review"],
       });
       const audits = { action: "payment.mismatch", resourceId: order.id };
       expect(await db.auditLog.count({ where: audits })).toBe(1);
@@ -228,7 +228,7 @@ describe.skipIf(!url)("pagos con Flow (PostgreSQL real)", () => {
         expect(await state()).toMatchObject(
           physical === 5
             ? { order: "confirmed", payments: ["paid"], stock: [3, 0] }
-            : { order: "in_review", payments: ["paid"], stock: [1, 0], emails: [] },
+            : { order: "in_review", payments: ["paid"], stock: [1, 0], emails: ["payment_review"] },
         );
       });
     }

@@ -60,6 +60,7 @@ const LN16_ROLES: Record<string, string[]> = {
   "/admin/exports/{resource}": ["admin"],
   "/admin/summary": ["admin", "operator"],
   "/admin/payments": ["admin", "operator"],
+  "/admin/payments/{id}/reconcile": ["admin", "operator"],
   "/admin/activity": ["admin"],
   "/admin/users": ["admin"],
   "/admin/users/{id}": ["admin"],

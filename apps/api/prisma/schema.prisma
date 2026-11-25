@@ -936,6 +936,8 @@ enum EmailEvent {
   password_recovery
   /// Enlace para confirmar la baja del newsletter (RF-35); el token se emite al enviar.
   newsletter_unsubscribe
+  /// Aviso al equipo: un pago necesita revisión (RN-04, RN-05).
+  payment_review
 
   @@map("email_event")
 }

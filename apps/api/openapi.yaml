@@ -2365,7 +2365,7 @@ paths:
       description: |
         Para «Pagos y conciliación» (RF-33). Más recientes primero. `current`
         marca el último intento del pedido y `reconcilable` el que sigue pendiente
-        o en revisión. La conciliación con Flow es de LN-15 y no está aquí.
+        o en revisión, que se puede conciliar con `POST /admin/payments/{id}/reconcile`.
       x-roles: [admin, operator]
       tags: [Panel - Pagos]
       security: [{ panelSession: [] }]
@@ -2396,6 +2396,44 @@ paths:
                     description: Intentos por estado (con el filtro de pedido).
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/payments/{id}/reconcile:
+    post:
+      operationId: adminReconcilePayment
+      summary: Conciliar un intento con Flow
+      description: |
+        Consulta el estado real a Flow y aplica el resultado (RF-33), sin confiar en
+        lo que se envíe. Solo intentos pendientes o en revisión (409 en otro caso).
+        Deja la auditoría `payment.reconciled` con actor y motivo. El worker hace lo
+        mismo cada 2 minutos y vence los pedidos sin pagar.
+      x-roles: [admin, operator]
+      tags: [Panel - Pagos]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        "200":
+          description: Resultado de la consulta
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentReconciliation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/activity:
     get:
@@ -4493,6 +4531,25 @@ components:
         lastCheckedAt: { type: [string, "null"], format: date-time }
         current: { type: boolean, description: Último intento del pedido }
         reconcilable: { type: boolean, description: Último intento pendiente o en revisión (LN-15) }
+    PaymentReconciliation:
+      type: object
+      required: [outcome, message]
+      properties:
+        outcome:
+          type: string
+          enum:
+            [
+              unchanged,
+              confirmed,
+              late_review,
+              rejected,
+              mismatch,
+              double_charge,
+              uncertain,
+              expired,
+              not_found,
+            ]
+        message: { type: string, description: Texto para mostrar en el panel }
     ActivityArea:
       type: string
       enum:
@@ -4646,6 +4703,7 @@ components:
           service_request,
           password_recovery,
           newsletter_unsubscribe,
+          payment_review,
         ]
     EmailStatus:
       type: string

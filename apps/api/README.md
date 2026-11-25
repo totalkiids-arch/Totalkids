@@ -373,10 +373,6 @@ Panel de pedidos (RF-27, RF-32, RF-34; RN-04 a RN-06; UI-12). Rutas en [`src/rou
 - **Factura (UI-12):** solo para pedidos con factura y pagados. Folio de solo dígitos (hasta 10), sin ceros a la izquierda, único entre pedidos. Guarda `invoiceIssuedAt`, `invoiceIssuedByUserId` e `invoiceIssuedByLabel`. Administrador y Operador registran el primero (`order.invoice_registered`). Corregir exige `replace: true`, ser Administrador, un motivo y un folio distinto (`order.invoice_replaced`, con antes y después). `replace: true` sin folio previo registra el primero.
 - **Correos:** `order_shipped` y `order_delivered` se encolan en la misma transacción con `enqueueEmail` y su `eventKey`, así que repetir no duplica.
 
-### Lo que queda para LN-15
-
-- **Vencimiento automático (LN-15):** el job que vence los pedidos sin pagar al pasar `paymentDueAt` debe reutilizar `releaseOrderReservations` (en `services/admin-orders/inventory.ts`) y `releaseCouponUse` dentro de su transacción, con el pedido bloqueado y respetando RN-04 (no vencer con un pago pendiente o en revisión).
-
 ## Pagos con Flow (LN-10)
 
 Un intento de cobro vigente por pedido (RF-15 a RF-19, RN-04 a RN-06). Claves y `FLOW_CALLBACK_BASE` en `.env`; sin claves la API arranca y `create` responde 409 `payment_unavailable`. Para recibir callbacks en local hace falta un túnel.
@@ -384,12 +380,23 @@ Un intento de cobro vigente por pedido (RF-15 a RF-19, RN-04 a RN-06). Claves y 
 - **`POST /payments/flow/create`** (`X-Order-Access` + CSRF): si hay un intento abierto consulta su estado a Flow y reutiliza su URL; si el resultado es incierto responde 409 `payment_uncertain` y no abre otro. Se guarda el hash del token y la URL cifrada (AES-256-GCM, clave derivada de `FLOW_SECRET_KEY`), nunca el token en claro.
 - **`POST /payments/flow/confirm`**: consulta `getStatus` y responde 200 solo con el resultado guardado; si algo falla, 500 para que Flow reintente.
 - **`POST /payments/flow/return`**: verifica si puede y redirige (303) a `/checkout/resultado?pedido=TK-…`. Volver de Flow no acredita nada.
-- **`settlePayment`** (`services/flow/settle.ts`), en una transacción con el pedido bloqueado e idempotente; LN-15 debe reutilizarla:
+- **`settlePayment`** (`services/flow/settle.ts`), en una transacción con el pedido bloqueado e idempotente; también la usa la conciliación (LN-15):
   - Pagado y verificado: descuenta el stock (`sale`), consume el cupón, confirma el pedido y encola `purchase_confirmed` y `new_sale`.
   - Rechazado o anulado: libera las reservas y encola `payment_rejected`. El reintento vuelve a reservar.
   - Monto, moneda o número distintos: `in_review` y auditoría `payment.mismatch`.
   - Pago tardío sin stock o de un pedido cancelado: `in_review` y `payment.late_review`. Segundo cobro: `payment.double_charge`, sin segunda entrega.
-- **Queda para LN-15:** resolver los intentos inciertos que Flow no encuentra y vencer los pedidos.
+
+## Conciliación y vencimientos (LN-15)
+
+`services/flow/reconcile.ts` (RF-18, RF-33; RN-04 a RN-06). Corre en el **worker** cada 2 minutos (D-02); puede haber varias instancias. El worker necesita las mismas claves de Flow que la API; sin ellas solo vence pedidos sin cobro abierto.
+
+- **Intentos abiertos:** consulta a Flow (por token, o por número de orden si nunca se recibió) y aplica `settlePayment`. Después de 24 h sin resolverse, solo cada hora.
+- **Flow no responde:** no se asume rechazo. Con el plazo terminado, intento y reservas quedan en revisión y se avisa al equipo (`payment_review`); se sigue consultando.
+- **Sigue pendiente en Flow 5 minutos después del plazo:** intento y pedido vencidos, stock y cupón liberados. Se vuelve a consultar cada 30 minutos durante 24 h por si llega un pago tardío (RN-05).
+- **Creación incierta que Flow no conoce (400/404), sin token y con el plazo terminado:** intento anulado; el pedido vence.
+- **Pedidos vencidos sin cobro abierto:** `expired`, con historial «Sistema».
+- **`POST /admin/payments/{id}/reconcile`** (Administrador y Operador, con motivo): la misma consulta desde el panel, auditada como `payment.reconciled`.
+- **Correo `payment_review`** a `EMAIL_ADMIN_TO`: diferencia de datos, pago tardío, doble cobro o resultado incierto. Uno por intento y causa.
 
 ## Panel admin (LN-16)
 
@@ -414,7 +421,7 @@ Configuración, solicitudes, suscriptores, reportes, exportaciones CSV, usuarios
 | `GET /admin/emails`, `GET /admin/emails/{id}`                      | Administrador, Operador | Registro de correos (`event`, `status`, `order`, `request`) con intentos y reenvíos. El reenvío (`POST …/resend`, LN-14) sigue siendo del Administrador.        |
 | `GET /admin/activity`                                              | Administrador           | Historial desde `audit_log`: `area`, `actor` (id de la cuenta), `from`, `to`.                                                                                   |
 | `GET /admin/summary`                                               | Administrador, Operador | Pedidos por estado, pagos en revisión o pendientes y últimos 5 pedidos. Los montos del mes y el stock bajo solo van al Administrador (`null` para el Operador). |
-| `GET /admin/payments`                                              | Administrador, Operador | Intentos de pago de solo lectura (`status`, `order`) con `current` y `reconcilable`. La conciliación con Flow es de LN-15.                                      |
+| `GET /admin/payments`                                              | Administrador, Operador | Intentos de pago de solo lectura (`status`, `order`) con `current` y `reconcilable`. Para conciliar, ver LN-15.                                                 |
 | `GET /store-theme`, `GET /banners`                                 | Público                 | Plantilla activa y banners activos y vigentes, para la tienda (RF-28).                                                                                          |
 
 Rutas en [`routes/admin-config.ts`](src/routes/admin-config.ts), [`admin-desk.ts`](src/routes/admin-desk.ts), [`admin-users.ts`](src/routes/admin-users.ts), [`admin-reports.ts`](src/routes/admin-reports.ts), [`admin-panel.ts`](src/routes/admin-panel.ts), [`admin-emails.ts`](src/routes/admin-emails.ts) y [`store.ts`](src/routes/store.ts). La lógica está en `services/admin-config/`, `admin-desk/`, `admin-reports/`, `admin-panel/` y `admin-users.ts`.

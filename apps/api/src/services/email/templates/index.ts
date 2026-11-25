@@ -44,6 +44,17 @@ export function passwordResetUrl(siteUrl: string, token: string): string {
   return siteLink(siteUrl, `${PASSWORD_RESET_PATH}?token=${encodeURIComponent(token)}`);
 }
 
+/** Causa del aviso de revisión, para el equipo. */
+const REVIEW_TEXT: Record<EmailData<"payment_review">["reason"], string> = {
+  mismatch: "Los datos que informa Flow no coinciden con el pedido.",
+  late_review:
+    "Llegó un pago que no se pudo confirmar: el pedido estaba cancelado o ya no hay stock. Gestiona una solución o la devolución.",
+  double_charge:
+    "Flow informa un segundo cobro del mismo pedido. Revisa si corresponde devolverlo.",
+  uncertain:
+    "Terminó el plazo de pago y Flow no dio una respuesta segura. El stock sigue reservado.",
+};
+
 type OrderLine = EmailData<"order_received">["items"][number];
 type Amounts = Pick<
   EmailData<"order_received">,
@@ -179,6 +190,24 @@ const TEMPLATES: Renderers = {
             : `¿Dudas? Contáctanos indicando tu número de pedido ${ref}.`,
         },
         { kind: "action", label: "Ver mi pedido", url: siteLink(ctx.siteUrl, ORDER_LOOKUP_PATH) },
+      ],
+    };
+  },
+
+  payment_review: (data, ctx) => {
+    const ref = orderRef(data.orderNumber);
+    return {
+      subject: `Revisar el pago del pedido #${ref}`,
+      preheader: `El pago del pedido #${ref} necesita revisión.`,
+      heading: "Un pago necesita revisión",
+      blocks: [
+        { kind: "p", text: `Pedido #${ref}. ${REVIEW_TEXT[data.reason]}` },
+        { kind: "p", text: "No lo despaches hasta resolver el caso en el panel." },
+        {
+          kind: "action",
+          label: "Abrir el panel",
+          url: siteLink(ctx.siteUrl, `/admin/pedidos/${ref}`),
+        },
       ],
     };
   },
