@@ -28,17 +28,24 @@ async function lockReservations(tx: Tx, orderId: string) {
   return { reservations, available };
 }
 
-async function move(
-  tx: Tx,
-  input: {
-    orderId: string;
-    variantId: string;
-    kind: InventoryMovementKind;
-    physicalDelta: number;
-    reservedDelta: number;
-    reason: string;
-  },
-) {
+interface MoveInput {
+  orderId: string;
+  variantId: string;
+  kind: InventoryMovementKind;
+  physicalDelta: number;
+  reservedDelta: number;
+  reason: string;
+}
+
+/** Quien registra el movimiento: por defecto el sistema (Flow, vencimientos). */
+export interface StockActor {
+  actorUserId: string | null;
+  actorLabel: string;
+}
+
+const SYSTEM: StockActor = { actorUserId: null, actorLabel: SYSTEM_ACTOR };
+
+async function move(tx: Tx, input: MoveInput, actor: StockActor = SYSTEM) {
   const variant = await tx.productVariant.update({
     where: { id: input.variantId },
     data: {
@@ -51,7 +58,7 @@ async function move(
       ...input,
       physicalAfter: variant.stockPhysical,
       reservedAfter: variant.stockReserved,
-      actorLabel: SYSTEM_ACTOR,
+      ...actor,
     },
   });
 }
@@ -66,6 +73,7 @@ export async function consumeReservations(
   orderId: string,
   reason: string,
   now: Date,
+  actor: StockActor = SYSTEM,
 ): Promise<boolean> {
   const { reservations, available } = await lockReservations(tx, orderId);
   if (!available) return false;
@@ -74,14 +82,18 @@ export async function consumeReservations(
       where: { id: r.id },
       data: { status: "consumed", resolvedAt: now },
     });
-    await move(tx, {
-      orderId,
-      variantId: r.variantId,
-      kind: "sale",
-      physicalDelta: -r.quantity,
-      reservedDelta: r.status === "released" ? 0 : -r.quantity,
-      reason,
-    });
+    await move(
+      tx,
+      {
+        orderId,
+        variantId: r.variantId,
+        kind: "sale",
+        physicalDelta: -r.quantity,
+        reservedDelta: r.status === "released" ? 0 : -r.quantity,
+        reason,
+      },
+      actor,
+    );
   }
   return true;
 }

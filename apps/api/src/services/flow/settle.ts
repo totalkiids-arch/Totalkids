@@ -8,6 +8,7 @@ import { consumeCouponUse } from "../coupons.js";
 import { enqueueEmail } from "../email/enqueue.js";
 import { emailEventKey } from "../email/events.js";
 import { DEFAULT_PICKUP } from "../orders.js";
+import { enqueueReviewAlert } from "../reconciliation/alerts.js";
 import type { FlowPaymentStatus } from "./client.js";
 import { consumeReservations, releaseReservations, SYSTEM_ACTOR } from "./stock.js";
 import { flowMismatches } from "./verify.js";
@@ -118,6 +119,13 @@ export async function settlePayment(
         await update(isOpen(payment) ? { status: "in_review" } : {});
         if (reviewed) return done("mismatch");
         await audit(tx, order.id, "payment.mismatch", { paymentId: payment.id, mismatches });
+        // LN-15: alerta al equipo (A4), una por pago y motivo.
+        await enqueueReviewAlert(tx, {
+          reason: "mismatch",
+          adminEmail: input.adminEmail,
+          order,
+          payment,
+        });
         if (order.status === "pending_payment" && isOpen(payment)) {
           await tx.stockReservation.updateMany({
             where: { orderId: order.id, status: "active" },
@@ -161,6 +169,13 @@ export async function settlePayment(
         if (!(await wasAudited(tx, order.id, "payment.double_charge", payment.id))) {
           await audit(tx, order.id, "payment.double_charge", { paymentId: payment.id });
         }
+        // LN-15: alerta al equipo; la clave única evita repetirla.
+        await enqueueReviewAlert(tx, {
+          reason: "double_charge",
+          adminEmail: input.adminEmail,
+          order,
+          payment,
+        });
         return done("double_charge");
       }
 
@@ -181,6 +196,13 @@ export async function settlePayment(
           paymentId: payment.id,
           from: order.status,
         });
+        // LN-15: alerta al equipo (RN-05), una por pago.
+        await enqueueReviewAlert(tx, {
+          reason: "late_no_stock",
+          adminEmail: input.adminEmail,
+          order,
+          payment,
+        });
         return done("late_review");
       }
       await consumeCouponUse(tx, order.id);
@@ -192,7 +214,8 @@ export async function settlePayment(
   );
 }
 
-async function enqueueSaleEmails(tx: Tx, order: Order, adminEmail: string) {
+/** Correos de una venta confirmada; también los usa la resolución manual (LN-15). */
+export async function enqueueSaleEmails(tx: Tx, order: Order, adminEmail: string) {
   const items = await tx.orderItem.findMany({
     where: { orderId: order.id },
     include: { extras: true },

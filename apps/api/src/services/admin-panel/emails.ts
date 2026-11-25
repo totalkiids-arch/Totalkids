@@ -36,6 +36,7 @@ export const EMAIL_EVENT_LABEL: Record<EmailEvent, string> = {
   service_request: "Solicitud de servicio",
   password_recovery: "Recuperación de contraseña",
   newsletter_unsubscribe: "Baja del newsletter",
+  payment_review_alert: "Alerta de pago en revisión",
 };
 
 export const EMAIL_STATUS_LABEL: Record<EmailStatus, string> = {

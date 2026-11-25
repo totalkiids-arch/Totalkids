@@ -17,6 +17,7 @@ export const ORDER_PAYMENT_STATES = [
   "voided",
   "in_review",
   "expired",
+  "refund_pending",
   "none",
 ] as const;
 export type OrderPaymentState = (typeof ORDER_PAYMENT_STATES)[number];
@@ -52,13 +53,21 @@ export interface AdminOrderLine {
   madeToOrder: boolean;
 }
 
+/** Resoluciones manuales que la API permite para un intento (LN-15, solo Administrador). */
+export type AttemptResolution = "release" | "refund_pending" | "confirm";
+
 export interface AdminPaymentAttempt {
+  /** Identificador del intento (para consultar en Flow o resolver). */
+  id: string;
   commerceOrder: string;
   status: string;
   label: string;
   amount: number;
   createdAt: string;
   lastCheckedAt: string | null;
+  /** Último intento pendiente o en revisión: «Consultar en Flow». */
+  reconcilable: boolean;
+  resolutions: AttemptResolution[];
 }
 
 export const REFUND_STATUSES = ["requested", "processed", "failed"] as const;
@@ -204,4 +213,12 @@ export interface PanelSummary {
   sales: { from: string; to: string; charged: number; refunded: number; net: number } | null;
   /** Variantes activas con 1 a 3 unidades disponibles. */
   lowStockVariants: number | null;
+  /**
+   * Alertas abiertas (LN-15): pedidos en revisión o con un pago en revisión.
+   * `reason` es el motivo de la última revisión registrada, si se conoce.
+   */
+  alerts: {
+    total: number;
+    items: { ref: string; status: OrderStatus; reason: string | null; since: string }[];
+  };
 }

@@ -34,6 +34,7 @@ export const PAYMENT_STATUS_LABEL: Record<OrderPaymentStatus, string> = {
   voided: "Anulado",
   in_review: "En revisión",
   expired: "Vencido",
+  refund_pending: "Reembolso pendiente",
   none: "Sin pago",
 };
 
@@ -154,8 +155,9 @@ export interface WorkflowOrder {
   payments: readonly WorkflowPayment[];
   refunds?: readonly WorkflowRefund[];
   /**
-   * Quedan reservas activas o en revisión, o un cupón reservado: el pago no se
-   * terminó de asentar (eso lo hace el flujo de pago, LN-10/LN-15).
+   * Quedan reservas activas, en revisión o liberadas sin vender, o un cupón
+   * reservado: el pago no se terminó de asentar (eso lo hace el flujo de pago,
+   * LN-10/LN-15, o la resolución manual en Pagos).
    */
   unsettled?: boolean;
 }

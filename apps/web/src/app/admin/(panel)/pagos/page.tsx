@@ -4,7 +4,9 @@ import { parsePaymentQuery, PaymentsScreen } from "@/features/payments";
 
 export const metadata: Metadata = { title: "Pagos y conciliación" };
 
-/** Intentos de pago de la API (solo lectura). Filtro y página en la URL. */
+/** Intentos de pago y conciliación con Flow (LN-15). Filtro, página y aviso en la URL. */
 export default async function Page({ searchParams }: PageProps<"/admin/pagos">) {
-  return <PaymentsScreen query={parsePaymentQuery(await searchParams)} />;
+  const params = await searchParams;
+  const aviso = Array.isArray(params.aviso) ? params.aviso[0] : params.aviso;
+  return <PaymentsScreen query={parsePaymentQuery(params)} aviso={aviso ?? ""} />;
 }

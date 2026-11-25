@@ -172,7 +172,7 @@ Ambos resultados se versionan. Volver a ejecutarlo actualiza precios, stock y fo
 - **Roles**: reembolsos (registrar y resolver) y corrección de folio son solo del Administrador; el Operador registra el primer folio. Las acciones lo comprueban y la API lo vuelve a exigir.
 - **Retiro en taller**: «Despachado» se muestra como «Listo para retiro» y no pide transportista ni seguimiento (`statusOptionLabel`, `needsTracking`). Un despacho sin tarifa se muestra «A coordinar».
 - **Errores**: 422 y 409 llegan por campo (los 409 de pedidos traen `details.field`); 403 o API caída, como mensaje del formulario.
-- **Pagos**: la conciliación con Flow es de LN-15; la vista marca «Por conciliar» los intentos pendientes o en revisión. Los estados de intento del panel (`AttemptStatus`) suman «Anulado» a los de la tienda.
+- **Pagos**: conciliación con Flow (LN-15). La vista marca «Por conciliar» los intentos pendientes o en revisión y ofrece «Consultar en Flow» (Administrador y Operador, `reconcilePaymentAction`). La resolución manual con motivo (`ResolvePaymentForm`, solo Administrador) está en el detalle del pedido. Los estados de intento del panel (`AttemptStatus`) suman «Anulado» y «Reembolso pendiente» a los de la tienda.
 - **Resumen** (`/admin`, feature `dashboard`): `GET /admin/summary` por `getPanelSummary` (orders). Pedidos por estado, pagos en revisión y pendientes, y los 5 pedidos más recientes; los cobros del mes y el stock bajo solo llegan para el Administrador (para el Operador vienen en `null` y no se muestran).
 - **Componente** en `shared/ui/admin/`: `StatCard` + `StatGrid` (indicadores; los usan Resumen y Pagos).
 

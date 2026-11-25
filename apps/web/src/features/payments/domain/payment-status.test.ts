@@ -20,9 +20,13 @@ describe("PaymentStatus", () => {
     ]);
   });
 
-  it("los intentos del panel suman «Anulado», como la API", () => {
-    expect(ATTEMPT_STATUSES.map((status) => ATTEMPT_STATUS_LABEL[status]).at(-1)).toBe("Anulado");
+  it("los intentos del panel suman «Anulado» y «Reembolso pendiente», como la API", () => {
+    expect(ATTEMPT_STATUSES.map((status) => ATTEMPT_STATUS_LABEL[status]).slice(-2)).toEqual([
+      "Anulado",
+      "Reembolso pendiente",
+    ]);
     expect(isAttemptStatus("voided")).toBe(true);
+    expect(isAttemptStatus("refund_pending")).toBe(true);
     expect(isPaymentStatus("voided")).toBe(false);
   });
 

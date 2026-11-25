@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { PANEL_MESSAGES } from "@/shared/lib/panel-errors";
 
-import { toPaymentPage } from "./admin-payments-api";
+import { toPaymentPage, toReconcileOutcome } from "./admin-payments-api";
 
 const item = {
   id: "p1",
@@ -51,8 +51,38 @@ describe("toPaymentPage", () => {
       in_review: 1,
       expired: 0,
       voided: 1,
+      refund_pending: 0,
     });
     expect(page.pageCount).toBe(1);
+  });
+
+  it("trae id, intentos inciertos y solo las resoluciones conocidas (LN-15)", () => {
+    const page = toPaymentPage({
+      items: [
+        {
+          ...item,
+          reconcileAttempts: 3,
+          nextCheckAt: "2026-11-20T13:00:00.000Z",
+          resolutions: ["release", "inventada"],
+        },
+        { ...item, id: "p9", status: "refund_pending", reconcilable: false },
+      ],
+      meta: { page: 1, pageSize: 20, total: 2, totalPages: 1 },
+      counts: { refund_pending: 1 },
+    });
+    expect(page.rows[0]).toMatchObject({
+      id: "p1",
+      reconcileAttempts: 3,
+      nextCheckAt: "2026-11-20T13:00:00.000Z",
+      resolutions: ["release"],
+    });
+    // Una API anterior, sin los campos nuevos, sigue funcionando.
+    expect(page.rows[1]).toMatchObject({
+      status: "refund_pending",
+      reconcileAttempts: 0,
+      resolutions: [],
+    });
+    expect(page.counts.refund_pending).toBe(1);
   });
 
   it("un estado desconocido cuenta como API no disponible", () => {
@@ -63,5 +93,17 @@ describe("toPaymentPage", () => {
         counts: {},
       }),
     ).toThrow(PANEL_MESSAGES.unavailable);
+  });
+});
+
+describe("toReconcileOutcome", () => {
+  it("lee el resultado de «Consultar en Flow»", () => {
+    expect(toReconcileOutcome({ outcome: "in_review", flowStatus: null, payment: item })).toBe(
+      "in_review",
+    );
+  });
+
+  it("un resultado desconocido cuenta como API no disponible", () => {
+    expect(() => toReconcileOutcome({ outcome: "magia" })).toThrow(PANEL_MESSAGES.unavailable);
   });
 });

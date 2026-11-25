@@ -82,6 +82,8 @@ export const GUEST_PAYMENT_STATUSES = [
   "voided",
   "in_review",
   "expired",
+  /** Cobro que no se pudo aplicar al pedido; espera devolución (LN-15). */
+  "refund_pending",
 ] as const;
 export type GuestPaymentStatus = (typeof GUEST_PAYMENT_STATUSES)[number];
 

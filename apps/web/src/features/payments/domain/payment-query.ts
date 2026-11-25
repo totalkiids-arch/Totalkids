@@ -11,9 +11,12 @@ import {
   isAttemptStatus,
   type AttemptStatus,
 } from "./payment-status";
+import type { PaymentResolution } from "./reconciliation";
 
 /** Una fila de la tabla: un intento de cobro en Flow. */
 export interface PaymentAttemptRow {
+  /** Identificador del intento (para consultar o resolver). */
+  id: string;
   /** Número visible del pedido ("TK-1053"). */
   orderId: string;
   buyerName: string;
@@ -27,8 +30,14 @@ export interface PaymentAttemptRow {
   lastCheckedAt: string | null;
   /** Es el último intento del pedido. */
   current: boolean;
-  /** Último intento pendiente o en revisión: lo concilia la consulta a Flow (LN-15). */
+  /** Último intento pendiente o en revisión: «Consultar en Flow» (LN-15). */
   reconcilable: boolean;
+  /** Consultas inciertas seguidas a Flow. */
+  reconcileAttempts: number;
+  /** Próxima consulta automática, ISO. */
+  nextCheckAt: string | null;
+  /** Resoluciones manuales que admite (solo Administrador). */
+  resolutions: PaymentResolution[];
 }
 
 export type PaymentFilter = AttemptStatus | "todos";

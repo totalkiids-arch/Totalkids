@@ -6,6 +6,7 @@ import {
   ORDER_PAYMENT_STATES,
   REFUND_STATUSES,
   type AdminOrderDetail,
+  type AttemptResolution,
   type AdminOrderListItem,
   type HistoryEntry,
   type PanelSummary,
@@ -120,12 +121,15 @@ const ApiOrderDetail = z.object({
   }),
   payments: z.array(
     z.object({
+      id: z.string(),
       commerceOrder: z.string(),
       status: z.string(),
       label: z.string(),
       amount: int,
       createdAt: z.string(),
       lastCheckedAt: z.string().nullable(),
+      reconcilable: z.boolean().optional(),
+      resolutions: z.array(z.string()).optional(),
     }),
   ),
   refunds: z.array(ApiRefund),
@@ -298,12 +302,16 @@ export function toAdminOrderDetail(body: unknown): AdminOrderDetail {
     },
     payment: { status: o.payment.status, label: o.payment.label, paidAt: o.payment.paidAt ?? null },
     attempts: o.payments.map((p) => ({
+      id: p.id,
       commerceOrder: p.commerceOrder,
       status: p.status,
       label: p.label,
       amount: p.amount,
       createdAt: p.createdAt,
       lastCheckedAt: p.lastCheckedAt,
+      reconcilable: p.reconcilable ?? false,
+      // Una resolución desconocida (API más nueva) no se ofrece.
+      resolutions: (p.resolutions ?? []).filter(isAttemptResolution),
     })),
     refunds: o.refunds.map((r) => ({
       id: r.id,
@@ -335,7 +343,24 @@ const ApiPanelSummary = z.object({
     })
     .nullable(),
   lowStockVariants: int.nullable(),
+  alerts: z
+    .object({
+      total: int,
+      items: z.array(
+        z.object({
+          orderRef: z.string(),
+          orderStatus: Status,
+          reason: z.string().nullable(),
+          since: z.string(),
+        }),
+      ),
+    })
+    .optional(),
 });
+
+const RESOLUTIONS: readonly string[] = ["release", "refund_pending", "confirm"];
+const isAttemptResolution = (value: string): value is AttemptResolution =>
+  RESOLUTIONS.includes(value);
 
 /** GET /admin/summary. Los estados sin pedidos cuentan 0. */
 export function toPanelSummary(body: unknown): PanelSummary {
@@ -357,5 +382,14 @@ export function toPanelSummary(body: unknown): PanelSummary {
         }
       : null,
     lowStockVariants: s.lowStockVariants,
+    alerts: {
+      total: s.alerts?.total ?? 0,
+      items: (s.alerts?.items ?? []).map((a) => ({
+        ref: a.orderRef,
+        status: a.orderStatus,
+        reason: a.reason,
+        since: a.since,
+      })),
+    },
   };
 }

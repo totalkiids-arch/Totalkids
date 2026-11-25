@@ -8,6 +8,7 @@ import {
   ORDER_STATUS_LABEL,
   ORDER_STATUSES,
 } from "@/features/orders";
+import { REVIEW_REASON_LABEL, type ReviewReason } from "@/features/payments";
 import { HealthStatus } from "@/features/system";
 import { canAccessSection, type AdminRole, type AdminSection } from "@/features/users";
 import { CellTitle, DataTable } from "@/shared/ui/admin/data-table";
@@ -44,6 +45,11 @@ const SHORTCUTS: readonly { href: Route; label: string; section: AdminSection }[
   { href: "/admin/solicitudes", label: "Ver solicitudes", section: "solicitudes" },
   { href: "/admin/reportes", label: "Consultar reportes", section: "reportes" },
 ];
+
+const reasonLabel = (reason: string | null) =>
+  reason && reason in REVIEW_REASON_LABEL
+    ? REVIEW_REASON_LABEL[reason as ReviewReason]
+    : "En revisión";
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -86,6 +92,42 @@ export async function DashboardScreen() {
             Revisar pagos
           </Link>
         </InfoNote>
+      ) : null}
+
+      {overview.alerts.total > 0 ? (
+        <AdminPanel title={`Alertas abiertas (${String(overview.alerts.total)})`}>
+          <p className="mb-3 text-sm">
+            Pedidos o pagos en revisión: no se vencen ni se confirman solos mientras pueda haber un
+            cobro. Consulta Flow o resuélvelos desde el pedido.
+          </p>
+          <ul className="flex flex-col gap-2 text-sm">
+            {overview.alerts.items.map((alert) => (
+              <li key={alert.ref} className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/admin/pedidos/${alert.ref}#pago` as Route}
+                  className="font-extrabold text-brand-blue underline"
+                >
+                  #{alert.ref}
+                </Link>
+                <AdminOrderStatusBadge status={alert.status} />
+                <span>{reasonLabel(alert.reason)}</span>
+                <small className="text-xs text-text-secondary">
+                  desde {DATE_TIME.format(new Date(alert.since))}
+                </small>
+              </li>
+            ))}
+          </ul>
+          {overview.alerts.total > overview.alerts.items.length ? (
+            <p className="mt-3 text-sm">
+              <Link
+                href="/admin/pagos?estado=in_review"
+                className="font-extrabold text-brand-blue underline"
+              >
+                Ver todos los pagos en revisión
+              </Link>
+            </p>
+          ) : null}
+        </AdminPanel>
       ) : null}
 
       <StatGrid label="Indicadores de la tienda">

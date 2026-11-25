@@ -30,6 +30,7 @@ const PAYMENT_FILTERS = [
   "voided",
   "in_review",
   "expired",
+  "refund_pending",
   "none",
 ] as const;
 

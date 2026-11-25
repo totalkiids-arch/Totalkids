@@ -24,6 +24,7 @@ describe("eventos", () => {
       "Solicitud de servicio",
       "Recuperación de contraseña",
       "Baja del newsletter",
+      "Alerta de pago en revisión",
     ]);
   });
 });

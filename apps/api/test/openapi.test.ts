@@ -60,6 +60,8 @@ const LN16_ROLES: Record<string, string[]> = {
   "/admin/exports/{resource}": ["admin"],
   "/admin/summary": ["admin", "operator"],
   "/admin/payments": ["admin", "operator"],
+  "/admin/payments/{id}/reconcile": ["admin", "operator"],
+  "/admin/payments/{id}/resolve": ["admin"],
   "/admin/activity": ["admin"],
   "/admin/users": ["admin"],
   "/admin/users/{id}": ["admin"],
@@ -263,7 +265,9 @@ describe("contrato OpenAPI", () => {
           expect(Object.keys(responses), where).toContain("204");
         }
         if (MUTATING.has(method)) expect(Object.keys(responses), where).toContain("422");
-        if (MUTATING.has(method) && method !== "delete" && !path.endsWith("/unsubscribe")) {
+        // Sin cuerpo: la baja del newsletter y «Consultar en Flow» (LN-15).
+        const bodiless = path.endsWith("/unsubscribe") || path.endsWith("/reconcile");
+        if (MUTATING.has(method) && method !== "delete" && !bodiless) {
           expect(op.requestBody, where).toBeDefined();
         }
       }

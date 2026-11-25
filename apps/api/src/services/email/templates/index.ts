@@ -1,5 +1,5 @@
 import type { EmailEvent } from "../../../generated/prisma/enums.js";
-import type { EmailData } from "../events.js";
+import type { EmailData, ReviewAlertReason } from "../events.js";
 import { formatClp, formatDateTime, orderRef, requestRef, siteLink } from "./format.js";
 import { renderLayout, type Block, type EmailContent, type RenderedEmail } from "./layout.js";
 
@@ -75,6 +75,28 @@ function amountRows(amounts: Amounts, pickup: boolean): Block {
   rows.push(["Total", formatClp(amounts.total)]);
   return { kind: "rows", rows };
 }
+
+/** Textos de la alerta de revisión (LN-15), por motivo. */
+export const REVIEW_ALERT_TEXT: Record<ReviewAlertReason, { title: string; detail: string }> = {
+  late_no_stock: {
+    title: "Pago tardío sin stock",
+    detail:
+      "Flow confirmó el pago después del plazo y ya no hay unidades: gestiona una solución o la devolución (RN-05).",
+  },
+  double_charge: {
+    title: "Doble cobro",
+    detail: "Flow cobró un segundo intento de un pedido ya pagado: no se entrega dos veces.",
+  },
+  mismatch: {
+    title: "Datos del pago distintos",
+    detail: "El monto, la moneda o el número informados por Flow no coinciden con el intento.",
+  },
+  flow_unreachable: {
+    title: "Flow sin respuesta",
+    detail:
+      "No pudimos confirmar el estado del pago con Flow: el pedido no se vence mientras pueda haber un cobro (RN-04).",
+  },
+};
 
 type Delivery = EmailData<"purchase_confirmed">["delivery"];
 
@@ -207,6 +229,36 @@ const TEMPLATES: Renderers = {
           kind: "action",
           label: "Abrir el panel",
           url: siteLink(ctx.siteUrl, `/admin/pedidos/${ref}`),
+        },
+      ],
+    };
+  },
+
+  payment_review_alert: (data, ctx) => {
+    const ref = orderRef(data.orderNumber);
+    const { title, detail } = REVIEW_ALERT_TEXT[data.reason];
+    return {
+      subject: `Revisar pago del pedido #${ref}: ${title}`,
+      preheader: `El pedido #${ref} quedó en revisión: ${title.toLowerCase()}.`,
+      heading: "Pago en revisión",
+      blocks: [
+        { kind: "p", text: `El pedido #${ref} quedó en revisión. ${detail}` },
+        {
+          kind: "rows",
+          rows: [
+            ["Motivo", title],
+            ["Intento de pago", String(data.attempt)],
+            ["Monto del intento", formatClp(data.amount)],
+          ],
+        },
+        {
+          kind: "action",
+          label: "Revisar en el panel",
+          url: siteLink(ctx.siteUrl, `/admin/pedidos/${ref}`),
+        },
+        {
+          kind: "note",
+          text: "Resuélvelo en Pagos y conciliación: consulta Flow o registra la resolución con su motivo.",
         },
       ],
     };

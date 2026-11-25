@@ -1,17 +1,12 @@
-import { randomInt, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import request from "supertest";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { issueOrderAccess } from "../src/lib/order-access.js";
 import { createPrismaClient, type PrismaClient } from "../src/lib/prisma.js";
-import {
-  FlowRejectedError,
-  FlowUncertainError,
-  type CreatePaymentInput,
-  type FlowClient,
-  type FlowPaymentStatus,
-} from "../src/services/flow/client.js";
+import { FlowRejectedError, FlowUncertainError } from "../src/services/flow/client.js";
+import { FakeFlow } from "./fake-flow.js";
 import { buildTestApp, csrfHeaders, testEnv } from "./helpers.js";
 import { createOrder, createVariant, type OrderSpec } from "./order-fixtures.js";
 import { inRollback } from "./panel-helpers.js";
@@ -19,48 +14,6 @@ import { inRollback } from "./panel-helpers.js";
 // Pago con Flow (LN-10) contra totalkids_test, en transacciones que se deshacen.
 // Flow es falso. Se omite sin TEST_DATABASE_URL.
 const url = process.env.TEST_DATABASE_URL;
-
-/** Flow en memoria: cada pago creado queda pendiente hasta que el test lo cambia. */
-class FakeFlow implements FlowClient {
-  readonly created: CreatePaymentInput[] = [];
-  readonly statuses = new Map<string, FlowPaymentStatus>();
-  token = "";
-
-  createPayment = vi.fn(async (input: CreatePaymentInput) => {
-    this.created.push(input);
-    this.token = `TOKEN-${randomUUID()}`;
-    const flowOrder = randomInt(1_000_000, 2_000_000_000);
-    this.statuses.set(this.token, {
-      flowOrder,
-      commerceOrder: input.commerceOrder,
-      status: "pending",
-      amount: input.amount,
-      currency: "CLP",
-      media: null,
-    });
-    return Promise.resolve({
-      token: this.token,
-      flowOrder,
-      redirectUrl: `https://sandbox.flow.cl/app/web/pay.php?token=${this.token}`,
-    });
-  });
-
-  getStatus = vi.fn(async (token: string) => {
-    const status = this.statuses.get(token);
-    return status ? Promise.resolve(status) : Promise.reject(new FlowRejectedError(400, 105));
-  });
-
-  getStatusByCommerceOrder = vi.fn(async (commerceOrder: string) => {
-    const status = [...this.statuses.values()].find((s) => s.commerceOrder === commerceOrder);
-    return status ? Promise.resolve(status) : Promise.reject(new FlowRejectedError(400, 105));
-  });
-
-  set(change: Partial<FlowPaymentStatus>) {
-    const current = this.statuses.get(this.token);
-    if (!current) throw new Error("No hay pago");
-    this.statuses.set(this.token, { ...current, ...change });
-  }
-}
 
 describe.skipIf(!url)("pagos con Flow (PostgreSQL real)", () => {
   const prisma = createPrismaClient(url ?? "");
@@ -204,7 +157,8 @@ describe.skipIf(!url)("pagos con Flow (PostgreSQL real)", () => {
         order: "in_review",
         payments: ["in_review"],
         stock: [5, 2],
-        emails: [],
+        // LN-15: una sola alerta al equipo, aunque el callback se repita.
+        emails: ["payment_review_alert"],
       });
       const audits = { action: "payment.mismatch", resourceId: order.id };
       expect(await db.auditLog.count({ where: audits })).toBe(1);
@@ -250,7 +204,13 @@ describe.skipIf(!url)("pagos con Flow (PostgreSQL real)", () => {
         expect(await state()).toMatchObject(
           physical === 5
             ? { order: "confirmed", payments: ["paid"], stock: [3, 0] }
-            : { order: "in_review", payments: ["paid"], stock: [1, 0], emails: [] },
+            : {
+                order: "in_review",
+                payments: ["paid"],
+                stock: [1, 0],
+                // LN-15: alerta al equipo (RN-05).
+                emails: ["payment_review_alert"],
+              },
         );
       });
     }

@@ -7,7 +7,7 @@ pnpm --filter @totalkids/api dev         # http://localhost:4000/api/v1/health
 pnpm --filter @totalkids/api test
 pnpm --filter @totalkids/api lint
 pnpm --filter @totalkids/api typecheck
-pnpm --filter @totalkids/api worker:dev  # worker de correos (LN-14) y limpieza de carritos (LN-06), en otra terminal
+pnpm --filter @totalkids/api worker:dev  # worker: correos (LN-14), conciliación y vencimientos (LN-15) y limpieza de carritos (LN-06), en otra terminal
 ```
 
 ## Qué recorre cada petición
@@ -373,9 +373,7 @@ Panel de pedidos (RF-27, RF-32, RF-34; RN-04 a RN-06; UI-12). Rutas en [`src/rou
 - **Factura (UI-12):** solo para pedidos con factura y pagados. Folio de solo dígitos (hasta 10), sin ceros a la izquierda, único entre pedidos. Guarda `invoiceIssuedAt`, `invoiceIssuedByUserId` e `invoiceIssuedByLabel`. Administrador y Operador registran el primero (`order.invoice_registered`). Corregir exige `replace: true`, ser Administrador, un motivo y un folio distinto (`order.invoice_replaced`, con antes y después). `replace: true` sin folio previo registra el primero.
 - **Correos:** `order_shipped` y `order_delivered` se encolan en la misma transacción con `enqueueEmail` y su `eventKey`, así que repetir no duplica.
 
-### Lo que queda para LN-15
-
-- **Vencimiento automático (LN-15):** el job que vence los pedidos sin pagar al pasar `paymentDueAt` debe reutilizar `releaseOrderReservations` (en `services/admin-orders/inventory.ts`) y `releaseCouponUse` dentro de su transacción, con el pedido bloqueado y respetando RN-04 (no vencer con un pago pendiente o en revisión).
+- **Confirmar a mano un pago tardío:** `PATCH …/status` a `confirmed` también se bloquea si quedan reservas liberadas sin vender (pago tardío sin stock, RN-05). Eso se resuelve en Pagos (LN-15), que sí descuenta el stock.
 
 ## Pagos con Flow (LN-10)
 
@@ -389,7 +387,55 @@ Un intento de cobro vigente por pedido (RF-15 a RF-19, RN-04 a RN-06). Claves y 
   - Rechazado o anulado: libera las reservas y encola `payment_rejected`. El reintento vuelve a reservar.
   - Monto, moneda o número distintos: `in_review` y auditoría `payment.mismatch`.
   - Pago tardío sin stock o de un pedido cancelado: `in_review` y `payment.late_review`. Segundo cobro: `payment.double_charge`, sin segunda entrega.
-- **Queda para LN-15:** resolver los intentos inciertos que Flow no encuentra y vencer los pedidos.
+- **Alertas (LN-15):** las ramas de discrepancia, doble cobro y pago tardío sin stock también encolan `payment_review_alert` al equipo, en la misma transacción. Es el único cambio a `settlePayment` y no cambia ningún estado.
+
+## Conciliación y vencimientos (LN-15)
+
+RF-18, RF-33, RN-04 a RN-06, UC-03 (paso 8, flujos A1 a A5). La lógica está en [`services/reconciliation/`](src/services/reconciliation/) y corre en el worker (`src/worker.ts`) junto a los correos.
+
+**Job del worker** (`job.ts`), cada `PAYMENT_JOB_INTERVAL_MS` (por defecto 2 minutos, D-02), hasta `PAYMENT_JOB_BATCH` por vuelta. Hace dos cosas:
+
+1. **Conciliación.** Reclama los intentos `pending` o `in_review` que toca consultar (`next_check_at` vencido o nulo). Solo toma los que estén vencidos, tengan más de 10 minutos o estén en revisión. El reclamo es un `UPDATE … FOR UPDATE SKIP LOCKED` que adelanta `next_check_at` 2 minutos, así dos workers nunca consultan el mismo intento. Cada intento pasa por `reconcilePayment` (`reconcile.ts`):
+   - Consulta `getStatusByCommerceId` **fuera** de toda transacción. Siempre usa `commerceOrder`: solo se guarda el hash del token, y así también se concilia la creación incierta de `start.ts`.
+   - **Flow responde:** lo asienta `settlePayment`, sin cambios. Luego, con el pedido bloqueado:
+     - si Flow informa rechazado o anulado y el pedido ya no se puede pagar (plazo vencido o en revisión), el pedido **vence**;
+     - si Flow informa pendiente pero ya pasó `paymentDueAt` + 10 minutos de margen, el intento queda `expired` y el pedido vence. La orden se crea en Flow con `timeout` = segundos hasta `paymentDueAt` (`start.ts`), y Flow no deja pagarla después;
+     - si sigue pendiente dentro del plazo, se vuelve a consultar en 2 minutos.
+   - **Respuesta incierta** (red, 5xx, respuesta ilegible o **cualquier 4xx**): nunca se asume un rechazo. Flow no documenta un código de «orden no encontrada» para `getStatus` ni `getStatusByCommerceId`, así que un 401, una firma inválida o un 400 jamás anulan ni vencen un pago.
+     - Se suma `reconcile_attempts`. Es el **único** lugar donde se suma, y vuelve a 0 cuando Flow responde.
+     - La próxima consulta se agenda con backoff: 2, 5, 15, 30 y 60 minutos, y después cada 60.
+     - Si el plazo del pedido ya venció o hubo 5 consultas inciertas seguidas, pasan a revisión el pago, sus reservas y el pedido pendiente. Se audita `payment.flow_unreachable` y se alerta (RN-04).
+     - Se sigue consultando cada hora, así se resuelve solo cuando Flow vuelve.
+2. **Vencimiento.** Los pedidos `pending_payment` con `paymentDueAt` vencido y **sin** intento abierto se vencen de a uno: cada uno en su transacción, con la fila tomada con `FOR UPDATE SKIP LOCKED`. Los que tienen un intento abierto nunca se vencen sin consultar a Flow.
+
+**`expireOrder`** (`expire.ts`) es el vencimiento seguro. Con el pedido bloqueado, vuelve a comprobar todo: el pedido está pendiente con el plazo vencido o en revisión, no tiene cobro y no le queda ningún intento abierto. Luego:
+
+- libera las reservas con `releaseOrderReservations` y el cupón con `releaseCouponUse`;
+- deja el pedido `expired`, con historial y auditoría `order.expired` a nombre de «Sistema».
+
+`in_review → expired` es una transición del sistema, fuera de la tabla del panel. Correr el job dos veces, o en dos workers a la vez, no duplica liberaciones, historial ni correos.
+
+**Alertas** (`alerts.ts`): correo `payment_review_alert` a `EMAIL_ADMIN_TO`, con clave `payment_review_alert:<paymentId>:<motivo>`, de modo que una alerta nunca se repite. Los motivos son:
+
+- `late_no_stock`: pago tardío sin stock;
+- `double_charge`: doble cobro;
+- `mismatch`: datos distintos;
+- `flow_unreachable`: Flow sin respuesta.
+
+El resumen del panel (`GET /admin/summary`) trae `alerts` con los pedidos en revisión o con algún intento en revisión. Una alerta se cierra cuando se concilia o resuelve el pago.
+
+**Panel** (`routes/admin-panel.ts`):
+
+| Ruta                                  | Roles                   | Qué hace                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /admin/payments/{id}/reconcile` | Administrador, Operador | «Consultar en Flow»: la misma `reconcilePayment`, solo para el último intento pendiente o en revisión. Es idempotente.                                                                                                                                                                                                                                                   |
+| `POST /admin/payments/{id}/resolve`   | Administrador           | Resolución con motivo y auditoría `payment.resolved`. `release`: Flow no cobró; anula el intento y vence el pedido. `refund_pending`: hubo cobro que no se aplica (doble cobro o discrepancia: el intento queda `refund_pending`; pago tardío sin stock: sigue `paid` y el pedido se cancela, con la devolución por RF-32). `confirm`: pago tardío con stock disponible. |
+
+El rol del Operador no aparece en el SRS: RF-33 está en UC-03 y la tabla 4.4.2 no lista estas rutas. Se acordó que el Operador pueda consultar en Flow, que es seguro e idempotente, y que solo el Administrador resuelva a mano, como los reembolsos de RF-32.
+
+**`refund_pending`** («Reembolso pendiente») no cuenta como cobro: los reportes y las exportaciones solo suman `paid`, y tampoco está en el resumen de cobros del mes.
+
+**Probar a mano:** `pnpm --filter @totalkids/api payments:run-once` corre una vuelta del job y termina. Para forzar un vencimiento, adelanta `payment_due_at` del pedido (ver la guía de verificación).
 
 ## Panel admin (LN-16)
 
@@ -414,7 +460,7 @@ Configuración, solicitudes, suscriptores, reportes, exportaciones CSV, usuarios
 | `GET /admin/emails`, `GET /admin/emails/{id}`                      | Administrador, Operador | Registro de correos (`event`, `status`, `order`, `request`) con intentos y reenvíos. El reenvío (`POST …/resend`, LN-14) sigue siendo del Administrador.        |
 | `GET /admin/activity`                                              | Administrador           | Historial desde `audit_log`: `area`, `actor` (id de la cuenta), `from`, `to`.                                                                                   |
 | `GET /admin/summary`                                               | Administrador, Operador | Pedidos por estado, pagos en revisión o pendientes y últimos 5 pedidos. Los montos del mes y el stock bajo solo van al Administrador (`null` para el Operador). |
-| `GET /admin/payments`                                              | Administrador, Operador | Intentos de pago de solo lectura (`status`, `order`) con `current` y `reconcilable`. La conciliación con Flow es de LN-15.                                      |
+| `GET /admin/payments`                                              | Administrador, Operador | Intentos de pago (`status`, `order`) con `current`, `reconcilable` y `resolutions`. Conciliación y resolución: ver «Conciliación y vencimientos (LN-15)».       |
 | `GET /store-theme`, `GET /banners`                                 | Público                 | Plantilla activa y banners activos y vigentes, para la tienda (RF-28).                                                                                          |
 
 Rutas en [`routes/admin-config.ts`](src/routes/admin-config.ts), [`admin-desk.ts`](src/routes/admin-desk.ts), [`admin-users.ts`](src/routes/admin-users.ts), [`admin-reports.ts`](src/routes/admin-reports.ts), [`admin-panel.ts`](src/routes/admin-panel.ts), [`admin-emails.ts`](src/routes/admin-emails.ts) y [`store.ts`](src/routes/store.ts). La lógica está en `services/admin-config/`, `admin-desk/`, `admin-reports/`, `admin-panel/` y `admin-users.ts`.

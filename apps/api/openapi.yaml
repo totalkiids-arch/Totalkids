@@ -2369,8 +2369,8 @@ paths:
       summary: Intentos de pago (solo lectura)
       description: |
         Para «Pagos y conciliación» (RF-33). Más recientes primero. `current`
-        marca el último intento del pedido y `reconcilable` el que sigue pendiente
-        o en revisión. La conciliación con Flow es de LN-15 y no está aquí.
+        marca el último intento del pedido, `reconcilable` el que se puede
+        consultar en Flow y `resolutions` las resoluciones manuales permitidas.
       x-roles: [admin, operator]
       tags: [Panel - Pagos]
       security: [{ panelSession: [] }]
@@ -2379,7 +2379,11 @@ paths:
         - $ref: "#/components/parameters/PageSize"
         - name: status
           in: query
-          schema: { type: string, enum: [pending, paid, rejected, voided, in_review, expired] }
+          schema:
+            {
+              type: string,
+              enum: [pending, paid, rejected, voided, in_review, expired, refund_pending],
+            }
         - name: order
           in: query
           description: Pedido ("TK-1048", "1048" o uuid).
@@ -2401,6 +2405,86 @@ paths:
                     description: Intentos por estado (con el filtro de pedido).
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/payments/{id}/reconcile:
+    post:
+      operationId: adminReconcilePayment
+      summary: Consultar en Flow y asentar el estado (conciliación)
+      description: |
+        RF-33, UC-03 paso 8. Consulta `getStatusByCommerceId` con las
+        credenciales del backend y lo asienta con la misma lógica idempotente del
+        callback (settlePayment, LN-10). Si Flow confirma que no hubo cobro y el
+        plazo venció, el pedido vence (libera reservas y cupón). Si Flow no
+        responde o responde con error (cualquier 4xx incluido: Flow no documenta
+        un código de "no encontrado"), nunca se asume un rechazo: se reintenta
+        con backoff y, con el plazo vencido o tras 5 consultas inciertas, el pago
+        y el pedido quedan en revisión con alerta (RN-04). Solo el último intento
+        pendiente o en revisión (409 `field: form`); 409 también si Flow no está
+        configurado.
+      x-roles: [admin, operator]
+      tags: [Panel - Pagos]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      responses:
+        "200":
+          description: Resultado de la consulta y el intento actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentReconcileResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/payments/{id}/resolve:
+    post:
+      operationId: adminResolvePayment
+      summary: Resolver a mano un pago en revisión
+      description: |
+        RF-33, RN-05, RN-06. Solo Administrador, con motivo (3 a 500
+        caracteres). En una transacción con el pedido bloqueado y auditoría
+        `payment.resolved`:
+        - `release` (intento en revisión que Flow no informó pagado): el intento
+          queda `voided` y el pedido vence, liberando reservas y cupón.
+        - `refund_pending` (doble cobro o discrepancia que Flow informó pagado):
+          el intento queda `refund_pending`, que no cuenta como cobro en
+          reportes, resumen ni CSV. En un pago tardío sin stock el intento sigue
+          `paid` y el pedido se cancela; la devolución se registra con RF-32.
+        - `confirm` (pago tardío y ahora hay stock): descuenta el stock, consume
+          el cupón, confirma el pedido y encola los correos de la venta. 409 si
+          aún no alcanza.
+        Fuera de esas condiciones, 409 `field: action`.
+      x-roles: [admin]
+      tags: [Panel - Pagos]
+      security: [{ panelSession: [], csrfCookie: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PaymentResolveInput" }
+            example:
+              { action: refund_pending, reason: "Doble cobro: se devuelve por transferencia" }
+      responses:
+        "200":
+          description: Pago resuelto
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentResolveResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /admin/activity:
     get:
@@ -3492,7 +3576,7 @@ components:
         couponCode: { type: [string, "null"] }
         paymentStatus:
           type: [string, "null"]
-          description: Estado del último intento en Flow (pending, paid, rejected, voided, in_review, expired)
+          description: Estado del último intento en Flow (pending, paid, rejected, voided, in_review, expired, refund_pending)
         history:
           type: array
           items:
@@ -3710,7 +3794,7 @@ components:
     OrderPaymentStatus:
       type: string
       description: Estado del último intento de pago; `none` si nunca se intentó.
-      enum: [pending, paid, rejected, voided, in_review, expired, none]
+      enum: [pending, paid, rejected, voided, in_review, expired, refund_pending, none]
     AdminOrderSummary:
       type: object
       required:
@@ -3973,6 +4057,13 @@ components:
               paidAt: { type: [string, "null"], format: date-time }
               lastCheckedAt: { type: [string, "null"], format: date-time }
               createdAt: { type: string, format: date-time }
+              reconcilable:
+                type: boolean
+                description: Último intento pendiente o en revisión («Consultar en Flow», LN-15)
+              resolutions:
+                type: array
+                description: Resoluciones manuales permitidas (solo Administrador, LN-15)
+                items: { $ref: "#/components/schemas/PaymentResolution" }
         refunds: { type: array, items: { $ref: "#/components/schemas/AdminRefundRecord" } }
         refundTotals: { $ref: "#/components/schemas/RefundTotals" }
         statusHistory:
@@ -4438,7 +4529,8 @@ components:
               reference: { type: string }
     PanelSummary:
       type: object
-      required: [byStatus, paymentsInReview, paymentsPending, recentOrders, sales, lowStockVariants]
+      required:
+        [byStatus, paymentsInReview, paymentsPending, recentOrders, sales, lowStockVariants, alerts]
       properties:
         byStatus:
           type: object
@@ -4465,6 +4557,42 @@ components:
         lowStockVariants:
           type: [integer, "null"]
           description: Solo Administrador. Variantes activas con 1 a 3 unidades disponibles.
+        alerts:
+          type: object
+          description: |
+            Alertas abiertas (LN-15; RN-04, RN-05): pedidos en revisión o con algún
+            intento en revisión. Se cierran al conciliar o resolver el pago.
+            Administrador y Operador. `items` trae las 10 más recientes.
+          required: [total, items]
+          properties:
+            total: { type: integer }
+            items:
+              type: array
+              items:
+                type: object
+                required: [orderId, orderRef, orderStatus, reason, since]
+                properties:
+                  orderId: { type: string, format: uuid }
+                  orderRef: { type: string, example: TK-1053 }
+                  orderStatus: { $ref: "#/components/schemas/OrderStatus" }
+                  reason:
+                    oneOf:
+                      - type: "null"
+                      - $ref: "#/components/schemas/ReviewAlertReason"
+                  since: { type: string, format: date-time }
+    ReviewAlertReason:
+      type: string
+      description: |
+        Motivo de la revisión: pago tardío sin stock (RN-05), doble cobro, datos
+        del pago distintos (A4) o Flow sin respuesta (RN-04).
+      enum: [late_no_stock, double_charge, mismatch, flow_unreachable]
+    PaymentResolution:
+      type: string
+      description: |
+        `release`: Flow no cobró; el intento queda anulado y el pedido vence.
+        `refund_pending`: hubo cobro que no se aplica; se devuelve a mano (RF-32).
+        `confirm`: pago tardío y ahora hay stock; se confirma el pedido.
+      enum: [release, refund_pending, confirm]
     AdminPayment:
       type: object
       required:
@@ -4485,6 +4613,10 @@ components:
           lastCheckedAt,
           current,
           reconcilable,
+          reconcileAttempts,
+          nextCheckAt,
+          orderStatus,
+          resolutions,
         ]
       properties:
         id: { type: string, format: uuid }
@@ -4495,14 +4627,77 @@ components:
         commerceOrder: { type: string }
         flowOrder: { type: [string, "null"] }
         amount: { type: integer }
-        status: { type: string, enum: [pending, paid, rejected, voided, in_review, expired] }
+        status:
+          {
+            type: string,
+            enum: [pending, paid, rejected, voided, in_review, expired, refund_pending],
+          }
         statusLabel: { type: string }
         paymentMethod: { type: [string, "null"] }
         createdAt: { type: string, format: date-time }
         paidAt: { type: [string, "null"], format: date-time }
         lastCheckedAt: { type: [string, "null"], format: date-time }
         current: { type: boolean, description: Último intento del pedido }
-        reconcilable: { type: boolean, description: Último intento pendiente o en revisión (LN-15) }
+        reconcilable:
+          type: boolean
+          description: Último intento pendiente o en revisión («Consultar en Flow», LN-15)
+        reconcileAttempts:
+          type: integer
+          description: Consultas inciertas seguidas a Flow (vuelve a 0 cuando Flow responde)
+        nextCheckAt:
+          type: [string, "null"]
+          format: date-time
+          description: Próxima consulta automática del worker
+        orderStatus: { $ref: "#/components/schemas/OrderStatus" }
+        resolutions:
+          type: array
+          description: Resoluciones manuales permitidas (solo Administrador)
+          items: { $ref: "#/components/schemas/PaymentResolution" }
+    PaymentReconcileResult:
+      type: object
+      required: [outcome, flowStatus, payment]
+      properties:
+        outcome:
+          type: string
+          description: |
+            `confirmed`, `late_review`, `double_charge`, `mismatch`, `rejected` o
+            `unchanged` (lo asentó settlePayment); `waiting` (sigue pendiente en
+            Flow); `expired` (Flow confirmó que no hubo cobro y el pedido venció);
+            `uncertain` (sin respuesta segura, se reintentará); `in_review` (sin
+            respuesta segura: pago y pedido en revisión, con alerta); `not_open`.
+          enum:
+            [
+              unknown,
+              unchanged,
+              confirmed,
+              late_review,
+              rejected,
+              mismatch,
+              double_charge,
+              not_open,
+              waiting,
+              expired,
+              uncertain,
+              in_review,
+            ]
+        flowStatus:
+          type: [string, "null"]
+          enum: [pending, paid, rejected, voided, null]
+          description: Estado que informó Flow; null si la consulta fue incierta
+        payment: { $ref: "#/components/schemas/AdminPayment" }
+    PaymentResolveInput:
+      type: object
+      required: [action, reason]
+      properties:
+        action: { $ref: "#/components/schemas/PaymentResolution" }
+        reason: { type: string, minLength: 3, maxLength: 500 }
+    PaymentResolveResult:
+      type: object
+      required: [orderId, resolution, payment]
+      properties:
+        orderId: { type: string, format: uuid }
+        resolution: { $ref: "#/components/schemas/PaymentResolution" }
+        payment: { $ref: "#/components/schemas/AdminPayment" }
     ActivityArea:
       type: string
       enum:
@@ -4656,6 +4851,7 @@ components:
           service_request,
           password_recovery,
           newsletter_unsubscribe,
+          payment_review_alert,
         ]
     EmailStatus:
       type: string

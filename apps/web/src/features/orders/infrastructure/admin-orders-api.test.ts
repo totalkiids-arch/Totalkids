@@ -321,5 +321,62 @@ describe("toPanelSummary", () => {
       lowStockVariants: null,
     });
     expect([summary.sales, summary.lowStockVariants]).toEqual([null, null]);
+    // Sin el campo (API anterior): sin alertas.
+    expect(summary.alerts).toEqual({ total: 0, items: [] });
+  });
+
+  it("traduce las alertas abiertas (LN-15)", () => {
+    const summary = toPanelSummary({
+      byStatus: { in_review: 1 },
+      paymentsInReview: 1,
+      paymentsPending: 0,
+      recentOrders: [],
+      sales: null,
+      lowStockVariants: null,
+      alerts: {
+        total: 1,
+        items: [
+          {
+            orderId: "0195f3a0-0000-7000-8000-000000000003",
+            orderRef: "TK-1051",
+            orderStatus: "in_review",
+            reason: "flow_unreachable",
+            since: "2026-11-25T10:00:00.000Z",
+          },
+        ],
+      },
+    });
+    expect(summary.alerts).toEqual({
+      total: 1,
+      items: [
+        {
+          ref: "TK-1051",
+          status: "in_review",
+          reason: "flow_unreachable",
+          since: "2026-11-25T10:00:00.000Z",
+        },
+      ],
+    });
+  });
+});
+
+describe("intentos de pago del detalle (LN-15)", () => {
+  it("trae id, si se puede consultar en Flow y las resoluciones conocidas", () => {
+    const parsed = toAdminOrderDetail({
+      ...detail,
+      payments: [
+        {
+          ...detail.payments[0],
+          status: "in_review",
+          reconcilable: true,
+          resolutions: ["release", "otra"],
+        },
+      ],
+    });
+    expect(parsed.attempts[0]).toMatchObject({
+      id: "p1",
+      reconcilable: true,
+      resolutions: ["release"],
+    });
   });
 });

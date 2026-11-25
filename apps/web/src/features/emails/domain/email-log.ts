@@ -20,6 +20,7 @@ export const EMAIL_EVENTS = [
   "service_request",
   "password_recovery",
   "newsletter_unsubscribe",
+  "payment_review_alert",
 ] as const;
 export type EmailEvent = (typeof EMAIL_EVENTS)[number];
 
@@ -33,6 +34,7 @@ export const EMAIL_EVENT_LABEL: Record<EmailEvent, string> = {
   service_request: "Solicitud de servicio",
   password_recovery: "Recuperación de contraseña",
   newsletter_unsubscribe: "Baja del newsletter",
+  payment_review_alert: "Alerta de pago en revisión",
 };
 
 export const EMAIL_STATUSES = ["pending", "sent", "failed", "uncertain"] as const;
@@ -257,6 +259,13 @@ export function emailPreview(record: Pick<EmailSummary, "event" | "reference">):
         heading: "¿Quieres dejar de recibir novedades?",
         body: "Confirma la baja con el enlace. Si no la pediste, ignora este correo.",
         action: "Confirmar baja",
+      };
+    case "payment_review_alert":
+      return {
+        subject: `Revisar pago del pedido #${ref}`,
+        heading: "Pago en revisión",
+        body: `El pedido #${ref} quedó en revisión (pago tardío sin stock, doble cobro, datos distintos o Flow sin respuesta). Resuélvelo en Pagos y conciliación.`,
+        action: "Revisar en el panel",
       };
   }
 }

@@ -38,6 +38,7 @@ const PAYMENT_TONE: Record<OrderPaymentState, StatusTone> = {
   rejected: "red",
   voided: "neutral",
   expired: "neutral",
+  refund_pending: "red",
   none: "neutral",
 };
 

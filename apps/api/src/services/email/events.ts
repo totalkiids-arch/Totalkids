@@ -19,7 +19,17 @@ export const EMAIL_EVENTS = [
   "service_request",
   "password_recovery",
   "newsletter_unsubscribe",
+  "payment_review_alert",
 ] as const satisfies readonly EmailEvent[];
+
+/** Motivos de una alerta de revisión de pago (LN-15; RN-04, RN-05, A4). */
+export const REVIEW_ALERT_REASONS = [
+  "late_no_stock",
+  "double_charge",
+  "mismatch",
+  "flow_unreachable",
+] as const;
+export type ReviewAlertReason = (typeof REVIEW_ALERT_REASONS)[number];
 
 /** Prefijo del tipo de trabajo en outbox: "email.purchase_confirmed". */
 export const EMAIL_JOB_PREFIX = "email.";
@@ -47,6 +57,7 @@ export const EVENT_KEY_MAX = 160;
  * - `service_request:<serviceRequestId>:requester` y `…:admin`
  * - `password_recovery:<userId>:<uuid>` (cada solicitud es un hecho distinto)
  * - `newsletter_unsubscribe:<subscriberId>:<uuid>` (igual: cada pedido de baja)
+ * - `payment_review_alert:<paymentId>:<motivo>` (una alerta por pago y motivo)
  */
 export function emailEventKey(event: EmailEvent, ...parts: string[]): string {
   const key = [event, ...parts].join(":");
@@ -185,6 +196,14 @@ export const EMAIL_DATA_SCHEMAS = {
    */
   newsletter_unsubscribe: z.object({
     subscriberId: z.uuid(),
+  }),
+  /** Equipo: pedido o pago en revisión. Sin datos del comprador ni de pago. */
+  payment_review_alert: z.object({
+    orderNumber,
+    reason: z.enum(REVIEW_ALERT_REASONS),
+    /** Número de intento del pago. */
+    attempt: z.number().int().positive(),
+    amount: clp,
   }),
 } satisfies Record<EmailEvent, z.ZodType>;
 

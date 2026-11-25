@@ -65,6 +65,18 @@ const envSchema = z
       .positive()
       .default(5 * 60_000),
 
+    // ── Conciliación y vencimientos (LN-15) ──
+    /** Cada cuánto corre el job de pagos y vencimientos del worker (D-02: 2 minutos). */
+    PAYMENT_JOB_INTERVAL_MS: z.preprocess(
+      blankAsUndefined,
+      z.coerce.number().int().min(1000).default(120_000),
+    ),
+    /** Intentos que se concilian y pedidos que se vencen por vuelta. */
+    PAYMENT_JOB_BATCH: z.preprocess(
+      blankAsUndefined,
+      z.coerce.number().int().min(1).max(200).default(20),
+    ),
+
     // ── Imágenes del catálogo (LN-12) ──
     /** Carpeta del adaptador de disco local (relativa al proceso o absoluta). */
     IMAGES_DIR: z.preprocess(blankAsUndefined, z.string().min(1).default("uploads")),
