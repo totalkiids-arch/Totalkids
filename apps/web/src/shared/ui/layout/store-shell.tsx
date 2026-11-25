@@ -7,12 +7,15 @@ import { StoreHeader } from "./store-header";
 export function StoreShell({
   children,
   cartLink,
+  assistant,
   seasonalBanner,
   seasonalDecor,
   theme = "clasica",
 }: {
   children: ReactNode;
   cartLink: ReactNode;
+  /** Ayudante flotante (lo entrega la feature "assistant"). */
+  assistant?: ReactNode;
   seasonalBanner?: ReactNode;
   /** Ambientación de campaña: guirnaldas y partículas (las entrega la feature "themes"). */
   seasonalDecor?: { afterHeader?: ReactNode; beforeFooter?: ReactNode; overlay?: ReactNode };
@@ -38,6 +41,7 @@ export function StoreShell({
       </main>
       {seasonalDecor?.beforeFooter}
       <StoreFooter />
+      {assistant}
     </div>
   );
 }
