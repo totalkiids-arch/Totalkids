@@ -175,6 +175,9 @@ const ACTION_TEXT: Record<string, string | ((d: Details) => string)> = {
   "order.invoice_registered": (d) => `Factura registrada (folio ${str(d.folio) ?? ""})`,
   "order.invoice_replaced": (d) =>
     `Folio de factura corregido: ${str(d.from) ?? ""} → ${str(d.to) ?? ""}`,
+  "payment.mismatch": "Los datos del pago no coinciden con Flow",
+  "payment.late_review": "Pago recibido sin poder confirmar el pedido",
+  "payment.double_charge": "Posible doble cobro",
   "inventory.adjusted": (d) => {
     const s = (d.stockPhysical ?? {}) as Details;
     return `Ajuste de stock ${str(d.sku) ?? ""}: ${String(num(s.before))} → ${String(num(s.after))}`;
