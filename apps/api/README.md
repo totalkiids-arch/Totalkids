@@ -340,7 +340,7 @@ Solicitudes de servicio y newsletter, sin sesión: CSRF (middleware global) y l�
 
 ## Pedidos admin (LN-13)
 
-Panel de pedidos (RF-27, RF-32, RF-34; RN-04 a RN-06; UI-12). Rutas en [`src/routes/admin-orders.ts`](src/routes/admin-orders.ts) y reglas en [`src/services/admin-orders/`](src/services/admin-orders/). Las reglas puras (`rules.ts`) usan la misma tabla de transiciones y los mismos textos que el dominio del panel (`apps/web/src/features/orders/domain/order-workflow.ts`), así LN-16 muestra lo que devuelve la API; `test/admin-orders-rules.test.ts` lo comprueba. `{id}` es el uuid del pedido o su número visible (`TK-1048` o `1048`).
+Panel de pedidos (RF-27, RF-32, RF-34; RN-04 a RN-06; UI-12). Rutas en [`src/routes/admin-orders.ts`](src/routes/admin-orders.ts) y reglas en [`src/services/admin-orders/`](src/services/admin-orders/). Las reglas puras (`rules.ts`) tienen la tabla de transiciones y los textos; el panel (LN-16) muestra los mensajes que devuelve la API. `test/admin-orders-rules.test.ts` las prueba por sí solas. `{id}` es el uuid del pedido o su número visible (`TK-1048` o `1048`).
 
 ### Endpoints
 

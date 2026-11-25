@@ -8,9 +8,8 @@ import type {
 
 /**
  * Reglas del panel de pedidos (LN-13; RF-27, RF-32, RF-34; RN-04 a RN-06).
- * Funciones puras: la tabla de transiciones, las guardas y los textos son los
- * de `apps/web/src/features/orders/domain/order-workflow.ts`, así el panel
- * (LN-16) muestra los mismos mensajes que devuelve la API.
+ * Funciones puras: la tabla de transiciones, las guardas y los textos. El
+ * panel (LN-16) muestra los mensajes que devuelve la API.
  */
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
