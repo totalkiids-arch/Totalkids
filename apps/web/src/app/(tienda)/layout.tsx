@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { TitoAssistant } from "@/features/assistant";
 import { CartLink } from "@/features/cart";
 import {
   getStoreTheme,
@@ -15,6 +16,7 @@ export default async function StoreLayout({ children }: { children: ReactNode })
   return (
     <StoreShell
       cartLink={<CartLink />}
+      assistant={<TitoAssistant />}
       seasonalBanner={<SeasonalRibbon theme={theme} />}
       seasonalDecor={{
         afterHeader: <SeasonalGarland theme={theme} />,
