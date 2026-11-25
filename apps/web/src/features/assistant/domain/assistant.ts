@@ -208,3 +208,15 @@ export function answerTo(text: string, contact: ContactInfo): Answer {
     links: [search, REQUEST_FORM],
   };
 }
+
+/**
+ * Tito "escribe" antes de responder, como un chat: una pausa base más un poco
+ * por cada carácter de la respuesta, con un tope para no hacer esperar de más.
+ */
+const TYPING_BASE_MS = 700;
+const TYPING_PER_CHAR_MS = 12;
+const TYPING_MAX_MS = 2_200;
+
+export function typingDelay(answer: string): number {
+  return Math.min(TYPING_MAX_MS, TYPING_BASE_MS + answer.length * TYPING_PER_CHAR_MS);
+}

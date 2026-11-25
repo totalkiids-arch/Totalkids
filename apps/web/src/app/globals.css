@@ -244,6 +244,144 @@
   }
 }
 
+/* Tito animado (shared/ui/brand/tito.tsx, prop `animated`): saluda con la mano,
+   parpadea, sonríe y el bloque "A" rebota. Cada parte gira o se escala desde su
+   propia caja (transform-box: fill-box). Sin animación si se prefiere menos movimiento. */
+@media (prefers-reduced-motion: no-preference) {
+  .tito--animated
+    :is(.tito-arm-wave, .tito-arm-rest, .tito-eye, .tito-smile, .tito-cheek, .tito-block) {
+    transform-box: fill-box;
+  }
+  .tito--animated .tito-arm-wave {
+    /* Hombro: esquina inferior derecha del brazo, en (16, 70). */
+    transform-origin: 100% 100%;
+    animation: tito-wave 2.8s ease-in-out infinite;
+  }
+  .tito--animated .tito-arm-rest {
+    transform-origin: 0% 0%;
+    animation: tito-sway 3.2s ease-in-out infinite;
+  }
+  .tito--animated .tito-eye {
+    transform-origin: center;
+    animation: tito-blink 4.2s ease-in-out infinite;
+  }
+  .tito--animated .tito-smile {
+    transform-origin: 50% 0%;
+    animation: tito-grin 2.8s ease-in-out infinite;
+  }
+  .tito--animated .tito-cheek {
+    transform-origin: center;
+    animation: tito-blush 2.8s ease-in-out infinite;
+  }
+  .tito--animated .tito-block {
+    transform-origin: 50% 100%;
+    animation: tito-bob 1.4s ease-in-out infinite;
+  }
+  /* Saludo extra al pasar el mouse o enfocar el botón que lo contiene. */
+  :is(:hover, :focus-visible) > .tito--animated .tito-arm-wave,
+  .tito--animated:hover .tito-arm-wave {
+    animation-duration: 1.2s;
+  }
+}
+
+@keyframes tito-wave {
+  /* Tres sacudidas hacia afuera y una pausa (hacia adentro la mano quedaría
+     tapada por el cuerpo). */
+  0%,
+  60%,
+  100% {
+    transform: rotate(0deg);
+  }
+  10%,
+  30%,
+  50% {
+    transform: rotate(-32deg);
+  }
+  20%,
+  40% {
+    transform: rotate(-4deg);
+  }
+}
+
+@keyframes tito-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-8deg);
+  }
+}
+
+@keyframes tito-blink {
+  0%,
+  44%,
+  50%,
+  100% {
+    transform: scaleY(1);
+  }
+  47% {
+    transform: scaleY(0.1);
+  }
+}
+
+@keyframes tito-grin {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  15%,
+  45% {
+    transform: scale(1.18, 1.3);
+  }
+}
+
+@keyframes tito-blush {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  15%,
+  45% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+@keyframes tito-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-3px) rotate(-6deg);
+  }
+  75% {
+    transform: translateY(-3px) rotate(6deg);
+  }
+}
+
+/* Puntitos de "Tito está escribiendo" (features/assistant/ui/tito-assistant.tsx). */
+@media (prefers-reduced-motion: no-preference) {
+  .tito-typing-dot {
+    animation: tito-typing 1s ease-in-out infinite;
+  }
+}
+
+@keyframes tito-typing {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
 @utility pattern-dots {
   background-image: radial-gradient(var(--color-dots) 2.5px, transparent 2.5px);
   background-size: 30px 30px;

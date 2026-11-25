@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerTo, QUICK_TOPICS, searchTerms, topicAnswer } from "./assistant";
+import { answerTo, QUICK_TOPICS, searchTerms, topicAnswer, typingDelay } from "./assistant";
 import { definedOrNull, type ContactInfo } from "./contact";
 
 const none: ContactInfo = { phone: null, email: null, address: null, hours: null, whatsapp: null };
@@ -51,5 +51,15 @@ describe("Tito", () => {
 
   it("los botones rápidos siempre responden", () => {
     for (const { id } of QUICK_TOPICS) expect(topicAnswer(id, contact).text).not.toBe("");
+  });
+});
+
+describe("typingDelay", () => {
+  it("Tito tarda más en escribir una respuesta larga, con un tope", () => {
+    const short = typingDelay("¡Hola!");
+    const long = typingDelay("x".repeat(80));
+    expect(short).toBeGreaterThanOrEqual(700);
+    expect(long).toBeGreaterThan(short);
+    expect(typingDelay("x".repeat(5_000))).toBe(2_200);
   });
 });
