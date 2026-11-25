@@ -207,10 +207,6 @@ export function AdminFrame({ groups, roleLabel, signOut, children }: AdminFrameP
             </p>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="inline-flex items-center gap-2 rounded-full bg-cream px-3 py-1.5 text-xs font-extrabold text-yellow-ink">
-              <span aria-hidden className="size-2 rounded-[3px] bg-brand-green" />
-              Datos de demostración
-            </span>
             <span
               aria-hidden
               className="grid size-9 place-items-center rounded-full bg-brand-yellow text-xs font-extrabold text-brand-navy shadow-[0_2px_0_var(--color-brand-yellow-deep)]"

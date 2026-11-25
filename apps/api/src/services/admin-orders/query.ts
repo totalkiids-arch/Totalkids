@@ -13,6 +13,12 @@ import { pageMeta, pageWindow, type PageMeta } from "../../lib/pagination.js";
 import type { PrismaClient } from "../../lib/prisma.js";
 import { dateOnly } from "../cart/chile-date.js";
 import {
+  availableResolutions,
+  flowSaidPaid,
+  isOpenPayment,
+  type Resolution,
+} from "../reconciliation/rules.js";
+import {
   availableTransitions,
   blockedByUnresolvedPayment,
   canRecordRestock,
@@ -301,6 +307,10 @@ export interface AdminOrderDetail {
     paidAt: string | null;
     lastCheckedAt: string | null;
     createdAt: string;
+    /** Último intento, pendiente o en revisión: «Consultar en Flow» (LN-15). */
+    reconcilable: boolean;
+    /** Resoluciones manuales permitidas (solo Administrador, LN-15). */
+    resolutions: Resolution[];
   }[];
   refunds: AdminRefundRecord[];
   refundTotals: RefundTotals;
@@ -423,9 +433,12 @@ export function workflowOf(row: {
     restockRecordedAt: row.restockRecordedAt,
     payments: row.payments,
     refunds: row.refunds ?? [],
+    // "released": el stock se liberó sin venderse (pago tardío sin stock, RN-05):
+    // confirmar a mano no lo descontaría; se resuelve en Pagos (LN-15).
     unsettled:
-      (row.reservations ?? []).some((r) => r.status === "active" || r.status === "in_review") ||
-      row.redemption?.status === "reserved",
+      (row.reservations ?? []).some(
+        (r) => r.status === "active" || r.status === "in_review" || r.status === "released",
+      ) || row.redemption?.status === "reserved",
   };
 }
 
@@ -443,6 +456,7 @@ export async function getAdminOrder(db: DetailClient, ref: OrderRef): Promise<Ad
 
   const flow = workflowOf(o);
   const paymentStatus = orderPaymentStatus(flow);
+  const lastAttempt = Math.max(0, ...o.payments.map((p) => p.attempt));
   const refunds = o.refunds;
   return {
     id: o.id,
@@ -530,6 +544,12 @@ export async function getAdminOrder(db: DetailClient, ref: OrderRef): Promise<Ad
       paidAt: iso(p.paidAt),
       lastCheckedAt: iso(p.lastCheckedAt),
       createdAt: p.createdAt.toISOString(),
+      reconcilable: p.attempt === lastAttempt && isOpenPayment(p.status),
+      resolutions: availableResolutions({
+        paymentStatus: p.status,
+        flowSaysPaid: flowSaidPaid(p.providerResponse),
+        orderStatus: o.status,
+      }),
     })),
     refunds: refunds.map(refundDto),
     refundTotals: refundTotalsOf(flow),

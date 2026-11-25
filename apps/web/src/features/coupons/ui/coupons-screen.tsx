@@ -2,7 +2,7 @@ import type { Route } from "next";
 import Link from "next/link";
 
 import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
-import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
+import { LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { AdminMuted, AdminPanel } from "@/shared/ui/admin/panel";
 import { Button, ButtonLink, buttonClasses } from "@/shared/ui/button";
@@ -10,15 +10,7 @@ import { formatPrice } from "@/shared/ui/format-price";
 import { PlusIcon } from "@/shared/ui/icons";
 
 import { couponAdmin } from "../container";
-import {
-  addDays,
-  canDeleteCoupon,
-  chileToday,
-  couponStatus,
-  IN_USE_CANNOT_DELETE,
-  sortCoupons,
-  type Coupon,
-} from "../domain/coupon";
+import { addDays, IN_USE_CANNOT_DELETE, type Coupon } from "../domain/coupon";
 import { deleteCouponAction, toggleCouponAction } from "./coupon-actions";
 import { CouponForm } from "./coupon-form";
 import { CouponStatusBadge } from "./coupon-status-badge";
@@ -44,6 +36,10 @@ const NOTICES: Record<string, { message: string; tone: "success" | "warning" }> 
   eliminado: { message: "Cupón eliminado.", tone: "success" },
   "con-usos": { message: IN_USE_CANNOT_DELETE, tone: "warning" },
   "no-existe": { message: "Ese cupón ya no existe.", tone: "warning" },
+  error: {
+    message: "No pudimos completar el cambio. Revisa tu sesión o intenta de nuevo en unos minutos.",
+    tone: "warning",
+  },
 };
 
 /** "2026-11-20" → "20-11-2026" (formato chileno, sin depender de la zona horaria). */
@@ -54,13 +50,11 @@ const discountLabel = (coupon: Coupon) =>
 
 /** Panel administrativo · Cupones (RF-07, RF-28). */
 export async function CouponsScreen({ searchParams = {} }: { searchParams?: Params }) {
-  const coupons = await couponAdmin.list();
-  const today = chileToday();
-  const sorted = sortCoupons(coupons, today);
+  const { coupons, today } = await couponAdmin.list();
   const editing = coupons.find((c) => c.id === param(searchParams, "editar")) ?? null;
   const deleting = coupons.find((c) => c.id === param(searchParams, "eliminar")) ?? null;
   const notice = NOTICES[param(searchParams, "aviso")];
-  const usable = coupons.filter((c) => couponStatus(c, today) === "active").length;
+  const usable = coupons.filter((c) => c.status === "active").length;
 
   return (
     <>
@@ -75,12 +69,7 @@ export async function CouponsScreen({ searchParams = {} }: { searchParams?: Para
         }
       />
       {notice ? <LiveNotice message={notice.message} tone={notice.tone} /> : null}
-      <InfoNote>
-        Datos de ejemplo: los cambios se borran al reiniciar el sistema. El carrito todavía no usa
-        estos cupones: al comprar sigue respondiendo que no hay cupones vigentes.
-      </InfoNote>
-
-      {deleting && canDeleteCoupon(deleting) ? (
+      {deleting?.canDelete ? (
         <AdminPanel id="eliminar" title={`¿Eliminar el cupón «${deleting.code}»?`}>
           <AdminMuted>
             No tiene usos, así que se puede eliminar. Esta acción no se puede deshacer; si solo
@@ -115,7 +104,7 @@ export async function CouponsScreen({ searchParams = {} }: { searchParams?: Para
             { key: "status", label: "Estado" },
             { key: "actions", label: "Acciones" },
           ]}
-          rows={sorted.map((coupon) => ({
+          rows={coupons.map((coupon) => ({
             key: coupon.id,
             cells: {
               code: (
@@ -135,7 +124,7 @@ export async function CouponsScreen({ searchParams = {} }: { searchParams?: Para
                   {coupon.uses} / {coupon.maxUses}
                 </span>
               ),
-              status: <CouponStatusBadge status={couponStatus(coupon, today)} />,
+              status: <CouponStatusBadge status={coupon.status} label={coupon.statusLabel} />,
               actions: (
                 <span className="flex flex-wrap items-center gap-1">
                   <Link
@@ -156,7 +145,7 @@ export async function CouponsScreen({ searchParams = {} }: { searchParams?: Para
                       {coupon.active ? "Desactivar" : "Activar"}
                     </button>
                   </form>
-                  {canDeleteCoupon(coupon) ? (
+                  {coupon.canDelete ? (
                     <Link
                       href={
                         `/admin/cupones?eliminar=${encodeURIComponent(coupon.id)}#eliminar` as Route
@@ -172,7 +161,7 @@ export async function CouponsScreen({ searchParams = {} }: { searchParams?: Para
             },
           }))}
           empty="Todavía no hay cupones. Agrega el primero."
-          footer={`${coupons.length} cupón${coupons.length === 1 ? "" : "es"} · Un cupón con usos no se elimina: se desactiva · Datos de demostración`}
+          footer={`${coupons.length} cupón${coupons.length === 1 ? "" : "es"} · Un cupón con usos no se elimina: se desactiva`}
         />
       </AdminPanel>
 

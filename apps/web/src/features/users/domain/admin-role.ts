@@ -2,8 +2,8 @@
  * Roles internos del panel y qué secciones ve cada uno (SRS 2.3, RF-31, CA-07).
  * Dominio puro: sin React, Next.js ni acceso a red.
  *
- * Esto decide qué se muestra en la interfaz. La autorización real la aplica el
- * backend en cada operación (RF-31); llega con la autenticación (LN-04).
+ * Esto decide qué se muestra en la interfaz. La autorización real la aplica la
+ * API en cada operación (RF-31).
  */
 export const ADMIN_ROLES = ["admin", "operator"] as const;
 

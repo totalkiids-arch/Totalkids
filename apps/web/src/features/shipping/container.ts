@@ -1,6 +1,5 @@
-// Raíz de composición de "shipping": conecta los puertos con sus adaptadores actuales.
+// Raíz de composición de "shipping": conecta el puerto con su adaptador.
 import type { ShippingAdmin } from "./application/ports";
-import { demoShippingAdmin } from "./infrastructure/demo-shipping-admin";
+import { apiShippingAdmin } from "./infrastructure/api-shipping-admin";
 
-// DEMO (ver infrastructure/demo-shipping-admin.ts). En LN-12 se cambia solo esta línea.
-export const shippingAdmin: ShippingAdmin = demoShippingAdmin;
+export const shippingAdmin: ShippingAdmin = apiShippingAdmin;

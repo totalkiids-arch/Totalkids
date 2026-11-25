@@ -25,8 +25,9 @@ export function ZoneForm({ editing }: { editing: ShippingZone | null }) {
     values: {
       region: editing?.region ?? "RM",
       commune: editing?.commune ?? "",
-      price: editing ? String(editing.price) : "",
-      leadTime: editing?.leadTime ?? "3 a 5 días hábiles",
+      price: editing?.price == null ? "" : String(editing.price),
+      leadTime: editing?.leadTime ?? "A coordinar con el taller",
+      freeShippingEligible: editing?.freeShippingEligible ?? true,
       active: editing?.active ?? true,
     },
     errors: {},
@@ -70,8 +71,7 @@ export function ZoneForm({ editing }: { editing: ShippingZone | null }) {
             inputMode="numeric"
             defaultValue={state.values.price}
             error={state.errors.price}
-            hint="Sin decimales. 0 si el despacho a esa comuna no tiene costo."
-            required
+            hint="Sin decimales. 0 si no tiene costo. Vacía: «a coordinar» con el comprador."
           />
         </div>
         <div id={fieldId("leadTime")} className="scroll-mt-24">
@@ -86,10 +86,16 @@ export function ZoneForm({ editing }: { editing: ShippingZone | null }) {
           />
         </div>
       </div>
+      <Checkbox
+        name="freeShippingEligible"
+        value="1"
+        label="Cuenta para el despacho gratis"
+        defaultChecked={state.values.freeShippingEligible}
+      />
       <Checkbox name="active" value="1" label="Activa" defaultChecked={state.values.active} />
       <AdminMuted>
-        Solo las zonas activas se ofrecen en nuevas compras. Los pedidos ya hechos conservan su
-        costo de despacho.
+        Solo las zonas activas se ofrecen en nuevas compras; una comuna sin zona activa queda «a
+        coordinar». Los pedidos ya hechos conservan su costo de despacho.
       </AdminMuted>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={pending}>

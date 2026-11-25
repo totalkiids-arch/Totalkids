@@ -3,16 +3,16 @@ import Link from "next/link";
 
 import { DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
 import { FilterBar } from "@/shared/ui/admin/filter-bar";
-import { InfoNote } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { PaginationNav } from "@/shared/ui/admin/pagination-nav";
-import { AdminPanel } from "@/shared/ui/admin/panel";
+import { AdminMuted, AdminPanel } from "@/shared/ui/admin/panel";
 import { StatusBadge } from "@/shared/ui/admin/status-badge";
-import { SelectField } from "@/shared/ui/form";
+import { SelectField, TextField } from "@/shared/ui/form";
 
 import {
   ACTIVITY_AREA_LABEL,
   ACTIVITY_AREAS,
+  activityHref,
   toActivitySearch,
   type ActivityPage,
   type ActivityQuery,
@@ -28,9 +28,9 @@ const DATE_TIME = new Intl.DateTimeFormat("es-CL", {
   timeZone: "America/Santiago",
 });
 
-/** Panel administrativo · Historial de actividad (RF-27, RF-34). */
+/** Panel administrativo · Historial de actividad (RF-27, RF-34). Solo Administrador. */
 export function ActivityLogScreen({ page, query }: { page: ActivityPage; query: ActivityQuery }) {
-  const filtered = query.area !== null || query.actor !== null;
+  const filtered = Boolean(query.area || query.actor || query.from || query.to);
   const areaOptions = [
     { value: "", label: "Todas las áreas" },
     ...ACTIVITY_AREAS.map((area) => ({
@@ -40,20 +40,22 @@ export function ActivityLogScreen({ page, query }: { page: ActivityPage; query: 
   ];
   const actorOptions = [
     { value: "", label: "Todos" },
-    ...page.actors.map((actor) => ({ value: actor, label: actor })),
+    ...page.actors.map((actor) => ({
+      value: actor.id,
+      label: `${actor.name} · ${actor.role}${actor.active ? "" : " (inactiva)"}`,
+    })),
   ];
 
   return (
     <>
       <AdminPageHeading
         title="Historial de actividad"
-        description="Cambios hechos por el equipo en pedidos, pagos, reembolsos, inventario, solicitudes, correos, suscriptores y usuarios, con responsable, fecha y motivo."
+        description="Cambios hechos por el equipo en pedidos, pagos, reembolsos, catálogo, inventario, configuración, solicitudes, correos, suscriptores, usuarios y exportaciones, con responsable, fecha y motivo."
       />
-      <InfoNote>
-        Datos de demostración en la memoria del servidor: se borran al reiniciar. Los eventos
-        automáticos y los del comprador se ven en el detalle de cada pedido o solicitud. El
-        responsable es el rol de la sesión hasta que existan cuentas reales (LN-04).
-      </InfoNote>
+      <AdminMuted>
+        Los eventos automáticos y los del comprador se ven en el detalle de cada pedido o solicitud.
+        Los ingresos al panel no se listan.
+      </AdminMuted>
 
       <FilterBar label="Filtrar actividad">
         <SelectField
@@ -67,6 +69,20 @@ export function ActivityLogScreen({ page, query }: { page: ActivityPage; query: 
           name="responsable"
           defaultValue={query.actor ?? ""}
           options={actorOptions}
+        />
+        <TextField
+          label="Desde"
+          name="desde"
+          type="date"
+          defaultValue={query.from ?? ""}
+          className="w-44"
+        />
+        <TextField
+          label="Hasta"
+          name="hasta"
+          type="date"
+          defaultValue={query.to ?? ""}
+          className="w-44"
         />
       </FilterBar>
 
@@ -94,40 +110,56 @@ export function ActivityLogScreen({ page, query }: { page: ActivityPage; query: 
             { key: "area", label: "Área" },
             { key: "action", label: "Acción" },
           ]}
-          rows={page.entries.map((entry) => ({
-            key: entry.id,
-            cells: {
-              date: (
-                <time dateTime={entry.at} className="whitespace-nowrap">
-                  {DATE_TIME.format(new Date(entry.at))}
-                </time>
-              ),
-              actor: <strong>{entry.actor}</strong>,
-              area: <StatusBadge tone="neutral">{ACTIVITY_AREA_LABEL[entry.area]}</StatusBadge>,
-              action: (
-                <span className="flex min-w-64 flex-col gap-1 whitespace-normal">
-                  <span>{entry.action}</span>
-                  {entry.reason ? (
-                    <span className="text-sm text-text-secondary">Motivo: {entry.reason}</span>
-                  ) : null}
-                  {entry.reference ? (
-                    <Link
-                      href={entry.reference.href as Route}
-                      className="self-start text-sm font-extrabold text-brand-blue underline-offset-4 hover:underline"
-                    >
-                      Ver {entry.reference.label}
-                    </Link>
-                  ) : null}
-                </span>
-              ),
-            },
-          }))}
+          rows={page.entries.map((entry) => {
+            const href = entry.reference ? activityHref(entry.reference) : null;
+            return {
+              key: entry.id,
+              cells: {
+                date: (
+                  <time dateTime={entry.at} className="whitespace-nowrap">
+                    {DATE_TIME.format(new Date(entry.at))}
+                  </time>
+                ),
+                actor: (
+                  <span className="flex flex-col">
+                    <strong>{entry.actorName ?? entry.actorLabel}</strong>
+                    {entry.actorName ? (
+                      <span className="text-xs text-text-secondary">{entry.actorLabel}</span>
+                    ) : null}
+                  </span>
+                ),
+                area: entry.area ? (
+                  <StatusBadge tone="neutral">{ACTIVITY_AREA_LABEL[entry.area]}</StatusBadge>
+                ) : (
+                  "—"
+                ),
+                action: (
+                  <span className="flex min-w-64 flex-col gap-1 whitespace-normal">
+                    <span>{entry.description}</span>
+                    {entry.reason ? (
+                      <span className="text-sm text-text-secondary">Motivo: {entry.reason}</span>
+                    ) : null}
+                    {entry.reference && href ? (
+                      <Link
+                        href={href as Route}
+                        className="self-start text-sm font-extrabold text-brand-blue underline-offset-4 hover:underline"
+                      >
+                        Ver {entry.reference.label}
+                      </Link>
+                    ) : entry.reference ? (
+                      <span className="text-sm text-text-secondary">{entry.reference.label}</span>
+                    ) : null}
+                  </span>
+                ),
+              },
+            };
+          })}
           empty={
             filtered
               ? "No hay cambios con estos filtros."
-              : "Todavía no hay cambios del equipo. Aparecerán al gestionar pedidos, inventario, solicitudes o usuarios."
+              : "Todavía no hay cambios del equipo. Aparecerán al gestionar pedidos, catálogo, configuración, solicitudes o usuarios."
           }
-          footer={`Página ${page.page} de ${page.pageCount} · Datos de demostración`}
+          footer={`Página ${page.page} de ${page.pageCount}`}
         />
       </AdminPanel>
 

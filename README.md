@@ -59,6 +59,8 @@ pnpm dev
 - API health: http://localhost:4000/api/v1/health → `{ "status": "ok" }`
 - Swagger UI: http://localhost:4000/api/docs (spec JSON en `/api/docs/openapi.json`)
 
+Para comprobar que todo funciona (pruebas, recorrido manual, pagos con Flow sandbox) y ver cómo está armada la base de datos, ver [`docs/VERIFICACION.md`](docs/VERIFICACION.md).
+
 ## Scripts de la raíz
 
 | Script                   | Qué hace                                                                 |

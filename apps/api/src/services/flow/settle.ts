@@ -8,6 +8,7 @@ import { consumeCouponUse } from "../coupons.js";
 import { enqueueEmail } from "../email/enqueue.js";
 import { emailEventKey } from "../email/events.js";
 import { DEFAULT_PICKUP } from "../orders.js";
+import { enqueueReviewAlert } from "../reconciliation/alerts.js";
 import type { FlowPaymentStatus } from "./client.js";
 import { consumeReservations, releaseReservations, SYSTEM_ACTOR } from "./stock.js";
 import { flowMismatches } from "./verify.js";
@@ -36,42 +37,10 @@ const METHOD_MAX = 40;
 
 const isOpen = (p: Pick<Payment, "status">) => p.status === "pending" || p.status === "in_review";
 
-export type ReviewReason = "mismatch" | "late_review" | "double_charge" | "uncertain";
-
-/**
- * Deja el caso en la auditoría y avisa al equipo por correo (RN-04, RN-05). Una
- * sola vez por intento y causa; devuelve false si ya estaba registrado.
- */
-export async function flagForReview(
-  tx: Tx,
-  order: Pick<Order, "id" | "number">,
-  input: {
-    reason: ReviewReason;
-    paymentId: string;
-    adminEmail: string;
-    details?: Prisma.InputJsonObject;
-  },
-): Promise<boolean> {
-  const { reason, paymentId } = input;
-  const action = `payment.${reason}`;
-  if (await wasAudited(tx, order.id, action, paymentId)) return false;
+async function audit(tx: Tx, orderId: string, action: string, details: Prisma.InputJsonObject) {
   await tx.auditLog.create({
-    data: {
-      actorLabel: SYSTEM_ACTOR,
-      action,
-      resourceType: "order",
-      resourceId: order.id,
-      details: { paymentId, number: order.number, ...input.details },
-    },
+    data: { actorLabel: SYSTEM_ACTOR, action, resourceType: "order", resourceId: orderId, details },
   });
-  await enqueueEmail(tx, {
-    event: "payment_review",
-    recipient: input.adminEmail,
-    eventKey: emailEventKey("payment_review", paymentId, reason),
-    orderId: order.id,
-    data: { orderNumber: order.number, reason },
-  });
-  return true;
 }
 
 /** Un callback repetido no duplica la auditoría del mismo intento. */
@@ -82,13 +51,7 @@ async function wasAudited(tx: Tx, orderId: string, action: string, paymentId: st
   return count > 0;
 }
 
-export async function moveOrder(
-  tx: Tx,
-  order: Order,
-  to: OrderStatus,
-  reason: string,
-  paidAt?: Date,
-) {
+async function moveOrder(tx: Tx, order: Order, to: OrderStatus, reason: string, paidAt?: Date) {
   await tx.order.update({
     where: { id: order.id },
     data: { status: to, ...(paidAt && !order.paidAt ? { paidAt } : {}) },
@@ -107,22 +70,12 @@ export async function moveOrder(
 
 export async function settlePayment(
   prisma: Pick<PrismaClient, "$transaction" | "payment">,
-  input: {
-    status: FlowPaymentStatus;
-    token?: string;
-    /** Intento consultado, si quien llama ya lo conoce (conciliación). */
-    paymentId?: string;
-    adminEmail: string;
-    now?: Date;
-  },
+  input: { status: FlowPaymentStatus; token?: string; adminEmail: string; now?: Date },
 ): Promise<SettleResult> {
-  const { status, adminEmail } = input;
+  const { status } = input;
   const now = input.now ?? new Date();
-  // Por id o token; si el callback llegó antes de guardarlo, por commerceOrder.
+  // Por token; si el callback llegó antes de guardarlo, por commerceOrder.
   const found =
-    (input.paymentId
-      ? await prisma.payment.findUnique({ where: { id: input.paymentId } })
-      : null) ??
     (input.token
       ? await prisma.payment.findUnique({ where: { tokenHash: hashToken(input.token) } })
       : null) ??
@@ -162,14 +115,18 @@ export async function settlePayment(
       );
       if (mismatches.length > 0) {
         // Se registra para revisión sin confirmar el pedido (RF-16, A4).
+        const reviewed = await wasAudited(tx, order.id, "payment.mismatch", payment.id);
         await update(isOpen(payment) ? { status: "in_review" } : {});
-        const flagged = await flagForReview(tx, order, {
+        if (reviewed) return done("mismatch");
+        await audit(tx, order.id, "payment.mismatch", { paymentId: payment.id, mismatches });
+        // LN-15: alerta al equipo (A4), una por pago y motivo.
+        await enqueueReviewAlert(tx, {
           reason: "mismatch",
-          paymentId: payment.id,
-          adminEmail,
-          details: { mismatches },
+          adminEmail: input.adminEmail,
+          order,
+          payment,
         });
-        if (flagged && order.status === "pending_payment" && isOpen(payment)) {
+        if (order.status === "pending_payment" && isOpen(payment)) {
           await tx.stockReservation.updateMany({
             where: { orderId: order.id, status: "active" },
             data: { status: "in_review" },
@@ -185,10 +142,7 @@ export async function settlePayment(
       }
 
       if (status.status === "rejected" || status.status === "voided") {
-        if (!isOpen(payment)) {
-          await update({});
-          return done("unchanged");
-        }
+        if (!isOpen(payment)) return done("unchanged");
         await update({ status: status.status });
         if (order.status === "pending_payment") {
           await releaseReservations(tx, order.id, `Pago no completado de ${orderNumber}`, now);
@@ -212,15 +166,22 @@ export async function settlePayment(
       if (alreadyPaid > 0) {
         // Doble cobro: a revisión, sin segunda entrega (SRS 4.4.1).
         await update(isOpen(payment) ? { status: "in_review" } : {});
-        await flagForReview(tx, order, {
+        if (!(await wasAudited(tx, order.id, "payment.double_charge", payment.id))) {
+          await audit(tx, order.id, "payment.double_charge", { paymentId: payment.id });
+        }
+        // LN-15: alerta al equipo; la clave única evita repetirla.
+        await enqueueReviewAlert(tx, {
           reason: "double_charge",
-          paymentId: payment.id,
-          adminEmail,
+          adminEmail: input.adminEmail,
+          order,
+          payment,
         });
         return done("double_charge");
       }
 
       await update({ status: "paid", paidAt: now });
+      // Lo pagado sale del carrito del comprador (LN-11), se confirme o quede en revisión.
+      if (order.cartId) await tx.cart.deleteMany({ where: { id: order.cartId } });
       const confirmable =
         order.status === "pending_payment" ||
         order.status === "in_review" ||
@@ -231,24 +192,30 @@ export async function settlePayment(
       if (!sold) {
         // RN-05: pago tardío sin stock, o sobre un pedido cancelado.
         await moveOrder(tx, order, "in_review", "Pago recibido sin poder confirmar el pedido", now);
-        await flagForReview(tx, order, {
-          reason: "late_review",
+        await audit(tx, order.id, "payment.late_review", {
           paymentId: payment.id,
-          adminEmail,
-          details: { from: order.status },
+          from: order.status,
+        });
+        // LN-15: alerta al equipo (RN-05), una por pago.
+        await enqueueReviewAlert(tx, {
+          reason: "late_no_stock",
+          adminEmail: input.adminEmail,
+          order,
+          payment,
         });
         return done("late_review");
       }
       await consumeCouponUse(tx, order.id);
       await moveOrder(tx, order, "confirmed", "Pago confirmado por Flow", now);
-      await enqueueSaleEmails(tx, order, adminEmail);
+      await enqueueSaleEmails(tx, order, input.adminEmail);
       return done("confirmed");
     },
     { timeout: 15_000 },
   );
 }
 
-async function enqueueSaleEmails(tx: Tx, order: Order, adminEmail: string) {
+/** Correos de una venta confirmada; también los usa la resolución manual (LN-15). */
+export async function enqueueSaleEmails(tx: Tx, order: Order, adminEmail: string) {
   const items = await tx.orderItem.findMany({
     where: { orderId: order.id },
     include: { extras: true },

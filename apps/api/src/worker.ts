@@ -6,16 +6,17 @@ import { createEmailSender } from "./services/email/create-sender.js";
 import { createEmailWorker } from "./services/email/worker.js";
 import { createFlowClient } from "./services/flow/client.js";
 import { parseFlowConfig } from "./services/flow/config.js";
-import { RECONCILE_INTERVAL_MS, runReconciliation } from "./services/flow/reconcile.js";
+import { createPaymentJobs } from "./services/reconciliation/job.js";
 
 /**
- * Proceso del worker, separado de la API: correos (LN-14), limpieza de carritos
- * (LN-06) y conciliación y vencimientos (LN-15):
+ * Proceso del worker (LN-14, LN-15), separado de la API: correos, conciliación
+ * de pagos con Flow, vencimiento de pedidos y limpieza de carritos.
  *
  *   pnpm --filter @totalkids/api worker:dev   # desarrollo (EMAIL_PROVIDER=fake por defecto)
  *   pnpm --filter @totalkids/api worker       # producción (tras build)
  *
- * Se puede correr más de una instancia: el reclamo usa FOR UPDATE SKIP LOCKED.
+ * Se puede correr más de una instancia: correos y pagos se reclaman con
+ * FOR UPDATE SKIP LOCKED, y cada cambio de un pedido se hace con su fila bloqueada.
  */
 
 const env = loadEnv();
@@ -41,6 +42,22 @@ const worker = createEmailWorker({
 
 worker.start();
 
+// Conciliación con Flow y vencimientos (LN-15; RF-18, RF-33, RN-04).
+const flowConfig = parseFlowConfig(process.env);
+if (!flowConfig) {
+  logger.warn(
+    "Flow sin configurar: solo se vencen pedidos sin pago iniciado; los pagos abiertos quedan en revisión",
+  );
+}
+const paymentJobs = createPaymentJobs({
+  prisma,
+  flow: flowConfig && createFlowClient(flowConfig),
+  logger,
+  adminEmail: env.EMAIL_ADMIN_TO,
+  config: { batchSize: env.PAYMENT_JOB_BATCH, intervalMs: env.PAYMENT_JOB_INTERVAL_MS },
+});
+paymentJobs.start();
+
 // Limpieza de carritos vencidos (LN-06), aparte del bucle de correos. Si hay
 // varias instancias, todas pueden borrar: el DELETE es idempotente.
 const CART_PURGE_INTERVAL_MS = 60 * 60 * 1000;
@@ -56,45 +73,15 @@ void purgeCarts();
 const cartPurgeTimer = setInterval(() => void purgeCarts(), CART_PURGE_INTERVAL_MS);
 cartPurgeTimer.unref();
 
-// Conciliación con Flow y vencimientos (LN-15), cada 2 min y sin solaparse.
-const flowConfig = parseFlowConfig(process.env);
-if (!flowConfig) logger.warn("Flow sin configurar: solo se vencen pedidos sin cobro abierto");
-const flow = flowConfig && {
-  client: createFlowClient(flowConfig),
-  sealSecret: flowConfig.secretKey,
-};
 let shuttingDown = false;
-let reconciling: Promise<void> | null = null;
-async function reconcile() {
-  try {
-    const run = await runReconciliation(prisma, flow, {
-      adminEmail: env.EMAIL_ADMIN_TO,
-      logger,
-      shouldStop: () => shuttingDown,
-    });
-    if (run.reconciled + run.expired + run.failed > 0) logger.info(run, "Conciliación de pagos");
-  } catch (err) {
-    logger.error({ err }, "No se pudo conciliar los pagos");
-  }
-}
-function startReconciliation() {
-  reconciling ??= reconcile().finally(() => {
-    reconciling = null;
-  });
-}
-startReconciliation();
-const reconcileTimer = setInterval(startReconciliation, RECONCILE_INTERVAL_MS);
-reconcileTimer.unref();
 
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   clearInterval(cartPurgeTimer);
-  clearInterval(reconcileTimer);
   logger.info(`${signal} recibido, deteniendo el worker`);
-  // Termina el lote en curso (no deja envíos a medias) y no toma más.
-  await worker.stop();
-  await reconciling;
+  // Termina el lote en curso (no deja envíos ni conciliaciones a medias) y no toma más.
+  await Promise.all([worker.stop(), paymentJobs.stop()]);
   await prisma.$disconnect();
   process.exit(0);
 }

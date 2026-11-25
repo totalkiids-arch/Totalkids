@@ -1,6 +1,5 @@
-// Raíz de composición de "coupons": conecta los puertos con sus adaptadores actuales.
+// Raíz de composición de "coupons": conecta el puerto con su adaptador.
 import type { CouponAdmin } from "./application/ports";
-import { demoCouponAdmin } from "./infrastructure/demo-coupon-admin";
+import { apiCouponAdmin } from "./infrastructure/api-coupon-admin";
 
-// DEMO (ver infrastructure/demo-coupon-admin.ts). En LN-12/LN-13 se cambia solo esta línea.
-export const couponAdmin: CouponAdmin = demoCouponAdmin;
+export const couponAdmin: CouponAdmin = apiCouponAdmin;

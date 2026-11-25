@@ -3,7 +3,8 @@ import Link from "next/link";
 
 import { adminNav } from "@/shared/config/routes";
 import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
-import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
+import { formatChileDateTime } from "@/shared/lib/chile-time";
+import { LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { AdminPanel } from "@/shared/ui/admin/panel";
 import { ActiveBadge, StatusBadge } from "@/shared/ui/admin/status-badge";
@@ -18,7 +19,7 @@ import {
   canAccessSection,
   type AdminSection,
 } from "../domain/admin-role";
-import { LAST_ADMIN, sortUsers } from "../domain/internal-user";
+import { LAST_ADMIN } from "../domain/internal-user";
 import { UserForm } from "./user-form";
 import type { SaveUserAction, ToggleUserAction } from "./user-form-handlers";
 
@@ -30,7 +31,16 @@ const param = (params: Params, name: string) => {
 };
 
 const NOTICES: Record<string, { message: string; tone: "success" | "warning" }> = {
-  creado: { message: "Usuario agregado.", tone: "success" },
+  creado: {
+    message:
+      "Usuario agregado. Le enviamos un correo para que defina su contraseña; el enlace vence a los 30 minutos (si vence, puede pedir otro con «Olvidé mi contraseña»).",
+    tone: "success",
+  },
+  "creado-sin-invitacion": {
+    message:
+      "Usuario agregado como inactivo: no se envió la invitación. Actívalo cuando corresponda.",
+    tone: "success",
+  },
   guardado: { message: "Cambios guardados.", tone: "success" },
   activado: { message: "Cuenta activada.", tone: "success" },
   desactivado: {
@@ -38,8 +48,23 @@ const NOTICES: Record<string, { message: string; tone: "success" | "warning" }> 
     tone: "success",
   },
   "ultimo-admin": { message: LAST_ADMIN, tone: "warning" },
+  "propia-cuenta": {
+    message: "No puedes quitarte el rol de Administrador ni desactivar tu propia cuenta.",
+    tone: "warning",
+  },
   "no-existe": { message: "Esa cuenta ya no existe.", tone: "warning" },
+  error: {
+    message: "No pudimos completar el cambio. Revisa tu sesión o intenta de nuevo en unos minutos.",
+    tone: "warning",
+  },
 };
+
+/** «Se cerraron N sesiones…» cuando la API revocó sesiones por cambiar rol o estado. */
+function sessionsNote(params: Params): string {
+  const count = Number(param(params, "sesiones"));
+  if (!Number.isInteger(count) || count <= 0) return "";
+  return ` Se ${count === 1 ? "cerró 1 sesión abierta" : `cerraron ${count} sesiones abiertas`} de esa cuenta: el cambio rige de inmediato.`;
+}
 
 const isSection = (value: string): value is AdminSection =>
   (ADMIN_SECTIONS as readonly string[]).includes(value);
@@ -79,10 +104,9 @@ export async function UsersScreen({
   saveAction: SaveUserAction;
   toggleAction: ToggleUserAction;
 }) {
-  const users = sortUsers(await userAdmin.list());
+  const { users, activeAdmins } = await userAdmin.list();
   const editing = users.find((u) => u.id === param(searchParams, "editar")) ?? null;
   const notice = NOTICES[param(searchParams, "aviso")];
-  const activeAdmins = users.filter((u) => u.active && u.role === "admin").length;
 
   return (
     <>
@@ -96,12 +120,9 @@ export async function UsersScreen({
           </ButtonLink>
         }
       />
-      {notice ? <LiveNotice message={notice.message} tone={notice.tone} /> : null}
-      <InfoNote>
-        Datos de ejemplo: los cambios se borran al reiniciar el sistema. El ingreso al panel sigue
-        siendo por rol de demostración; las cuentas reales y sus contraseñas llegan con LN-04.
-      </InfoNote>
-
+      {notice ? (
+        <LiveNotice message={`${notice.message}${sessionsNote(searchParams)}`} tone={notice.tone} />
+      ) : null}
       <AdminPanel
         flush
         title="Cuentas internas"
@@ -118,7 +139,19 @@ export async function UsersScreen({
           rows={users.map((user) => ({
             key: user.id,
             cells: {
-              name: <CellTitle title={user.name} meta={user.email} />,
+              name: (
+                <CellTitle
+                  title={user.isSelf ? `${user.name} (tú)` : user.name}
+                  meta={
+                    <>
+                      {user.email} ·{" "}
+                      {user.lastLoginAt
+                        ? `Último ingreso: ${formatChileDateTime(user.lastLoginAt)}`
+                        : "Sin ingresos"}
+                    </>
+                  }
+                />
+              ),
               role: (
                 <StatusBadge tone={user.role === "admin" ? "blue" : "neutral"}>
                   {ADMIN_ROLE_LABEL[user.role]}
@@ -134,30 +167,33 @@ export async function UsersScreen({
                   >
                     Editar
                   </Link>
-                  <form action={toggleAction}>
-                    <input type="hidden" name="id" value={user.id} />
-                    <input type="hidden" name="active" value={user.active ? "0" : "1"} />
-                    <button
-                      type="submit"
-                      className={TEXT_ACTION}
-                      aria-label={`${user.active ? "Desactivar" : "Activar"} ${user.name}`}
-                    >
-                      {user.active ? "Desactivar" : "Activar"}
-                    </button>
-                  </form>
+                  {/* Nadie se desactiva a sí mismo (la API también lo impide). */}
+                  {user.isSelf ? null : (
+                    <form action={toggleAction}>
+                      <input type="hidden" name="id" value={user.id} />
+                      <input type="hidden" name="active" value={user.active ? "0" : "1"} />
+                      <button
+                        type="submit"
+                        className={TEXT_ACTION}
+                        aria-label={`${user.active ? "Desactivar" : "Activar"} ${user.name}`}
+                      >
+                        {user.active ? "Desactivar" : "Activar"}
+                      </button>
+                    </form>
+                  )}
                 </span>
               ),
             },
           }))}
           empty="Todavía no hay cuentas internas."
-          footer={`${users.length} cuenta${users.length === 1 ? "" : "s"} · Las cuentas no se eliminan: se desactivan · Datos de demostración`}
+          footer={`${users.length} cuenta${users.length === 1 ? "" : "s"} · Las cuentas no se eliminan: se desactivan`}
         />
       </AdminPanel>
 
       <AdminPanel
         flush
         title="Permisos por rol"
-        description="Lo que ve cada rol en el panel. La autorización real la aplicará el backend en cada operación (LN-04)."
+        description="Lo que ve cada rol en el panel. La API vuelve a autorizar cada operación."
       >
         <DataTable
           caption="Permisos por rol"
@@ -188,7 +224,7 @@ export async function UsersScreen({
       <AdminPanel
         id="editor"
         title={editing ? `Editar «${editing.name}»` : "Nuevo usuario"}
-        description="Los cambios quedan en el historial de actividad."
+        description="Los cambios quedan en el historial de actividad. Cambiar el rol o desactivar cierra las sesiones abiertas de esa cuenta."
       >
         {/* key: al cambiar de cuenta el formulario parte con sus datos. */}
         <UserForm key={editing?.id ?? "nuevo"} editing={editing} action={saveAction} />

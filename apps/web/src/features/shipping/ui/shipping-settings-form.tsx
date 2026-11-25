@@ -5,7 +5,7 @@ import { useActionState } from "react";
 import { FormErrorSummary } from "@/shared/ui/admin/notice";
 import { AdminMuted } from "@/shared/ui/admin/panel";
 import { Button } from "@/shared/ui/button";
-import { TextareaField, TextField } from "@/shared/ui/form";
+import { Checkbox, TextareaField, TextField } from "@/shared/ui/form";
 
 import {
   PICKUP_MAX,
@@ -21,6 +21,7 @@ const fieldId = (name: string) => `condicion-${name}`;
 export function ShippingSettingsForm({ settings }: { settings: ShippingSettings }) {
   const [state, action, pending] = useActionState<SettingsFormState, FormData>(saveSettingsAction, {
     values: {
+      pickupEnabled: settings.pickupEnabled,
       pickup: settings.pickup,
       freeShippingThreshold:
         settings.freeShippingThreshold === null ? "" : String(settings.freeShippingThreshold),
@@ -36,6 +37,12 @@ export function ShippingSettingsForm({ settings }: { settings: ShippingSettings 
   return (
     <form action={action} noValidate aria-busy={pending} className="flex flex-col gap-4">
       <FormErrorSummary errors={summary} />
+      <Checkbox
+        name="pickupEnabled"
+        value="1"
+        label="Ofrecer retiro en taller"
+        defaultChecked={state.values.pickupEnabled}
+      />
       <div id={fieldId("pickup")} className="scroll-mt-24">
         <TextareaField
           label="Dirección y horario de retiro"
@@ -55,7 +62,7 @@ export function ShippingSettingsForm({ settings }: { settings: ShippingSettings 
             inputMode="numeric"
             defaultValue={state.values.freeShippingThreshold}
             error={state.errors.freeShippingThreshold}
-            hint="Subtotal de productos. Déjalo vacío si no hay despacho gratis."
+            hint="Subtotal menos descuento, solo en zonas que cuentan para el despacho gratis. Vacío: no hay despacho gratis."
           />
         </div>
         <div id={fieldId("reservationMinutes")} className="scroll-mt-24">
@@ -71,7 +78,7 @@ export function ShippingSettingsForm({ settings }: { settings: ShippingSettings 
         </div>
       </div>
       <AdminMuted>
-        El retiro en taller es gratis. El umbral aplica solo a las zonas activas.
+        El retiro en taller es gratis. Los cambios aplican solo a compras nuevas.
       </AdminMuted>
       <Button type="submit" disabled={pending} className="self-start">
         {pending ? "Guardando…" : "Guardar condiciones"}

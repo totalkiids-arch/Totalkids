@@ -7,6 +7,7 @@ import type { CheckoutCart } from "./ports";
 const cart = (overrides: Partial<CheckoutCart> = {}): CheckoutCart => ({
   lines: [{ id: "TK-1", name: "Cuna alta", detail: null, quantity: 1, total: 120_000 }],
   subtotal: 120_000,
+  discount: 0,
   unpriced: [],
   blocked: false,
   ...overrides,

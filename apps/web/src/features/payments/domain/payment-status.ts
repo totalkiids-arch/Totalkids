@@ -20,15 +20,18 @@ export function isPaymentStatus(value: unknown): value is PaymentStatus {
 
 /**
  * Estados de un intento de pago en el panel: los de la API, que además anula
- * los intentos que un pago posterior dejó sin efecto ("voided").
+ * los intentos que un pago posterior dejó sin efecto ("voided") y marca como
+ * "refund_pending" un cobro que no se pudo aplicar al pedido (doble cobro o
+ * discrepancia, LN-15): no cuenta como cobrado y se devuelve a mano.
  */
-export const ATTEMPT_STATUSES = [...PAYMENT_STATUSES, "voided"] as const;
+export const ATTEMPT_STATUSES = [...PAYMENT_STATUSES, "voided", "refund_pending"] as const;
 
 export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number];
 
 export const ATTEMPT_STATUS_LABEL: Record<AttemptStatus, string> = {
   ...PAYMENT_STATUS_LABEL,
   voided: "Anulado",
+  refund_pending: "Reembolso pendiente",
 };
 
 export function isAttemptStatus(value: unknown): value is AttemptStatus {

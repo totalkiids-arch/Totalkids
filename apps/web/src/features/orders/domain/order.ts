@@ -74,6 +74,19 @@ export function invoicePending(order: Pick<Order, "document" | "status" | "invoi
   return order.document === "factura" && !order.invoice && PAID.includes(order.status);
 }
 
+/** Estado del último intento de cobro en Flow (GuestOrder.paymentStatus). */
+export const GUEST_PAYMENT_STATUSES = [
+  "pending",
+  "paid",
+  "rejected",
+  "voided",
+  "in_review",
+  "expired",
+  /** Cobro que no se pudo aplicar al pedido; espera devolución (LN-15). */
+  "refund_pending",
+] as const;
+export type GuestPaymentStatus = (typeof GUEST_PAYMENT_STATUSES)[number];
+
 export interface Order {
   /** Número visible ("TK-1048"). */
   id: string;
@@ -84,6 +97,8 @@ export interface Order {
   status: OrderStatus;
   lines: OrderLine[];
   shipping: number;
+  /** Despacho a coordinar con el cliente: su costo no se cobró (UI-13). */
+  shippingToCoordinate?: boolean;
   discount: number;
   delivery: { method: "domicilio"; address: string } | { method: "retiro"; address: string };
   /** Boleta = comprobante de pago de Flow. Factura = la emite Total Kids. */
@@ -94,6 +109,11 @@ export interface Order {
   tracking: { carrier: string; code: string } | null;
   /** Historial, del más antiguo al más reciente. */
   history: OrderEvent[];
+  /**
+   * Cobro según la API (LN-10): último intento en Flow (null si aún no se
+   * intentó), plazo para pagar y total cobrado.
+   */
+  payment?: { status: GuestPaymentStatus | null; dueAt: string; total: number };
 }
 
 export function orderSubtotal(order: Pick<Order, "lines">): number {
@@ -132,9 +152,4 @@ export function trackingProgress(status: OrderStatus): number | null {
     case "expired":
       return null;
   }
-}
-
-/** Más recientes primero. */
-export function sortByNewest(orders: readonly Order[]): Order[] {
-  return [...orders].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

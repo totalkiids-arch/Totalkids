@@ -7,6 +7,8 @@
 | [`maqueta/COBERTURA_SRS.md`](maqueta/COBERTURA_SRS.md)                                                     | Qué requisito representa cada pantalla de la maqueta y qué necesita backend.                                                |
 | [`maqueta/PRODUCT.md`](maqueta/PRODUCT.md)                                                                 | Contexto del producto, usuarios e identidad.                                                                                |
 
+Cómo verificar la tienda, el panel y los pagos, y cómo está armada la base de datos: [`VERIFICACION.md`](VERIFICACION.md).
+
 ## Ver la maqueta
 
 ```bash

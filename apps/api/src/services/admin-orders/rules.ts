@@ -8,9 +8,8 @@ import type {
 
 /**
  * Reglas del panel de pedidos (LN-13; RF-27, RF-32, RF-34; RN-04 a RN-06).
- * Funciones puras: la tabla de transiciones, las guardas y los textos son los
- * de `apps/web/src/features/orders/domain/order-workflow.ts`, así el panel
- * (LN-16) muestra los mismos mensajes que devuelve la API.
+ * Funciones puras: la tabla de transiciones, las guardas y los textos. El
+ * panel (LN-16) muestra los mensajes que devuelve la API.
  */
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
@@ -34,6 +33,7 @@ export const PAYMENT_STATUS_LABEL: Record<OrderPaymentStatus, string> = {
   voided: "Anulado",
   in_review: "En revisión",
   expired: "Vencido",
+  refund_pending: "Reembolso pendiente",
   none: "Sin pago",
 };
 
@@ -154,8 +154,9 @@ export interface WorkflowOrder {
   payments: readonly WorkflowPayment[];
   refunds?: readonly WorkflowRefund[];
   /**
-   * Quedan reservas activas o en revisión, o un cupón reservado: el pago no se
-   * terminó de asentar (eso lo hace el flujo de pago, LN-10/LN-15).
+   * Quedan reservas activas, en revisión o liberadas sin vender, o un cupón
+   * reservado: el pago no se terminó de asentar (eso lo hace el flujo de pago,
+   * LN-10/LN-15, o la resolución manual en Pagos).
    */
   unsettled?: boolean;
 }

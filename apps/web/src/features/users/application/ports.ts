@@ -1,20 +1,37 @@
-import type { FieldErrors, InternalUser, UserChange, UserInput } from "../domain/internal-user";
+import type { FieldErrors, InternalUser, UserInput } from "../domain/internal-user";
 
-export type SaveUserResult = { ok: true; user: InternalUser } | { ok: false; errors: FieldErrors };
+export type SaveUserResult =
+  | {
+      ok: true;
+      user: InternalUser;
+      /** Al crear: se encoló el correo para definir la contraseña. */
+      invitationSent: boolean;
+      /** Al editar: sesiones de la cuenta revocadas por cambiar rol o estado (RNF-01). */
+      sessionsRevoked: number;
+    }
+  | { ok: false; errors: FieldErrors };
 
 export type SetActiveResult =
-  { ok: true; user: InternalUser } | { ok: false; reason: "not-found" | "last-admin" };
+  | { ok: true; user: InternalUser; sessionsRevoked: number }
+  /** `conflict`: la API lo impide (último Administrador o la propia cuenta); `message` lo explica. */
+  | { ok: false; reason: "not-found" }
+  | { ok: false; reason: "conflict"; message: string };
+
+export interface UserList {
+  /** Administradores primero, luego activas, luego por nombre (orden de la API). */
+  users: InternalUser[];
+  activeAdmins: number;
+}
 
 /**
- * Puerto: cuentas internas del panel (RF-31). El adaptador valida con las
- * reglas del dominio; con la API (LN-04/LN-16, /admin/users), también las
- * aplica el backend. `actor` lo pone el servidor desde la sesión.
+ * Puerto: cuentas internas del panel (RF-31). Lo implementa la API
+ * (/admin/users, solo Administrador), que valida, protege al último
+ * Administrador, envía la invitación al crear y registra cada cambio con quien
+ * lo hizo (lo toma de la sesión).
  */
 export interface UserAdmin {
-  list(): Promise<InternalUser[]>;
+  list(): Promise<UserList>;
   /** id null crea una cuenta nueva. */
-  save(id: string | null, input: UserInput, actor: string): Promise<SaveUserResult>;
-  setActive(id: string, active: boolean, actor: string): Promise<SetActiveResult>;
-  /** Cambios en las cuentas, del más reciente al más antiguo (historial, RF-34). */
-  listChanges(): Promise<UserChange[]>;
+  save(id: string | null, input: UserInput): Promise<SaveUserResult>;
+  setActive(id: string, active: boolean): Promise<SetActiveResult>;
 }

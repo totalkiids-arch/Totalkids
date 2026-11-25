@@ -140,17 +140,14 @@ describe.skipIf(!url)("/admin/emails, /admin/activity, /admin/summary y /admin/p
   it("actividad: nombre de la persona, filtro por persona y área, y conteos", async () => {
     await inTx(async (db, app) => {
       const code = `ACT${randomUUID().slice(0, 6).toUpperCase()}`;
-      const created = await request(app)
-        .post(api("/coupons"))
-        .set(panelHeaders(admin.token))
-        .send({
-          code,
-          kind: "amount",
-          value: 5000,
-          startsOn: "2026-01-01",
-          endsOn: "2026-12-31",
-          maxUses: 10,
-        });
+      const created = await request(app).post(api("/coupons")).set(panelHeaders(admin.token)).send({
+        code,
+        kind: "amount",
+        value: 5000,
+        startsOn: "2026-01-01",
+        endsOn: "2026-12-31",
+        maxUses: 10,
+      });
       expect(created.status).toBe(201);
       const r = await db.serviceRequest.create({
         data: {

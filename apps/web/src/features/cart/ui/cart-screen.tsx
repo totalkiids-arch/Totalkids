@@ -1,21 +1,23 @@
 import Link from "next/link";
 
-import { site } from "@/shared/config/site";
 import { Tito } from "@/shared/ui/brand/tito";
 import { ButtonLink } from "@/shared/ui/button";
 import { CheckoutSteps } from "@/shared/ui/checkout-steps";
 import { ArrowLeftIcon, ArrowRightIcon, ToolIcon } from "@/shared/ui/icons";
 
-import { freeShippingProgress, type PricedCart } from "../application/price-cart";
+import type { CartView } from "../application/cart-view";
 import { getCart } from "../container";
-import { acceptChangesAction } from "./cart-actions";
+import { removeCouponAction } from "./cart-actions";
 import { CartLineItem } from "./cart-line-item";
 import { CouponForm } from "./coupon-form";
 import { formatPrice } from "./format";
 
 const units = (n: number) => `${n} ${n === 1 ? "producto" : "productos"}`;
 
-/** Tienda y compra · Carrito (RF-05 a RF-08). Se revalida contra el catálogo en cada visita. */
+/**
+ * Tienda y compra · Carrito (RF-05 a RF-08). Lo calcula la API en cada visita:
+ * precios vigentes, avisos, cupón y totales (RNF-03).
+ */
 export async function CartScreen() {
   const cart = await getCart();
   const empty = cart.lines.length === 0;
@@ -29,15 +31,15 @@ export async function CartScreen() {
             Tu carrito <span className="text-2xl text-text-secondary">({units(cart.units)})</span>
           </h1>
 
-          {cart.changed ? <ChangesNotice cart={cart} /> : null}
-          {empty ? null : <FreeShipping subtotal={cart.subtotal} />}
+          {cart.notices.length > 0 ? <ChangesNotice notices={cart.notices} /> : null}
+          {empty ? null : <FreeShipping progress={cart.freeShipping} />}
 
           {empty ? (
             <EmptyCart />
           ) : (
             <ul className="flex flex-col gap-4">
               {cart.lines.map((item) => (
-                <li key={item.line.id}>
+                <li key={item.id}>
                   <CartLineItem item={item} />
                 </li>
               ))}
@@ -73,39 +75,26 @@ export async function CartScreen() {
   );
 }
 
-function ChangesNotice({ cart }: { cart: PricedCart }) {
+function ChangesNotice({ notices }: { notices: string[] }) {
   return (
     <div role="status" className="flex flex-col gap-2 rounded-3xl bg-cream px-5 py-4">
       <p className="font-extrabold">Actualizamos tu carrito con la disponibilidad de hoy.</p>
-      {cart.removed.length > 0 ? (
-        <p className="text-sm">
-          {cart.removed.length === 1
-            ? "Un producto ya no está a la venta y lo quitamos."
-            : `${cart.removed.length} productos ya no están a la venta y los quitamos.`}
+      {notices.map((notice) => (
+        <p key={notice} className="text-sm">
+          {notice}
         </p>
-      ) : null}
-      <form action={acceptChangesAction}>
-        <button type="submit" className="text-sm font-extrabold text-brand-blue underline">
-          Entendido
-        </button>
-      </form>
+      ))}
     </div>
   );
 }
 
-function FreeShipping({ subtotal }: { subtotal: number }) {
-  const progress = freeShippingProgress(subtotal, site.freeShippingThreshold);
-  if (!progress) {
-    return (
-      <p className="rounded-3xl bg-soft-green px-5 py-4 font-extrabold">
-        Despacho gratis desde $[MONTO] en zonas con cobertura.
-      </p>
-    );
-  }
+function FreeShipping({ progress }: { progress: CartView["freeShipping"] }) {
+  // Sin umbral configurado en el panel no se promete despacho gratis.
+  if (!progress) return null;
   return (
     <div className="flex flex-col gap-2.5 rounded-3xl bg-soft-green px-5 py-4">
       <p className="font-extrabold">
-        {progress.remaining === 0
+        {progress.reached
           ? "¡Tu compra tiene despacho gratis!"
           : `¡Te faltan ${formatPrice(progress.remaining)} para el despacho gratis!`}
       </p>
@@ -142,7 +131,8 @@ function EmptyCart() {
   );
 }
 
-function Summary({ cart }: { cart: PricedCart }) {
+function Summary({ cart }: { cart: CartView }) {
+  const unavailable = cart.lines.some((l) => l.status === "unavailable");
   return (
     <aside
       aria-labelledby="resumen"
@@ -156,6 +146,19 @@ function Summary({ cart }: { cart: PricedCart }) {
           <dt>Productos ({cart.units})</dt>
           <dd className="font-extrabold">{formatPrice(cart.subtotal)}</dd>
         </div>
+        {cart.coupon?.valid ? (
+          <div className="flex justify-between gap-3">
+            <dt className="flex flex-wrap items-center gap-x-2">
+              Cupón «{cart.coupon.code}»
+              <form action={removeCouponAction}>
+                <button type="submit" className="text-sm font-extrabold text-brand-blue underline">
+                  Quitar
+                </button>
+              </form>
+            </dt>
+            <dd className="font-extrabold text-brand-green">−{formatPrice(cart.discount)}</dd>
+          </div>
+        ) : null}
         <div className="flex justify-between gap-3">
           <dt>Despacho</dt>
           <dd className="text-right text-text-secondary">Se calcula en el siguiente paso</dd>
@@ -172,13 +175,15 @@ function Summary({ cart }: { cart: PricedCart }) {
       <hr className="border-t-3 border-dashed border-border" />
       <p className="flex items-baseline justify-between">
         <span className="text-lg font-extrabold">Total</span>
-        <strong className="font-heading text-[34px]">{formatPrice(cart.subtotal)}</strong>
+        <strong className="font-heading text-[34px]">{formatPrice(cart.total)}</strong>
       </p>
 
-      {cart.blocked ? (
+      {!cart.canCheckout ? (
         <>
           <p className="text-center text-sm font-bold text-brand-red-deep">
-            Quita los productos agotados para continuar.
+            {unavailable
+              ? "Quita los productos que ya no están a la venta para continuar."
+              : "Hay productos con precio por confirmar. Escríbenos y lo cotizamos."}
           </p>
           <span
             aria-disabled

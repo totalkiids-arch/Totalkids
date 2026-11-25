@@ -8,7 +8,16 @@ import { getAdminSession } from "@/features/auth";
 import { canAccessSection, type AdminSection } from "@/features/users";
 import { attemptPanel, isPanelFailure } from "@/shared/lib/panel-errors";
 
-import { adminCatalog, STORE_STOCK_TAG } from "../../container";
+import { adminCatalog, STORE_CATALOG_TAG } from "../../container";
+
+/**
+ * La tienda guarda el catálogo 60 s (STORE_CATALOG_TAG): un cambio del panel en
+ * productos, categorías o stock se ve de inmediato en /catalogo y las fichas.
+ */
+function refreshStore() {
+  updateTag(STORE_CATALOG_TAG);
+  revalidatePath("/", "layout");
+}
 import { validateImageFile, type FieldErrors } from "../../domain/admin-product";
 import {
   emptyVariant,
@@ -248,6 +257,7 @@ export async function saveProductAction(
   revalidatePath("/admin/productos");
   revalidatePath("/admin/inventario");
   revalidatePath("/admin/categorias");
+  refreshStore();
   if (result.pending) {
     // Guardado, pero faltó subir la imagen o publicar: se sigue en su ficha.
     const pending = result.pending.errors;
@@ -284,6 +294,7 @@ export async function toggleProductAction(formData: FormData) {
       : { active: "activado", inactive: "desactivado", draft: "borrador" }[result.value];
   search.set("aviso", notice);
   revalidatePath("/admin/productos");
+  refreshStore();
   redirect(`/admin/productos?${search.toString()}`);
 }
 
@@ -317,6 +328,7 @@ export async function saveCategoryAction(
   if (!result.ok) return { values, errors: result.errors };
 
   revalidatePath("/admin/categorias");
+  refreshStore();
   redirect(`/admin/categorias?aviso=${parsed.data.id ? "guardada" : "creada"}`);
 }
 
@@ -346,6 +358,7 @@ export async function toggleCategoryAction(formData: FormData) {
   }
   const category = await attempt(() => adminCatalog.setCategoryActive(id, active === "1"));
   revalidatePath("/admin/categorias");
+  refreshStore();
   const notice = failed(category)
     ? "error"
     : category
@@ -391,7 +404,6 @@ export async function adjustStockAction(
   revalidatePath("/admin/inventario");
   revalidatePath("/admin/productos");
   // El stock decide si la tienda muestra "En stock" o "A pedido".
-  updateTag(STORE_STOCK_TAG);
-  revalidatePath("/", "layout");
+  refreshStore();
   redirect(`/admin/inventario?aviso=ajuste&sku=${encodeURIComponent(result.value.sku)}#ajustes`);
 }

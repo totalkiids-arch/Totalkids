@@ -1,7 +1,7 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { PAYMENT_STATUS_LABEL, PAYMENT_STATUSES, type PaymentStatus } from "@/features/payments";
+import { CartUnitsReset } from "@/features/cart";
+import { PAYMENT_STATUS_LABEL } from "@/features/payments";
 import { site } from "@/shared/config/site";
 import { ButtonLink } from "@/shared/ui/button";
 import { CheckoutSteps } from "@/shared/ui/checkout-steps";
@@ -10,7 +10,6 @@ import { ClockIcon } from "@/shared/ui/icons";
 
 import { getPaymentResult } from "../container";
 import type { ResultTone } from "../domain/payment-result";
-import { shippingLabel } from "../domain/shipping";
 
 const TONE = {
   success: { icon: "bg-brand-green text-white", badge: "bg-soft-green text-brand-green" },
@@ -19,15 +18,16 @@ const TONE = {
 } as const satisfies Record<ResultTone, { icon: string; badge: string }>;
 
 /**
- * Tienda y compra · Resultado de pago (RF-17). Muestra el estado del pago y
- * ofrece reintentar solo cuando el intento anterior ya no es cobrable.
+ * Tienda y compra · Resultado de pago (RF-17). Muestra el estado del pedido en
+ * la API y ofrece reintentar solo cuando el intento anterior ya no es cobrable.
  */
-export async function PaymentResultScreen({ status }: { status: PaymentStatus | null }) {
-  const { view, order } = await getPaymentResult(status);
+export async function PaymentResultScreen({ orderNumber }: { orderNumber: string | null }) {
+  const { view, order } = await getPaymentResult(orderNumber);
   const tone = TONE[view.tone];
 
   return (
     <>
+      {view.status === "paid" ? <CartUnitsReset /> : null}
       <CheckoutSteps current={view.status === "paid" ? 4 : 3} />
       <div className="mx-auto flex max-w-2xl flex-col items-center gap-5 px-4 py-6 text-center sm:px-6">
         <span
@@ -57,6 +57,7 @@ export async function PaymentResultScreen({ status }: { status: PaymentStatus | 
           <dl className="flex flex-col gap-2.5">
             {order ? (
               <>
+                <Row term="Pedido">{order.number}</Row>
                 <Row term="Comprador">{order.buyerName}</Row>
                 <Row term="Correo">{order.email}</Row>
               </>
@@ -64,14 +65,14 @@ export async function PaymentResultScreen({ status }: { status: PaymentStatus | 
             <Row term="Medio de pago">Flow</Row>
             {order ? (
               <>
-                <Row term="Despacho">{shippingLabel(order.summary.shipping)}</Row>
+                <Row term="Entrega">{order.delivery}</Row>
                 <Row term="Documento">
                   {order.document === "boleta"
                     ? "Boleta: el comprobante de pago de Flow que llega a tu correo"
                     : `Factura: Total Kids la envía al correo para facturas dentro de ${site.invoiceLeadTime}`}
                 </Row>
                 <Row term="Total CLP" strong>
-                  {formatPrice(order.summary.total ?? order.summary.subtotal)}
+                  {formatPrice(order.total)}
                 </Row>
               </>
             ) : null}
@@ -86,8 +87,6 @@ export async function PaymentResultScreen({ status }: { status: PaymentStatus | 
             </ButtonLink>
           </div>
         </section>
-
-        <PreviewLinks current={view.status} />
       </div>
     </>
   );
@@ -137,35 +136,5 @@ function ResultIcon({ tone }: { tone: ResultTone }) {
         </>
       )}
     </svg>
-  );
-}
-
-/**
- * Selector de estados para revisar la pantalla con el cliente (Hito 1).
- * Elegir un estado no acredita ningún pago. Se quita al conectar Flow (LN-11).
- */
-function PreviewLinks({ current }: { current: PaymentStatus }) {
-  return (
-    <nav
-      aria-label="Vista previa de estados de pago"
-      className="flex flex-col items-center gap-2.5 rounded-3xl border-2 border-dashed border-chip-border px-5 py-4"
-    >
-      <p className="text-sm text-text-secondary">
-        Vista previa de demostración: elegir un estado no acredita ningún pago.
-      </p>
-      <ul className="flex flex-wrap justify-center gap-2">
-        {PAYMENT_STATUSES.map((status) => (
-          <li key={status}>
-            <Link
-              href={{ pathname: "/checkout/resultado", query: { estado: status } }}
-              aria-current={status === current ? "page" : undefined}
-              className="inline-flex min-h-11 items-center rounded-full border-2 border-chip-border bg-surface px-4 text-sm font-extrabold aria-[current=page]:border-brand-blue aria-[current=page]:bg-soft-blue"
-            >
-              {PAYMENT_STATUS_LABEL[status]}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
   );
 }

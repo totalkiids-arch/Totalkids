@@ -31,6 +31,12 @@ export async function ThemesScreen({ searchParams = {} }: { searchParams?: Param
       {notice === "invalida" ? (
         <LiveNotice message="La plantilla elegida no está disponible." tone="warning" />
       ) : null}
+      {notice === "error" ? (
+        <LiveNotice
+          message="No pudimos aplicar la plantilla. Revisa tu sesión o intenta de nuevo en unos minutos."
+          tone="warning"
+        />
+      ) : null}
 
       <AdminPanel
         title="Plantillas estacionales"

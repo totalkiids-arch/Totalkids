@@ -18,6 +18,12 @@ export interface MovedUnits {
 
 type Tx = Prisma.TransactionClient;
 
+/**
+ * Quien mueve el inventario: alguien del panel o el sistema (vencimiento
+ * automático de LN-15, con `actorUserId: null` y la etiqueta «Sistema»).
+ */
+export type MovementActor = Omit<Actor, "actorUserId"> & { actorUserId: string | null };
+
 interface LockedVariant {
   id: string;
   sku: string;
@@ -43,7 +49,7 @@ async function lockVariant(tx: Tx, variantId: string): Promise<LockedVariant> {
 export async function releaseOrderReservations(
   tx: Tx,
   orderId: string,
-  actor: Actor,
+  actor: MovementActor,
   reason: string,
   now = new Date(),
 ): Promise<MovedUnits[]> {

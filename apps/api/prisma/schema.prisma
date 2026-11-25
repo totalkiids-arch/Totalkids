@@ -304,6 +304,7 @@ model Cart {
 
   coupon Coupon?    @relation(fields: [couponId], references: [id], onDelete: SetNull)
   items  CartItem[]
+  orders Order[]
 
   @@index([expiresAt])
   @@map("carts")
@@ -526,6 +527,9 @@ model Order {
   total        Int
   couponId     String? @map("coupon_id") @db.Uuid
   couponCode   String? @map("coupon_code") @db.VarChar(40)
+  /// Carrito del que salió (LN-11): se elimina al confirmarse el pago, para que
+  /// el comprador no vuelva a ver lo que ya pagó. null cuando ya no existe.
+  cartId       String? @map("cart_id") @db.Uuid
 
   // Despacho.
   carrier      String? @db.VarChar(80)
@@ -546,6 +550,7 @@ model Order {
   invoiceIssuedBy User?                @relation("InvoiceIssuedBy", fields: [invoiceIssuedByUserId], references: [id], onDelete: Restrict)
   shippingZone    ShippingZone?        @relation(fields: [shippingZoneId], references: [id], onDelete: SetNull)
   coupon          Coupon?              @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  cart            Cart?                @relation(fields: [cartId], references: [id], onDelete: SetNull)
   items           OrderItem[]
   payments        Payment[]
   reservations    StockReservation[]
@@ -556,6 +561,7 @@ model Order {
   emails          EmailLog[]
 
   @@index([buyerEmail])
+  @@index([cartId])
   @@index([status, createdAt])
   @@index([status, paymentDueAt])
   @@map("orders")
@@ -640,6 +646,9 @@ enum PaymentStatus {
   voided
   in_review
   expired
+  /// Cobrado por Flow sin poder aplicarse al pedido (doble cobro o discrepancia):
+  /// espera una devolución manual. No cuenta como cobro (LN-15).
+  refund_pending
 
   @@map("payment_status")
 }
@@ -667,6 +676,10 @@ model Payment {
   providerResponse     Json?         @map("provider_response")
   paidAt               DateTime?     @map("paid_at") @db.Timestamptz(3)
   lastCheckedAt        DateTime?     @map("last_checked_at") @db.Timestamptz(3)
+  /// Consultas inciertas seguidas a Flow (LN-15); vuelve a 0 cuando Flow responde.
+  reconcileAttempts    Int           @default(0) @map("reconcile_attempts")
+  /// Próxima consulta de la conciliación periódica (backoff y reclamo del worker).
+  nextCheckAt          DateTime?     @map("next_check_at") @db.Timestamptz(3)
   createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -675,6 +688,7 @@ model Payment {
 
   @@unique([orderId, attempt])
   @@index([status, lastCheckedAt])
+  @@index([status, nextCheckAt])
   @@map("payments")
 }
 
@@ -936,8 +950,8 @@ enum EmailEvent {
   password_recovery
   /// Enlace para confirmar la baja del newsletter (RF-35); el token se emite al enviar.
   newsletter_unsubscribe
-  /// Aviso al equipo: un pago necesita revisión (RN-04, RN-05).
-  payment_review
+  /// Equipo: pedido o pago en revisión (LN-15; RN-04, RN-05, A4).
+  payment_review_alert
 
   @@map("email_event")
 }

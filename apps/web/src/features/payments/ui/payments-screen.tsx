@@ -3,7 +3,8 @@ import Link from "next/link";
 
 import { CellTitle, DataTable } from "@/shared/ui/admin/data-table";
 import { FilterBar } from "@/shared/ui/admin/filter-bar";
-import { InfoNote } from "@/shared/ui/admin/notice";
+import { getAdminSession } from "@/features/auth";
+import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { PaginationNav } from "@/shared/ui/admin/pagination-nav";
 import { AdminPanel } from "@/shared/ui/admin/panel";
@@ -15,7 +16,9 @@ import { SelectField } from "@/shared/ui/form";
 import { listPaymentAttempts } from "../container";
 import { PAYMENT_FILTERS, toPaymentSearch, type PaymentQuery } from "../domain/payment-query";
 import { ATTEMPT_STATUS_LABEL } from "../domain/payment-status";
+import { RECONCILE_NOTICES } from "../domain/reconciliation";
 import { PaymentStatusBadge } from "./payment-status-badge";
+import { ReconcileButton } from "./reconcile-button";
 
 const DATE_TIME = new Intl.DateTimeFormat("es-CL", {
   day: "numeric",
@@ -26,11 +29,29 @@ const DATE_TIME = new Intl.DateTimeFormat("es-CL", {
 });
 const formatDateTime = (iso: string) => DATE_TIME.format(new Date(iso));
 
-/** Panel administrativo · Pagos y conciliación (RF-33, RN-04, RN-05). Solo lectura. */
-export async function PaymentsScreen({ query }: { query: PaymentQuery }) {
-  const result = await listPaymentAttempts(query);
+const NOTICE_EXTRA: Record<string, { message: string; tone: "warning" }> = {
+  "sin-permiso": { message: "Tu sesión no puede conciliar pagos.", tone: "warning" },
+};
+
+/**
+ * Panel administrativo · Pagos y conciliación (RF-33, RN-04, RN-05; LN-15).
+ * Administrador y Operador consultan en Flow; la resolución manual (solo
+ * Administrador) se hace desde el pedido.
+ */
+export async function PaymentsScreen({
+  query,
+  aviso = "",
+}: {
+  query: PaymentQuery;
+  aviso?: string;
+}) {
+  const [result, session] = await Promise.all([listPaymentAttempts(query), getAdminSession()]);
+  const isAdmin = session?.role === "admin";
   const { counts } = result;
   const filtered = query.status !== "todos" || query.order !== "";
+  const notice = RECONCILE_NOTICES[aviso] ?? NOTICE_EXTRA[aviso];
+  // Para volver al mismo listado después de consultar.
+  const volver = `/admin/pagos${toPaymentSearch(query)}`;
 
   return (
     <>
@@ -38,10 +59,12 @@ export async function PaymentsScreen({ query }: { query: PaymentQuery }) {
         title="Pagos y conciliación"
         description="Revisa pagos pendientes e inciertos sin asumir que el retorno del navegador confirma un cobro."
       />
+      {notice ? <LiveNotice message={notice.message} tone={notice.tone} /> : null}
       <InfoNote>
         Solo Flow confirma un cobro: el pedido se acredita cuando la API verifica el pago. Los
-        intentos pendientes o en revisión se concilian con la consulta de estado a Flow, que llega
-        con LN-15. Esta vista no mueve stock ni dinero.
+        intentos pendientes o en revisión se concilian solos cada pocos minutos; «Consultar en Flow»
+        lo hace ahora. Si Flow no responde, el pago queda en revisión: nunca se asume un rechazo.
+        Consultar no mueve dinero.
       </InfoNote>
 
       <StatGrid label="Intentos de pago por estado">
@@ -53,6 +76,11 @@ export async function PaymentsScreen({ query }: { query: PaymentQuery }) {
           note="Resultado incierto: no se asume rechazo"
         />
         <StatCard label="Vencidos" value={counts.expired} note="Caducaron sin pagarse" />
+        <StatCard
+          label="Reembolso pendiente"
+          value={counts.refund_pending}
+          note="Cobros que no se aplicaron: se devuelven a mano"
+        />
       </StatGrid>
 
       <FilterBar label="Filtrar pagos">
@@ -89,7 +117,7 @@ export async function PaymentsScreen({ query }: { query: PaymentQuery }) {
             { key: "note", label: "Conciliación" },
           ]}
           rows={result.rows.map((row) => ({
-            key: row.commerceOrder,
+            key: row.id,
             cells: {
               order: (
                 <CellTitle
@@ -110,7 +138,31 @@ export async function PaymentsScreen({ query }: { query: PaymentQuery }) {
               date: formatDateTime(row.createdAt),
               checked: row.lastCheckedAt ? formatDateTime(row.lastCheckedAt) : "Sin consultas",
               note: row.reconcilable ? (
-                <StatusBadge tone="yellow">Por conciliar</StatusBadge>
+                <span className="flex flex-col items-start gap-1">
+                  <StatusBadge tone="yellow">Por conciliar</StatusBadge>
+                  <ReconcileButton paymentId={row.id} label={row.commerceOrder} volver={volver} />
+                  {row.reconcileAttempts > 0 ? (
+                    <small className="text-xs text-text-secondary">
+                      {row.reconcileAttempts} consulta{row.reconcileAttempts === 1 ? "" : "s"} sin
+                      respuesta segura
+                    </small>
+                  ) : null}
+                  {isAdmin && row.resolutions.length > 0 ? (
+                    <Link
+                      href={`/admin/pedidos/${row.orderId}#pago` as Route}
+                      className="text-xs font-extrabold text-brand-blue underline"
+                    >
+                      Resolver en el pedido
+                    </Link>
+                  ) : null}
+                </span>
+              ) : isAdmin && row.resolutions.length > 0 ? (
+                <Link
+                  href={`/admin/pedidos/${row.orderId}#pago` as Route}
+                  className="font-extrabold text-brand-blue underline"
+                >
+                  Resolver en el pedido
+                </Link>
               ) : (
                 <span className="text-text-secondary">
                   {row.current ? "Resuelto" : "Intento anterior"}

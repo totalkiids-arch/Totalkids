@@ -186,7 +186,13 @@ export function createApp({
   v1.use(adminDeskRouter(prisma));
   v1.use(adminUsersRouter(prisma));
   v1.use(adminReportsRouter(prisma));
-  v1.use(adminPanelRouter(prisma, { flow, adminEmail: env.EMAIL_ADMIN_TO ?? DEV_ADMIN_TO }));
+  // Conciliación de pagos con Flow desde el panel (LN-15).
+  v1.use(
+    adminPanelRouter(prisma, {
+      flow: flow?.client ?? null,
+      adminEmail: env.EMAIL_ADMIN_TO ?? DEV_ADMIN_TO,
+    }),
+  );
   registerRoutes?.(v1);
   app.use("/api/v1", v1);
 

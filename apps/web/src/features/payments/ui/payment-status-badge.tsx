@@ -9,6 +9,7 @@ const PAYMENT_TONE: Record<AttemptStatus, StatusTone> = {
   rejected: "red",
   expired: "neutral",
   voided: "neutral",
+  refund_pending: "red",
 };
 
 /** Estado de un intento de pago en Flow (o del último intento de un pedido). */

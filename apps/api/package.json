@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "worker": "node dist/worker.js",
     "worker:dev": "tsx watch src/worker.ts",
+    "payments:run-once": "tsx src/scripts/run-payment-jobs.ts",
     "lint": "eslint .",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run",

@@ -36,19 +36,44 @@ function csrfCookiePair(response: Response, token: string): string | null {
   return null;
 }
 
+export interface PostApiOptions {
+  /**
+   * Cookie de sesión que la API usa para atar el CSRF (p. ej. la del carrito,
+   * "tk_carrito=…"). Va en /csrf y en el envío.
+   */
+  sessionCookie?: string;
+  /** Cabeceras extra (Idempotency-Key, X-Order-Access…). */
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+}
+
 /** POST JSON a la API con un token CSRF recién emitido. */
-export async function postApiForm(path: `/${string}`, body: unknown): Promise<ApiFormResult> {
+export async function postApiForm(
+  path: `/${string}`,
+  body: unknown,
+  options: PostApiOptions = {},
+): Promise<ApiFormResult> {
   const context = await requestContext();
+  const session = options.sessionCookie ?? "";
   try {
-    const csrf = await apiFetch("/api/v1/csrf", context);
+    const csrf = await apiFetch("/api/v1/csrf", {
+      ...context,
+      headers: session ? { cookie: session } : {},
+    });
     const { csrfToken } = (await csrf.json()) as { csrfToken?: unknown };
-    const cookie = typeof csrfToken === "string" ? csrfCookiePair(csrf, csrfToken) : null;
-    if (typeof csrfToken !== "string" || !cookie) throw new Error("Respuesta de /csrf inválida");
+    const pair = typeof csrfToken === "string" ? csrfCookiePair(csrf, csrfToken) : null;
+    if (typeof csrfToken !== "string" || !pair) throw new Error("Respuesta de /csrf inválida");
 
     const response = await apiFetch(`/api/v1${path}`, {
       ...context,
       method: "POST",
-      headers: { "content-type": "application/json", cookie, "x-csrf-token": csrfToken },
+      ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+      headers: {
+        ...options.headers,
+        "content-type": "application/json",
+        cookie: [session, pair].filter(Boolean).join("; "),
+        "x-csrf-token": csrfToken,
+      },
       body: JSON.stringify(body),
     });
     const text = await response.text();

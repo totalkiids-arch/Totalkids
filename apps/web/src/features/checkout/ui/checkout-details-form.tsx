@@ -34,7 +34,6 @@ interface CheckoutDetailsFormProps {
   cart: CheckoutCart;
   /** Lo que el comprador ya había guardado (al volver desde el pago). */
   initialValues: CheckoutValues;
-  freeShippingThreshold: number | null;
 }
 
 /**
@@ -42,11 +41,7 @@ interface CheckoutDetailsFormProps {
  * (Server Action); con JavaScript muestra solo las secciones que aplican,
  * actualiza el costo de despacho del resumen y lleva el foco al primer error.
  */
-export function CheckoutDetailsForm({
-  cart,
-  initialValues,
-  freeShippingThreshold,
-}: CheckoutDetailsFormProps) {
+export function CheckoutDetailsForm({ cart, initialValues }: CheckoutDetailsFormProps) {
   const [state, formAction, pending] = useActionState(submitCheckoutDetailsAction, null);
   const values = state?.values ?? initialValues;
   const errors = state?.errors ?? {};
@@ -82,7 +77,7 @@ export function CheckoutDetailsForm({
     error: errors[name],
   });
 
-  const summary = summarizeOrder(cart, method, freeShippingThreshold);
+  const summary = summarizeOrder(cart, method);
 
   return (
     <div className="mx-auto flex max-w-7xl flex-wrap items-start gap-6 px-4 py-4 sm:px-6">

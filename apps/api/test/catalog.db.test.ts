@@ -278,6 +278,7 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
       name: "Cuna alta JUNJI",
       summary: "Cuna de madera con barandas",
       category: { slug: "cat-cunas", name: "Cunas y camas" },
+      categories: ["cat-cunas"],
       ageGroups: ["sala-cuna", "nivel-medio"],
       materials: ["madera", "metal"],
       colors: ["Blanco", "Azul marino"],
@@ -338,6 +339,7 @@ describe.skipIf(!url)("catálogo público (PostgreSQL real)", () => {
     expect(await sorted("priceMin=10000&priceMax=100000")).toEqual(["baul-montessori"]);
     expect(await sorted("priceMax=60000")).toEqual(["baul-montessori", "cojin-algodon"]);
     expect(await sorted("onSale=true")).toEqual(["baul-montessori"]);
+    expect(await sorted("featured=true")).toEqual(["mesa-redonda"]);
     expect(await sorted("availability=a_pedido")).toEqual(["baul-montessori", "mesa-redonda"]);
     expect(await sorted("availability=en_stock")).toEqual(["cojin-algodon", "cuna-alta-junji"]);
     expect(await sorted("category=cat-cunas&availability=en_stock&q=cojin")).toEqual([

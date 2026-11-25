@@ -64,6 +64,7 @@ const listQuery = paginationQuery
     priceMin: price.optional(),
     priceMax: price.optional(),
     onSale: flag.optional(),
+    featured: flag.optional(),
     availability: z.enum(AVAILABILITY).optional(),
     sort: z.enum(SORTS).default("best_selling"),
   })
@@ -97,6 +98,7 @@ export function catalogRouter(prisma: PrismaClient): Router {
           priceMin: query.priceMin,
           priceMax: query.priceMax,
           onSale: query.onSale,
+          featured: query.featured,
           availability: query.availability,
           sort: query.sort,
         });

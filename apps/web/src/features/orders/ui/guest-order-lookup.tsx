@@ -75,7 +75,7 @@ export function GuestOrderLookup() {
         </Button>
       </form>
       <p className="text-sm text-text-secondary">
-        Demostración: prueba con TK-1055 e invitado@example.com.
+        Encuentras el número del pedido en el correo de confirmación de tu compra.
       </p>
     </section>
   );

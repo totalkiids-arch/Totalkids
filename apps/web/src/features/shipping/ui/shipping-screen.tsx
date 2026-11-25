@@ -1,9 +1,9 @@
 import type { Route } from "next";
 import Link from "next/link";
 
-import { REGIONS, regionName } from "@/shared/config/regions";
+import { regionName } from "@/shared/config/regions";
 import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
-import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
+import { LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { AdminPanel } from "@/shared/ui/admin/panel";
 import { ActiveBadge } from "@/shared/ui/admin/status-badge";
@@ -12,7 +12,7 @@ import { formatPrice } from "@/shared/ui/format-price";
 import { PlusIcon } from "@/shared/ui/icons";
 
 import { shippingAdmin } from "../container";
-import { sortZones } from "../domain/shipping-zone";
+import type { ShippingZone } from "../domain/shipping-zone";
 import { toggleZoneAction } from "./shipping-actions";
 import { ShippingSettingsForm } from "./shipping-settings-form";
 import { ZoneForm } from "./zone-form";
@@ -40,9 +40,14 @@ const NOTICES: Record<string, { message: string; tone: "success" | "warning" }> 
     tone: "success",
   },
   "no-existe": { message: "Esa zona ya no existe.", tone: "warning" },
+  error: {
+    message: "No pudimos completar el cambio. Revisa tu sesión o intenta de nuevo en unos minutos.",
+    tone: "warning",
+  },
 };
 
-const REGION_ORDER = REGIONS.map((r) => r.code);
+const priceLabel = (zone: ShippingZone) =>
+  zone.price === null ? "A coordinar" : zone.price === 0 ? "Sin costo" : formatPrice(zone.price);
 
 /** Panel administrativo · Despacho y retiro (RF-08, RF-11, RF-27). */
 export async function ShippingScreen({ searchParams = {} }: { searchParams?: Params }) {
@@ -50,7 +55,6 @@ export async function ShippingScreen({ searchParams = {} }: { searchParams?: Par
     shippingAdmin.listZones(),
     shippingAdmin.getSettings(),
   ]);
-  const sorted = sortZones(zones, REGION_ORDER);
   const editing = zones.find((z) => z.id === param(searchParams, "editar")) ?? null;
   const notice = NOTICES[param(searchParams, "aviso")];
   const activeCount = zones.filter((z) => z.active).length;
@@ -68,11 +72,6 @@ export async function ShippingScreen({ searchParams = {} }: { searchParams?: Par
         }
       />
       {notice ? <LiveNotice message={notice.message} tone={notice.tone} /> : null}
-      <InfoNote>
-        Datos de ejemplo: los cambios se borran al reiniciar el sistema. La tienda todavía no usa
-        estas zonas: al comprar, el despacho aparece «por confirmar».
-      </InfoNote>
-
       <AdminPanel
         flush
         title="Zonas de despacho"
@@ -84,15 +83,17 @@ export async function ShippingScreen({ searchParams = {} }: { searchParams?: Par
             { key: "zone", label: "Región / comuna" },
             { key: "price", label: "Tarifa", align: "end" },
             { key: "leadTime", label: "Plazo" },
+            { key: "free", label: "Despacho gratis" },
             { key: "status", label: "Estado" },
             { key: "actions", label: "Acciones" },
           ]}
-          rows={sorted.map((zone) => ({
+          rows={zones.map((zone) => ({
             key: zone.id,
             cells: {
               zone: <CellTitle title={zone.commune} meta={regionName(zone.region)} />,
-              price: zone.price === 0 ? "Sin costo" : formatPrice(zone.price),
+              price: priceLabel(zone),
               leadTime: zone.leadTime,
+              free: zone.freeShippingEligible ? "Cuenta" : "No cuenta",
               status: <ActiveBadge active={zone.active} feminine />,
               actions: (
                 <span className="flex items-center gap-1">
@@ -118,8 +119,8 @@ export async function ShippingScreen({ searchParams = {} }: { searchParams?: Par
               ),
             },
           }))}
-          empty="Todavía no hay zonas. Agrega la primera para ofrecer despacho a domicilio."
-          footer={`${zones.length} zona${zones.length === 1 ? "" : "s"} · Datos de demostración`}
+          empty="Todavía no hay zonas: el despacho a domicilio queda «a coordinar» en todas las comunas."
+          footer={`${zones.length} zona${zones.length === 1 ? "" : "s"}`}
         />
       </AdminPanel>
 

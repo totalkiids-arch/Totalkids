@@ -31,6 +31,7 @@ export interface CatalogFilters extends Pagination {
   priceMin?: number | undefined;
   priceMax?: number | undefined;
   onSale?: boolean | undefined;
+  featured?: boolean | undefined;
   availability?: Availability | undefined;
   sort: CatalogSort;
 }
@@ -47,6 +48,8 @@ export interface ProductSummaryDto {
   name: string;
   summary: string | null;
   category: { slug: string; name: string };
+  /** Slugs de la categoría principal y de las adicionales activas (p. ej. "junji"). */
+  categories: string[];
   ageGroups: string[];
   materials: string[];
   /** Colores de las variantes activas, sin repetir y en su orden. */
@@ -155,6 +158,7 @@ function fromWhere(filters: CatalogFilters): Prisma.Sql {
     conditions.push(Prisma.sql`vs."min_price" <= ${filters.priceMax}`);
   }
   if (filters.onSale) conditions.push(Prisma.sql`vs."on_sale"`);
+  if (filters.featured) conditions.push(Prisma.sql`p."featured"`);
   if (filters.availability) {
     conditions.push(Prisma.sql`vs."in_stock" = ${filters.availability === "en_stock"}`);
   }
@@ -208,6 +212,10 @@ const ORDER_BY: Record<CatalogSort, Prisma.Sql> = {
 
 const summaryInclude = {
   category: true,
+  additionalCategories: {
+    where: { category: { active: true } },
+    include: { category: { select: { slug: true } } },
+  },
   images: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], take: 1 },
   variants: { where: { active: true }, orderBy: [{ sortOrder: "asc" }, { sku: "asc" }] },
 } satisfies Prisma.ProductInclude;
@@ -237,6 +245,12 @@ function toSummary(product: SummaryRow): ProductSummaryDto {
     name: product.name,
     summary: product.summary,
     category: { slug: product.category.slug, name: product.category.name },
+    categories: [
+      product.category.slug,
+      ...product.additionalCategories
+        .map((link) => link.category.slug)
+        .filter((slug) => slug !== product.category.slug),
+    ],
     ageGroups: product.ageGroups,
     materials: product.materials,
     colors: [
@@ -298,6 +312,7 @@ export async function getProduct(db: Db, slug: string): Promise<ProductDetailDto
     where: { slug, ...visibleProduct() },
     include: {
       category: true,
+      additionalCategories: summaryInclude.additionalCategories,
       images: {
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         include: { variant: { select: { sku: true } } },

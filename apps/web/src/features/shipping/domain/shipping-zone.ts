@@ -1,9 +1,10 @@
 /**
  * Zonas de despacho y condiciones de retiro (RF-08, RF-11, RF-27). Dominio puro.
  *
- * Una zona es una comuna con tarifa y plazo. Solo las zonas activas se ofrecen
- * en nuevas compras; desactivar no cambia los pedidos ya hechos, que guardan
- * su propio costo de despacho.
+ * Una zona es una comuna con tarifa y plazo. El despacho se coordina con el
+ * taller: la tarifa puede quedar «a coordinar» (sin monto). Solo las zonas
+ * activas se ofrecen en nuevas compras; desactivar no cambia los pedidos ya
+ * hechos, que guardan su propio costo de despacho.
  */
 import { isRegionCode, type RegionCode } from "@/shared/config/regions";
 
@@ -11,17 +12,21 @@ export interface ShippingZone {
   id: string;
   region: RegionCode;
   commune: string;
-  /** Tarifa en CLP. 0 = despacho sin costo en esa comuna. */
-  price: number;
+  /** Tarifa en CLP. 0 = sin costo; null = a coordinar con el comprador. */
+  price: number | null;
   /** Plazo que ve el comprador ("3 a 5 días hábiles"). */
   leadTime: string;
+  /** Si cuenta para el despacho gratis desde el umbral. */
+  freeShippingEligible: boolean;
   active: boolean;
 }
 
 export type ZoneDraft = Omit<ShippingZone, "id">;
 
 export interface ShippingSettings {
-  /** Dirección y horario de retiro en taller (el retiro es gratis). */
+  /** Si se ofrece el retiro en taller (gratis). */
+  pickupEnabled: boolean;
+  /** Dirección y horario de retiro en taller. */
   pickup: string;
   /** Despacho gratis desde este subtotal en CLP; null = no hay umbral. */
   freeShippingThreshold: number | null;
@@ -62,13 +67,22 @@ export function parseClp(text: string): number | null {
 
 /** Valida una zona contra las reglas y contra las demás zonas (comuna única por región). */
 export function validateZone(
-  input: { region: string; commune: string; price: string; leadTime: string; active: boolean },
+  input: {
+    region: string;
+    commune: string;
+    price: string;
+    leadTime: string;
+    freeShippingEligible: boolean;
+    active: boolean;
+  },
   others: readonly ShippingZone[],
 ): { ok: true; draft: ZoneDraft } | { ok: false; errors: FieldErrors } {
   const errors: FieldErrors = {};
   const commune = input.commune.replace(/\s+/g, " ").trim();
   const leadTime = input.leadTime.replace(/\s+/g, " ").trim();
-  const price = parseClp(input.price);
+  // Tarifa vacía: a coordinar con el comprador.
+  const priceText = input.price.trim();
+  const price = priceText === "" ? null : parseClp(priceText);
 
   if (!isRegionCode(input.region)) errors.region = "Elige una región.";
   if (commune === "") errors.commune = "Escribe la comuna.";
@@ -79,24 +93,35 @@ export function validateZone(
   ) {
     errors.commune = "Esa comuna ya tiene una zona en esta región. Edita la existente.";
   }
-  if (price === null) errors.price = "Escribe la tarifa en pesos, sin decimales (p. ej. 4990).";
-  else if (price > PRICE_MAX) errors.price = "La tarifa parece demasiado alta. Revísala.";
+  if (priceText !== "" && price === null) {
+    errors.price = "Escribe la tarifa en pesos, sin decimales (p. ej. 4990), o déjala vacía.";
+  } else if (price !== null && price > PRICE_MAX) {
+    errors.price = "La tarifa parece demasiado alta. Revísala.";
+  }
   if (leadTime === "") errors.leadTime = "Escribe el plazo que verá el comprador.";
   else if (leadTime.length > LEAD_TIME_MAX) {
     errors.leadTime = `Usa ${LEAD_TIME_MAX} caracteres o menos.`;
   }
 
-  if (Object.keys(errors).length > 0 || price === null || !isRegionCode(input.region)) {
+  if (Object.keys(errors).length > 0 || !isRegionCode(input.region)) {
     return { ok: false, errors };
   }
   return {
     ok: true,
-    draft: { region: input.region, commune, price, leadTime, active: input.active },
+    draft: {
+      region: input.region,
+      commune,
+      price,
+      leadTime,
+      freeShippingEligible: input.freeShippingEligible,
+      active: input.active,
+    },
   };
 }
 
 /** Valida las condiciones generales. El umbral vacío significa "sin despacho gratis". */
 export function validateSettings(input: {
+  pickupEnabled: boolean;
   pickup: string;
   freeShippingThreshold: string;
   reservationMinutes: string;
@@ -124,17 +149,11 @@ export function validateSettings(input: {
   if (Object.keys(errors).length > 0 || minutes === null) return { ok: false, errors };
   return {
     ok: true,
-    settings: { pickup, freeShippingThreshold: threshold, reservationMinutes: minutes },
+    settings: {
+      pickupEnabled: input.pickupEnabled,
+      pickup,
+      freeShippingThreshold: threshold,
+      reservationMinutes: minutes,
+    },
   };
-}
-
-/** Por región (de norte a sur, en el orden recibido) y luego por comuna. */
-export function sortZones(
-  zones: readonly ShippingZone[],
-  regionOrder: readonly RegionCode[],
-): ShippingZone[] {
-  const rank = (code: RegionCode) => regionOrder.indexOf(code);
-  return [...zones].sort(
-    (a, b) => rank(a.region) - rank(b.region) || a.commune.localeCompare(b.commune, "es"),
-  );
 }

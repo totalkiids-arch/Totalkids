@@ -4,16 +4,18 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { attemptPanel, isPanelFailure } from "@/shared/lib/panel-errors";
+
 import { userAdmin } from "../container";
-import { ADMIN_ROLE_LABEL, canAccessSection, type AdminRole } from "../domain/admin-role";
-import type { FieldErrors } from "../domain/internal-user";
+import { canAccessSection, type AdminRole } from "../domain/admin-role";
+import { LAST_ADMIN, type FieldErrors } from "../domain/internal-user";
 
 /*
  * Mutaciones de Usuarios y roles. Las Server Actions las arma la página
  * (/admin/usuarios) con el rol de la sesión: así "users" no depende de "auth"
  * (auth ya usa los roles de users). Cada manejador vuelve a comprobar el rol,
- * porque una acción se puede invocar sin pasar por la pantalla.
- * Sesión de DEMOSTRACIÓN; la autorización real la aplica el backend (LN-04).
+ * porque una acción se puede invocar sin pasar por la pantalla; la API vuelve a
+ * autorizar, protege al último Administrador y registra quién hizo el cambio.
  */
 
 const FORBIDDEN = "Tu rol no puede gestionar usuarios. Ingresa como Administrador.";
@@ -61,11 +63,13 @@ export async function handleSaveUser(
 
   const { id, ...rest } = parsed.data;
   const values = { ...rest, active: formData.get("active") === "1" };
-  const result = await userAdmin.save(id || null, values, ADMIN_ROLE_LABEL[role]);
+  const result = await attemptPanel(() => userAdmin.save(id || null, values));
+  if (isPanelFailure(result)) return { values, errors: { form: result.failed } };
   if (!result.ok) return { values, errors: result.errors };
 
   revalidatePath(PATH);
-  redirect(`${PATH}?aviso=${id ? "guardado" : "creado"}`);
+  if (!id) redirect(`${PATH}?aviso=${result.invitationSent ? "creado" : "creado-sin-invitacion"}`);
+  redirect(`${PATH}?aviso=guardado&sesiones=${result.sessionsRevoked}`);
 }
 
 const ToggleForm = z.object({ id: str(40).min(1), active: z.enum(["0", "1"]) });
@@ -75,12 +79,15 @@ export async function handleToggleUser(role: AdminRole | null, formData: FormDat
   const parsed = ToggleForm.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(PATH);
 
-  const result = await userAdmin.setActive(
-    parsed.data.id,
-    parsed.data.active === "1",
-    ADMIN_ROLE_LABEL[role],
+  const result = await attemptPanel(() =>
+    userAdmin.setActive(parsed.data.id, parsed.data.active === "1"),
   );
   revalidatePath(PATH);
-  if (result.ok) redirect(`${PATH}?aviso=${result.user.active ? "activado" : "desactivado"}`);
-  redirect(`${PATH}?aviso=${result.reason === "last-admin" ? "ultimo-admin" : "no-existe"}`);
+  if (isPanelFailure(result)) redirect(`${PATH}?aviso=error`);
+  if (result.ok) {
+    const notice = result.user.active ? "activado" : "desactivado";
+    redirect(`${PATH}?aviso=${notice}&sesiones=${result.sessionsRevoked}`);
+  }
+  if (result.reason === "not-found") redirect(`${PATH}?aviso=no-existe`);
+  redirect(`${PATH}?aviso=${result.message === LAST_ADMIN ? "ultimo-admin" : "propia-cuenta"}`);
 }

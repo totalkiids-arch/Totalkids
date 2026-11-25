@@ -2,16 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   addDays,
-  canDeleteCoupon,
   chileToday,
-  couponDiscount,
-  couponStatus,
-  IN_USE_CANNOT_DELETE,
   isIsoDate,
   LOCKED_BY_USES,
   normalizeCouponCode,
   parseClpAmount,
-  sortCoupons,
   validateCoupon,
   type Coupon,
   type CouponInput,
@@ -27,6 +22,10 @@ const coupon = (id: string, overrides: Partial<Coupon> = {}): Coupon => ({
   maxUses: 100,
   uses: 0,
   active: true,
+  status: "active",
+  statusLabel: "Activo",
+  termsLocked: false,
+  canDelete: true,
   ...overrides,
 });
 
@@ -181,7 +180,7 @@ describe("validateCoupon", () => {
   });
 
   describe("cupón con usos", () => {
-    const used = coupon("c1", { uses: 3 });
+    const used = coupon("c1", { uses: 3, termsLocked: true, canDelete: false });
     const same = { code: "APRENDER10", kind: "percent", value: "10" };
 
     it("bloquea cambiar el código, el tipo o el valor", () => {
@@ -217,63 +216,5 @@ describe("validateCoupon", () => {
         validateCoupon(input({ code: "OTRO", kind: "amount", value: "3000" }), [], fresh).ok,
       ).toBe(true);
     });
-  });
-});
-
-describe("canDeleteCoupon", () => {
-  it("solo se elimina un cupón sin usos", () => {
-    expect(canDeleteCoupon({ uses: 0 })).toBe(true);
-    expect(canDeleteCoupon({ uses: 1 })).toBe(false);
-    expect(IN_USE_CANNOT_DELETE).toMatch(/solo se puede desactivar/);
-  });
-});
-
-describe("couponStatus", () => {
-  const today = "2026-11-20";
-
-  it("activo dentro de la vigencia, con usos disponibles", () => {
-    expect(couponStatus(coupon("c"), today)).toBe("active");
-    expect(couponStatus(coupon("c", { startsOn: today, endsOn: today }), today)).toBe("active");
-  });
-  it("programado antes del inicio y vencido después del término", () => {
-    expect(couponStatus(coupon("c", { startsOn: "2026-12-01" }), today)).toBe("scheduled");
-    expect(couponStatus(coupon("c", { endsOn: "2026-11-19" }), today)).toBe("expired");
-  });
-  it("agotado manda sobre vencido; inactivo manda sobre todo", () => {
-    const exhausted = coupon("c", { uses: 100, maxUses: 100, endsOn: "2026-10-01" });
-    expect(couponStatus(exhausted, today)).toBe("exhausted");
-    expect(couponStatus({ ...exhausted, active: false }, today)).toBe("inactive");
-  });
-});
-
-describe("couponDiscount", () => {
-  it("redondea el porcentaje al peso más cercano", () => {
-    expect(couponDiscount(12_345, { kind: "percent", value: 15 })).toBe(1852); // 1851,75
-    expect(couponDiscount(12_343, { kind: "percent", value: 10 })).toBe(1234); // 1234,3
-    expect(couponDiscount(10_005, { kind: "percent", value: 10 })).toBe(1001); // 1000,5
-  });
-  it("no supera el subtotal elegible", () => {
-    expect(couponDiscount(3000, { kind: "amount", value: 5000 })).toBe(3000);
-    expect(couponDiscount(3000, { kind: "percent", value: 100 })).toBe(3000);
-  });
-  it("sin subtotal no hay descuento", () => {
-    expect(couponDiscount(0, { kind: "amount", value: 5000 })).toBe(0);
-  });
-});
-
-describe("sortCoupons", () => {
-  it("ordena activos primero y luego por código", () => {
-    const list = [
-      coupon("a", { code: "ZETA", active: false }),
-      coupon("b", { code: "BETA" }),
-      coupon("c", { code: "ALFA", endsOn: "2026-01-01" }),
-      coupon("d", { code: "AAA" }),
-    ];
-    expect(sortCoupons(list, "2026-11-20").map((c) => c.code)).toEqual([
-      "AAA",
-      "BETA",
-      "ALFA",
-      "ZETA",
-    ]);
   });
 });

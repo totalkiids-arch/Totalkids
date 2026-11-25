@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { getAdminSession } from "@/features/auth";
+import { RECONCILE_NOTICES, ReconcileButton, ResolvePaymentForm } from "@/features/payments";
+import { chileDay } from "@/shared/lib/chile-time";
 import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
 import { LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
@@ -20,7 +22,6 @@ import {
   type AdminOrderDetail,
   type HistoryEntry,
 } from "../domain/admin-order";
-import { chileDate } from "../domain/order-workflow";
 import { resolveRefundAction } from "./admin-order-actions";
 import { InvoiceForm } from "./admin/invoice-form";
 import { AdminOrderStatusBadge, AdminPaymentBadge } from "./admin/order-badges";
@@ -71,7 +72,9 @@ export async function AdminOrderDetailScreen({
   if (!order) notFound();
 
   const isAdmin = session?.role === "admin";
-  const notice = NOTICES[first(searchParams.aviso)];
+  const aviso = first(searchParams.aviso);
+  // Avisos del pedido, o los de la conciliación con Flow (LN-15).
+  const notice = NOTICES[aviso] ?? RECONCILE_NOTICES[aviso];
   const pickup = order.delivery.method === "pickup";
 
   return (
@@ -167,8 +170,8 @@ export async function AdminOrderDetailScreen({
         </div>
 
         <div className="min-w-0">
-          <AdminPanel title="Resumen de pago">
-            <PaymentSummary order={order} />
+          <AdminPanel title="Resumen de pago" id="pago">
+            <PaymentSummary order={order} isAdmin={isAdmin} />
           </AdminPanel>
 
           <AdminPanel title="Entrega">
@@ -279,8 +282,8 @@ function ManageOrder({ order }: { order: AdminOrderDetail }) {
 
 function RefundPanel({ order }: { order: AdminOrderDetail }) {
   const totals = order.refundTotals;
-  const today = chileDate(new Date().toISOString());
-  const paidOn = order.payment.paidAt ? chileDate(order.payment.paidAt) : today;
+  const today = chileDay(new Date().toISOString());
+  const paidOn = order.payment.paidAt ? chileDay(order.payment.paidAt) : today;
 
   return (
     <div className="flex flex-col gap-5">
@@ -343,7 +346,10 @@ function RefundPanel({ order }: { order: AdminOrderDetail }) {
   );
 }
 
-function PaymentSummary({ order }: { order: AdminOrderDetail }) {
+function PaymentSummary({ order, isAdmin }: { order: AdminOrderDetail; isAdmin: boolean }) {
+  const volver = `/admin/pedidos/${order.ref}`;
+  // El intento que el Administrador puede resolver a mano (a lo más uno a la vez).
+  const toResolve = isAdmin ? order.attempts.find((a) => a.resolutions.length > 0) : undefined;
   const { amounts } = order;
   const rows: [ReactNode, ReactNode][] = [
     ["Productos y extras", formatPrice(amounts.subtotal)],
@@ -401,11 +407,30 @@ function PaymentSummary({ order }: { order: AdminOrderDetail }) {
                     ? ` · Última consulta ${formatDateTime(attempt.lastCheckedAt)}`
                     : ""}
                 </small>
+                {attempt.reconcilable ? (
+                  <ReconcileButton
+                    paymentId={attempt.id}
+                    label={attempt.commerceOrder}
+                    volver={volver}
+                  />
+                ) : null}
               </li>
             ))}
           </ol>
         )}
       </div>
+
+      {toResolve ? (
+        <div className="border-t border-border pt-4">
+          <h3 className="mb-2 text-sm font-extrabold">Resolver pago {toResolve.commerceOrder}</h3>
+          <ResolvePaymentForm
+            key={`${toResolve.id}-${toResolve.status}`}
+            paymentId={toResolve.id}
+            resolutions={toResolve.resolutions}
+            volver={volver}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

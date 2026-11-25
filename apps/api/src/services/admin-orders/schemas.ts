@@ -30,6 +30,7 @@ const PAYMENT_FILTERS = [
   "voided",
   "in_review",
   "expired",
+  "refund_pending",
   "none",
 ] as const;
 
@@ -114,7 +115,7 @@ export type AdminOrdersQuery = z.output<typeof adminOrdersQuery>;
 
 // ── Cambio de estado ─────────────────────────────────────────────────────────
 
-export const reason = z
+const reason = z
   .string(MESSAGES.reasonShort)
   .trim()
   .min(REASON_MIN, MESSAGES.reasonShort)

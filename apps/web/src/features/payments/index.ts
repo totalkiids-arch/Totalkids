@@ -13,3 +13,14 @@ export {
   type PaymentAttemptRow,
   type PaymentQuery,
 } from "./domain/payment-query";
+export { ReconcileButton } from "./ui/reconcile-button";
+export { ResolvePaymentForm } from "./ui/resolve-payment-form";
+export {
+  PAYMENT_RESOLUTIONS,
+  RECONCILE_NOTICES,
+  RESOLUTION_LABEL,
+  REVIEW_REASON_LABEL,
+  isPaymentResolution,
+  type PaymentResolution,
+  type ReviewReason,
+} from "./domain/reconciliation";

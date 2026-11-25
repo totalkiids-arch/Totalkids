@@ -7,9 +7,8 @@ import { verifyOrderAccess } from "../../lib/order-access.js";
 import type { PrismaClient } from "../../lib/prisma.js";
 import { hashToken } from "../../lib/secrets.js";
 import { lockOrder } from "../admin-orders/query.js";
-import { attemptUrl, queryAttempt } from "./attempt.js";
 import { FlowRejectedError, FlowUncertainError, type FlowClient } from "./client.js";
-import { seal } from "./seal.js";
+import { seal, unseal } from "./seal.js";
 import { settlePayment } from "./settle.js";
 import { reserveAgain } from "./stock.js";
 
@@ -78,21 +77,18 @@ export async function startPayment(
     where: { orderId: target.id, status: { in: ["pending", "in_review"] } },
   });
   if (open) {
-    const answer = await queryAttempt(flow, open).catch((error: unknown) => {
-      // Un 4xx tampoco prueba que no exista: se concilia (LN-15), no se asume.
-      if (error instanceof FlowUncertainError || error instanceof FlowRejectedError) return null;
-      throw error;
-    });
-    if (!answer) throw uncertain();
-    const { outcome } = await settlePayment(prisma, {
-      ...answer,
-      paymentId: open.id,
-      adminEmail: input.adminEmail,
-      now,
-    });
-    if (outcome === "unchanged" && answer.status.status === "pending") {
+    const status = await flow.client
+      .getStatusByCommerceOrder(open.commerceOrder)
+      .catch((error: unknown) => {
+        // Un 4xx tampoco prueba que no exista: se concilia (LN-15), no se asume.
+        if (error instanceof FlowUncertainError || error instanceof FlowRejectedError) return null;
+        throw error;
+      });
+    if (!status) throw uncertain();
+    const { outcome } = await settlePayment(prisma, { status, adminEmail: input.adminEmail, now });
+    if (outcome === "unchanged" && status.status === "pending") {
       secondsToPay(await prisma.order.findUniqueOrThrow({ where: { id: target.id } }), now);
-      const url = attemptUrl(flow, open);
+      const url = open.redirectUrlEncrypted && unseal(open.redirectUrlEncrypted, flow.sealSecret);
       if (!url) throw uncertain();
       return { redirectUrl: url };
     }

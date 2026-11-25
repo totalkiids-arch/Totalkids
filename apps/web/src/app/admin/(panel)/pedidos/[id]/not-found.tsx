@@ -7,7 +7,7 @@ export default function NotFound() {
         No encontramos este pedido
       </h1>
       <p className="text-lg text-text-body">
-        El enlace no corresponde a ningún pedido de demostración. Revisa el número en el listado.
+        El enlace no corresponde a ningún pedido. Revisa el número en el listado.
       </p>
       <ButtonLink href="/admin/pedidos" className="self-start">
         Volver a pedidos

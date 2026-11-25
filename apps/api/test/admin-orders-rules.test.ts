@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 import { describe, expect, it } from "vitest";
 
 import type { OrderStatus } from "../src/generated/prisma/enums.js";
@@ -25,25 +23,15 @@ import {
   refundState,
   TRACKING_MAX,
   transitionBlock,
+  transitionNotAllowedMessage,
   type WorkflowOrder,
   type WorkflowPayment,
 } from "../src/services/admin-orders/rules.js";
 import { invoiceBody, parseOrderRef, refundBody } from "../src/services/admin-orders/schemas.js";
 
-// Reglas puras del panel de pedidos (LN-13). La tabla y los textos deben ser los
-// del dominio del panel (apps/web/src/features/orders/domain): se comparan con
-// el texto de esos archivos, sin importarlos, para no acoplar los paquetes.
-const webDir = new URL("../../web/src/features/orders/domain/", import.meta.url);
-const webWorkflow = readFileSync(new URL("order-workflow.ts", webDir), "utf8");
-const webOrder = readFileSync(new URL("order.ts", webDir), "utf8");
-
-/** Mensajes que solo existen en la API (corrección de folio y folio repetido). */
-const API_ONLY = new Set<keyof typeof MESSAGES>([
-  "invoiceDuplicate",
-  "invoiceSame",
-  "invoiceReplaceReason",
-  "invoiceReplaceForbidden",
-]);
+// Reglas puras del panel de pedidos (LN-13; RF-27, RF-32, RN-04 a RN-06), por
+// sí solas. El panel (LN-16) muestra los mensajes que devuelve la API, así que
+// aquí se fijan la tabla de transiciones y los textos tal como los envía.
 
 const STATUSES = Object.keys(ALLOWED_TRANSITIONS) as OrderStatus[];
 
@@ -85,15 +73,12 @@ describe("tabla de transiciones (SRS, RF-27)", () => {
     });
   });
 
-  it("coincide con la del panel (order-workflow.ts)", () => {
-    const block = /ALLOWED_TRANSITIONS[^=]*=\s*\{([\s\S]*?)\};/.exec(webWorkflow)?.[1] ?? "";
-    const web = Object.fromEntries(
-      [...block.matchAll(/(\w+):\s*\[([^\]]*)\]/g)].map(([, from, list]) => [
-        from,
-        [...(list ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]),
-      ]),
-    );
-    expect(web).toEqual(ALLOWED_TRANSITIONS);
+  it("cubre los ocho estados y solo apunta a estados conocidos", () => {
+    expect(STATUSES.sort()).toEqual(Object.keys(ORDER_STATUS_LABEL).sort());
+    for (const from of STATUSES) {
+      for (const to of ALLOWED_TRANSITIONS[from]) expect(STATUSES, `${from} → ${to}`).toContain(to);
+      expect(ALLOWED_TRANSITIONS[from], from).not.toContain(from);
+    }
   });
 
   it('fuera de la tabla: «Un pedido "X" no puede pasar a "Y".»', () => {
@@ -152,6 +137,32 @@ describe("guardas de pago", () => {
     expect(orderPaymentStatus(resolved)).toBe("rejected");
     expect(availableTransitions(resolved)).toEqual(["cancelled", "expired"]);
     expect(blockedByUnresolvedPayment(resolved)).toBe(false);
+  });
+
+  it("RN-04 también fuera de pendiente de pago: un pedido pagado con un intento posterior abierto no se cancela", () => {
+    const o = order({
+      status: "confirmed",
+      payments: [payment("paid", 1), payment("in_review", 2)],
+    });
+    expect(transitionBlock(o, "cancelled")).toEqual({
+      field: "to",
+      message: MESSAGES.unresolvedPayment,
+    });
+    expect(availableTransitions(o)).toEqual(["preparing"]);
+    expect(blockedByUnresolvedPayment(o)).toBe(true);
+  });
+
+  it("un pedido en revisión con el pago sin resolver no se confirma ni se cancela", () => {
+    const o = order({ status: "in_review", payments: [payment("in_review")] });
+    expect(transitionBlock(o, "confirmed")).toEqual({
+      field: "to",
+      message: MESSAGES.unpaidConfirm,
+    });
+    expect(transitionBlock(o, "cancelled")).toEqual({
+      field: "to",
+      message: MESSAGES.unresolvedPayment,
+    });
+    expect(availableTransitions(o)).toEqual([]);
   });
 
   it("sin intentos de pago el estado es none y se puede cancelar o vencer", () => {
@@ -278,23 +289,52 @@ describe("referencia del pedido en la ruta", () => {
   });
 });
 
-describe("textos del panel", () => {
-  it("las etiquetas de estado son las del panel", () => {
-    for (const label of Object.values(ORDER_STATUS_LABEL)) {
-      expect(webOrder, label).toContain(`"${label}"`);
-    }
+describe("textos que envía la API al panel", () => {
+  it("etiquetas de estado del pedido", () => {
+    expect(ORDER_STATUS_LABEL).toEqual({
+      pending_payment: "Pendiente de pago",
+      in_review: "Pago en revisión",
+      confirmed: "Confirmado",
+      preparing: "En preparación",
+      shipped: "Despachado",
+      delivered: "Entregado",
+      cancelled: "Cancelado",
+      expired: "Vencido",
+    });
   });
 
-  it("cada mensaje de la API es literal el del panel (salvo los de corrección de folio)", () => {
-    const limits: Record<string, number> = { REASON_MAX, TRACKING_MAX, REFERENCE_MAX };
-    // En el panel los topes van interpolados: "${REASON_MAX}" → 500.
-    const web = webWorkflow.replace(/\$\{(\w+)\}/g, (all, name: string) =>
-      name in limits ? String(limits[name]) : all,
+  it("mensaje de transición no permitida, con las etiquetas", () => {
+    expect(transitionNotAllowedMessage("delivered", "cancelled")).toBe(
+      'Un pedido "Entregado" no puede pasar a "Cancelado".',
     );
+  });
+
+  it("mensajes de pago y RN-04", () => {
+    expect(MESSAGES.unpaidConfirm).toBe(
+      "Primero concilia y confirma el pago en Pagos y conciliación.",
+    );
+    expect(MESSAGES.unpaidShip).toBe("Un pedido sin pago confirmado no se despacha.");
+    expect(MESSAGES.unresolvedPayment).toBe(
+      "Hay un pago sin resolver: concílialo en Pagos antes de cancelar o marcar como vencido.",
+    );
+    expect(MESSAGES.cancelPaidNotice).toBe(
+      "Cancelar no devuelve dinero: gestiona la devolución con un reembolso manual.",
+    );
+  });
+
+  it("los topes de los mensajes coinciden con los límites", () => {
+    expect(MESSAGES.reasonLong).toBe(`El motivo admite hasta ${String(REASON_MAX)} caracteres.`);
+    expect(MESSAGES.carrierLong).toContain(String(TRACKING_MAX));
+    expect(MESSAGES.codeLong).toContain(String(TRACKING_MAX));
+    expect(MESSAGES.refundReferenceLong).toContain(String(REFERENCE_MAX));
+    expect([REASON_MAX, TRACKING_MAX, REFERENCE_MAX]).toEqual([500, 80, 120]);
+  });
+
+  it("todos los mensajes son texto en español, sin interpolaciones pendientes", () => {
     for (const [key, text] of Object.entries(MESSAGES)) {
-      if (API_ONLY.has(key as keyof typeof MESSAGES)) continue;
-      expect(web, key).toContain(text);
+      expect(text.length, key).toBeGreaterThan(10);
+      expect(text, key).not.toMatch(/\$\{|undefined|NaN/);
+      expect(text, key).toMatch(/[.»]$/);
     }
-    for (const key of API_ONLY) expect(web, key).not.toContain(MESSAGES[key]);
   });
 });

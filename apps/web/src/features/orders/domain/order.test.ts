@@ -6,7 +6,6 @@ import {
   orderTone,
   orderTotal,
   orderUnits,
-  sortByNewest,
   TRACKING_STEPS,
   trackingProgress,
 } from "./order";
@@ -44,18 +43,5 @@ describe("seguimiento", () => {
     expect(trackingProgress("cancelled")).toBeNull();
     expect(trackingProgress("expired")).toBeNull();
     expect(orderTone("cancelled")).toBe("closed");
-  });
-});
-
-describe("sortByNewest", () => {
-  it("ordena del más reciente al más antiguo", () => {
-    const orders = [
-      { createdAt: "2026-10-02" },
-      { createdAt: "2026-11-19" },
-      { createdAt: "2026-11-10" },
-    ];
-    expect(
-      sortByNewest(orders as never).map((o) => (o as { createdAt: string }).createdAt),
-    ).toEqual(["2026-11-19", "2026-11-10", "2026-10-02"]);
   });
 });

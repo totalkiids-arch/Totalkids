@@ -231,6 +231,8 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
     const saved = await prisma.order.findUniqueOrThrow({
       where: { number: Number((res.body.orderNumber as string).slice(3)) },
     });
+    // El pedido recuerda su carrito: se vacía al confirmarse el pago (LN-11).
+    expect(saved.cartId).not.toBeNull();
     const eventKey = emailEventKey("order_received", saved.id);
 
     const job = await prisma.outboxJob.findUniqueOrThrow({ where: { eventKey } });
@@ -570,5 +572,90 @@ describe.skipIf(!url)("crear pedido de invitado (PostgreSQL real)", () => {
     // El historial del comprador no expone actores ni notas internas.
     expect(JSON.stringify(res.body.history)).not.toContain("Nota interna");
     await prisma.productVariant.update({ where: { sku: skuStock }, data: { stockReserved: 0 } });
+  });
+
+  // ── LN-17: acceso ajeno (CA-07) y cambio de precio (CA-08) ─────────────────
+
+  it("CA-07: lookup y detalle ajenos: 404 con solo el formato de error, sin datos del pedido", async () => {
+    const otherBuyer = { ...BODY, buyer: { ...BODY.buyer, email: "pedro@correo.cl" } };
+    const mine = await order(await cartWith({ sku: skuStock, quantity: 1 }));
+    const theirs = await order(await cartWith({ sku: skuStock, quantity: 1 }), otherBuyer);
+    expect([mine.status, theirs.status]).toEqual([201, 201]);
+    const theirNumber = theirs.body.orderNumber as string;
+
+    // IP propia: el límite de consultas (10 cada 15 min) no se mezcla con los otros casos.
+    const lookupFrom = (orderNumber: string, email: string) =>
+      request(app)
+        .post("/api/v1/orders/lookup")
+        .set(csrfHeaders())
+        .set("X-Forwarded-For", "203.0.113.17")
+        .send({ orderNumber, email });
+
+    const denied = [
+      // Correo del pedido A con el número del pedido B.
+      await lookupFrom(theirNumber, "maria@correo.cl"),
+      // Correo parecido (otro dominio).
+      await lookupFrom(theirNumber, "pedro@correo.com"),
+      // Credencial de A para ver el detalle de B.
+      await detail(theirNumber, mine.body.accessToken as string),
+      // Credencial alterada.
+      await detail(theirNumber, `${(theirs.body.accessToken as string).slice(0, -2)}xx`),
+    ];
+    for (const res of denied) {
+      expect(res.status, JSON.stringify(res.body)).toBe(404);
+      // Solo el cuerpo de error estándar: nada del pedido ajeno.
+      expect(Object.keys(res.body as object).sort()).toEqual(
+        expect.arrayContaining(["code", "message"]),
+      );
+      expect(res.body).not.toHaveProperty("order");
+      expect(res.body).not.toHaveProperty("accessToken");
+      expect(res.body).not.toHaveProperty("orderNumber");
+      const text = JSON.stringify(res.body);
+      for (const secret of [
+        "pedro@correo.cl",
+        "María",
+        "González",
+        "12.345.678-5",
+        theirs.body.accessToken as string,
+        theirNumber.slice(3),
+      ]) {
+        expect(text).not.toContain(secret);
+      }
+    }
+    // El mensaje no distingue «existe pero no es tuyo» de «no existe».
+    const missing = await lookupFrom("TK-999999999", "pedro@correo.cl");
+    expect(missing.status).toBe(404);
+    expect(denied[0]?.body.message).toBe(missing.body.message);
+    expect(denied[0]?.body.code).toBe(missing.body.code);
+
+    // El dueño sí accede, con su correo.
+    const own = await lookupFrom(theirNumber, "Pedro@Correo.cl");
+    expect(own.status).toBe(200);
+    expect(own.body.accessToken).toBe(theirs.body.accessToken);
+    await prisma.productVariant.update({ where: { sku: skuStock }, data: { stockReserved: 0 } });
+  });
+
+  it("CA-08: tras el 409 por cambio de precio, reintentar con el total informado crea el pedido", async () => {
+    const token = await cartWith({ sku: skuStock, quantity: 1 });
+    const seen = await quotedTotal(token, { method: "retiro" });
+    await prisma.productVariant.update({ where: { sku: skuStock }, data: { price: 52_000 } });
+    try {
+      const changed = await order(token, { ...BODY, expectedTotal: seen });
+      expect(changed.status).toBe(409);
+      expect(changed.body.details.reason).toBe("total_changed");
+      const informed = (changed.body.details as { totals: { total: number } }).totals.total;
+      expect(informed).toBe(52_000);
+
+      // El comprador acepta el nuevo total (nuevo intento, nueva clave).
+      const accepted = await order(token, { ...BODY, expectedTotal: informed });
+      expect(accepted.status, JSON.stringify(accepted.body)).toBe(201);
+      expect(accepted.body.totals).toMatchObject({ subtotal: 52_000, total: 52_000 });
+      expect(accepted.body.items[0]).toMatchObject({ unitPrice: 52_000, lineTotal: 52_000 });
+    } finally {
+      await prisma.productVariant.update({
+        where: { sku: skuStock },
+        data: { price: 50_000, stockReserved: 0 },
+      });
+    }
   });
 });

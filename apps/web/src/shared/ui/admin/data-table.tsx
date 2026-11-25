@@ -31,7 +31,7 @@ export function DataTable({
   columns: readonly DataTableColumn[];
   rows: readonly DataTableRow[];
   empty?: ReactNode;
-  /** Pie bajo la tabla; por defecto "N registros · Datos de demostración". */
+  /** Pie bajo la tabla; por defecto "N registros". */
   footer?: ReactNode;
 }) {
   const align = (column: DataTableColumn) => (column.align === "end" ? "text-right" : "text-left");
@@ -118,7 +118,7 @@ export function DataTable({
         </table>
       </div>
       <p className="border-t border-border px-5 py-3.5 text-[13px] text-text-secondary">
-        {footer ?? `${rows.length} registro${rows.length === 1 ? "" : "s"} · Datos de demostración`}
+        {footer ?? `${rows.length} registro${rows.length === 1 ? "" : "s"}`}
       </p>
     </div>
   );

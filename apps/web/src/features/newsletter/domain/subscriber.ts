@@ -1,13 +1,12 @@
-import type { Consent } from "./subscription";
-
 /**
  * Suscriptores del newsletter en el panel (RF-25, RF-29, RF-35). Dominio puro.
  *
  * - Cada suscriptor guarda el correo, la fecha del consentimiento y la versión
  *   del texto aceptado (CONSENT_VERSION al suscribirse).
  * - La baja no borra el registro: cambia el estado y deja la fecha de baja y
- *   quién la registró (el propio suscriptor o el administrador).
- * - Volver a suscribirse reactiva el mismo registro con un consentimiento nuevo.
+ *   quién la registró (el propio suscriptor o el rol del equipo).
+ * - La API filtra, pagina y registra la baja; aquí solo viven los tipos y los
+ *   filtros de la URL.
  */
 
 export const SUBSCRIBER_STATUSES = ["active", "unsubscribed"] as const;
@@ -18,9 +17,6 @@ export const SUBSCRIBER_STATUS_LABEL: Record<SubscriberStatus, string> = {
   unsubscribed: "Dado de baja",
 };
 
-/** Actor cuando la baja llega desde el formulario público. */
-export const SUBSCRIBER_ACTOR = "Suscriptor";
-
 export interface Subscriber {
   id: string;
   /** En minúsculas. */
@@ -29,47 +25,12 @@ export interface Subscriber {
   consentVersion: string;
   status: SubscriberStatus;
   unsubscribedAt: string | null;
+  /** «Suscriptor» o el rol que la registró. */
   unsubscribedBy: string | null;
 }
 
-/** Alta o reactivación con el consentimiento recién aceptado. */
-export function subscribeWithConsent(
-  existing: Subscriber | null,
-  id: string,
-  email: string,
-  consent: Consent,
-): Subscriber {
-  return {
-    id: existing?.id ?? id,
-    email,
-    consentedAt: consent.acceptedAt,
-    consentVersion: consent.version,
-    status: "active",
-    unsubscribedAt: null,
-    unsubscribedBy: null,
-  };
-}
-
-export type UnsubscribeOutcome =
-  { ok: true; subscriber: Subscriber } | { ok: false; reason: "already-unsubscribed" };
-
-/** Registra la baja sin borrar el registro. Una baja repetida no cambia la fecha original. */
-export function registerUnsubscribe(
-  subscriber: Subscriber,
-  actor: string,
-  now: string,
-): UnsubscribeOutcome {
-  if (subscriber.status === "unsubscribed") return { ok: false, reason: "already-unsubscribed" };
-  return {
-    ok: true,
-    subscriber: {
-      ...subscriber,
-      status: "unsubscribed",
-      unsubscribedAt: now,
-      unsubscribedBy: actor,
-    },
-  };
-}
+export type UnsubscribeResult =
+  { ok: true } | { ok: false; reason: "already-unsubscribed" | "not-found" };
 
 // ── Listado: filtros de la URL ───────────────────────────────────────────────
 
@@ -77,10 +38,24 @@ export function registerUnsubscribe(
 export const SUBSCRIBER_FILTERS = { activos: "active", bajas: "unsubscribed" } as const;
 export type SubscriberFilter = keyof typeof SUBSCRIBER_FILTERS;
 
+export const SUBSCRIBERS_PAGE_SIZE = 20;
+export const QUERY_MAX = 80;
+
 export interface SubscriberQuery {
   filter: SubscriberFilter | null;
+  /** Búsqueda en el correo. */
+  q: string;
+  page: number;
   /** Suscriptor cuya baja se está confirmando (`?baja=<id>`). */
   confirm: string | null;
+}
+
+export interface SubscriberPage {
+  rows: Subscriber[];
+  counts: Record<SubscriberStatus, number>;
+  total: number;
+  page: number;
+  pageCount: number;
 }
 
 type Params = Record<string, string | string[] | undefined>;
@@ -91,39 +66,44 @@ const first = (value: string | string[] | undefined) =>
 export function parseSubscriberQuery(params: Params): SubscriberQuery {
   const filter = first(params.estado);
   const confirm = first(params.baja);
+  const page = Number(first(params.pagina));
   return {
     filter: Object.hasOwn(SUBSCRIBER_FILTERS, filter) ? (filter as SubscriberFilter) : null,
+    q: first(params.q).replace(/\s+/g, " ").slice(0, QUERY_MAX),
+    page: Number.isInteger(page) && page > 1 ? page : 1,
     confirm: /^[\w-]{1,40}$/.test(confirm) ? confirm : null,
   };
 }
 
-/** Los que cumplen el filtro, del consentimiento más reciente al más antiguo. */
-export function filterSubscribers(
-  subscribers: readonly Subscriber[],
-  filter: SubscriberFilter | null,
-): Subscriber[] {
-  const status = filter ? SUBSCRIBER_FILTERS[filter] : null;
-  return subscribers
-    .filter((s) => !status || s.status === status)
-    .sort((a, b) => Date.parse(b.consentedAt) - Date.parse(a.consentedAt));
+/** "?estado=bajas&q=ana&pagina=2" (con `extra` al final); "" si no hay nada. */
+export function toSubscriberSearch(
+  query: Partial<Pick<SubscriberQuery, "filter" | "q" | "page">>,
+  extra: Record<string, string> = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.filter) params.set("estado", query.filter);
+  if (query.q) params.set("q", query.q);
+  if (query.page && query.page > 1) params.set("pagina", String(query.page));
+  for (const [key, value] of Object.entries(extra)) params.set(key, value);
+  const text = params.toString();
+  return text ? `?${text}` : "";
 }
 
-/**
- * Exportación (RF-29, solo Administrador). Solo lo necesario para demostrar el
- * consentimiento: correo, fecha, versión, estado y fecha de baja.
- */
-export function subscribersCsvTable(
-  subscribers: readonly Subscriber[],
-  formatDate: (iso: string) => string,
-) {
-  return {
-    header: ["Correo", "Fecha de consentimiento", "Versión del texto", "Estado", "Fecha de baja"],
-    rows: subscribers.map((s) => [
-      s.email,
-      formatDate(s.consentedAt),
-      s.consentVersion,
-      SUBSCRIBER_STATUS_LABEL[s.status],
-      s.unsubscribedAt ? formatDate(s.unsubscribedAt) : "",
-    ]),
-  };
+/** Filtros de GET /admin/newsletter y de la exportación (sin página). */
+export function toApiSubscriberFilters(query: Pick<SubscriberQuery, "filter" | "q">) {
+  const params = new URLSearchParams();
+  if (query.filter) params.set("status", SUBSCRIBER_FILTERS[query.filter]);
+  if (query.q) params.set("q", query.q);
+  return params;
+}
+
+/** Parámetros de GET /admin/newsletter. */
+export function toApiSubscriberSearch(
+  query: SubscriberQuery,
+  pageSize = SUBSCRIBERS_PAGE_SIZE,
+): string {
+  const params = toApiSubscriberFilters(query);
+  params.set("page", String(query.page));
+  params.set("pageSize", String(pageSize));
+  return params.toString();
 }

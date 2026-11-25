@@ -2,16 +2,18 @@ import type { Route } from "next";
 import Link from "next/link";
 
 import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
-import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
+import { formatChileDateTime } from "@/shared/lib/chile-time";
+import { LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { AdminMuted, AdminPanel } from "@/shared/ui/admin/panel";
-import { ActiveBadge } from "@/shared/ui/admin/status-badge";
+import { StatusBadge, type StatusTone } from "@/shared/ui/admin/status-badge";
 import { ButtonLink } from "@/shared/ui/button";
 import { PlusIcon } from "@/shared/ui/icons";
 
 import { bannerAdmin } from "../container";
-import { ORDER_MAX, safeBannerHref, sortBanners } from "../domain/banner";
+import { ORDER_MAX, type Banner, type BannerVisibility } from "../domain/banner";
 import { toggleBannerAction } from "./banner-actions";
+import { BannerCard } from "./banner-card";
 import { BannerForm } from "./banner-form";
 
 type Params = Record<string, string | string[] | undefined>;
@@ -27,12 +29,32 @@ const NOTICES: Record<string, { message: string; tone: "success" | "warning" }> 
   activado: { message: "Banner activado.", tone: "success" },
   desactivado: { message: "Banner desactivado: ya no se muestra.", tone: "success" },
   "no-existe": { message: "Ese banner ya no existe.", tone: "warning" },
+  error: {
+    message: "No pudimos completar el cambio. Revisa tu sesión o intenta de nuevo en unos minutos.",
+    tone: "warning",
+  },
 };
+
+const VISIBILITY_TONE: Record<BannerVisibility, StatusTone> = {
+  visible: "green",
+  scheduled: "blue",
+  ended: "neutral",
+  inactive: "red",
+};
+
+/** "Desde 1 dic 2026, 09:00 · hasta …" o null si no tiene ventana. */
+function windowLabel(banner: Banner): string | null {
+  const parts = [
+    banner.startsAt ? `Desde ${formatChileDateTime(banner.startsAt)}` : null,
+    banner.endsAt ? `hasta ${formatChileDateTime(banner.endsAt)}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
 
 /** Panel administrativo · Banners (RF-28). */
 export async function BannersScreen({ searchParams = {} }: { searchParams?: Params }) {
-  const banners = sortBanners(await bannerAdmin.list());
-  const active = banners.filter((b) => b.active);
+  const banners = await bannerAdmin.list();
+  const visible = banners.filter((b) => b.visibility === "visible");
   const editing = banners.find((b) => b.id === param(searchParams, "editar")) ?? null;
   const notice = NOTICES[param(searchParams, "aviso")];
   const nextOrder = Math.min(ORDER_MAX, Math.max(0, ...banners.map((b) => b.order)) + 1);
@@ -50,15 +72,10 @@ export async function BannersScreen({ searchParams = {} }: { searchParams?: Para
         }
       />
       {notice ? <LiveNotice message={notice.message} tone={notice.tone} /> : null}
-      <InfoNote>
-        Datos de ejemplo: los cambios se borran al reiniciar el sistema. La portada de la tienda
-        todavía no usa estos banners y no cambia.
-      </InfoNote>
-
       <AdminPanel
         flush
         title="Banners"
-        description={`${active.length} de ${banners.length} activo${banners.length === 1 ? "" : "s"}. Los banners no se eliminan: se desactivan.`}
+        description={`${visible.length} de ${banners.length} visible${banners.length === 1 ? "" : "s"} hoy en la tienda. Los banners no se eliminan: se desactivan.`}
       >
         <DataTable
           caption="Banners de la tienda"
@@ -75,7 +92,16 @@ export async function BannersScreen({ searchParams = {} }: { searchParams?: Para
               title: <CellTitle title={banner.title} meta={banner.text} />,
               href: <code className="text-sm break-all">{banner.href}</code>,
               order: banner.order,
-              status: <ActiveBadge active={banner.active} />,
+              status: (
+                <CellTitle
+                  title={
+                    <StatusBadge tone={VISIBILITY_TONE[banner.visibility]}>
+                      {banner.visibilityLabel}
+                    </StatusBadge>
+                  }
+                  meta={windowLabel(banner)}
+                />
+              ),
               actions: (
                 <span className="flex flex-wrap items-center gap-1">
                   <Link
@@ -101,36 +127,21 @@ export async function BannersScreen({ searchParams = {} }: { searchParams?: Para
             },
           }))}
           empty="Todavía no hay banners. Agrega el primero."
-          footer={`${banners.length} banner${banners.length === 1 ? "" : "s"} · Datos de demostración`}
+          footer={`${banners.length} banner${banners.length === 1 ? "" : "s"}`}
         />
       </AdminPanel>
 
       <AdminPanel
         title="Vista previa"
-        description="Banners activos, en el orden en que aparecerían."
+        description="Los banners que la portada muestra hoy, en su orden."
       >
-        {active.length === 0 ? (
-          <AdminMuted>No hay banners activos.</AdminMuted>
+        {visible.length === 0 ? (
+          <AdminMuted>Hoy no hay banners visibles en la tienda.</AdminMuted>
         ) : (
           <ul className="flex flex-col gap-4">
-            {active.map((banner) => (
-              <li
-                key={banner.id}
-                className="flex flex-wrap items-center justify-between gap-5 rounded-[10px] bg-cream p-6"
-              >
-                <div className="min-w-0 flex-1 basis-64">
-                  <h3 className="mb-2 font-heading text-2xl font-extrabold break-words sm:text-[30px] sm:leading-tight">
-                    {banner.title}
-                  </h3>
-                  <p className="break-words text-on-yellow">{banner.text}</p>
-                </div>
-                <ButtonLink
-                  href={safeBannerHref(banner.href) as Route}
-                  variant="accent"
-                  aria-label={`Ver destino de «${banner.title}»`}
-                >
-                  Ver destino
-                </ButtonLink>
+            {visible.map((banner) => (
+              <li key={banner.id}>
+                <BannerCard banner={banner} />
               </li>
             ))}
           </ul>

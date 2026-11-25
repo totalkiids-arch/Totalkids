@@ -11,6 +11,3 @@ export {
   type AdminRole,
   type AdminSection,
 } from "./domain/admin-role";
-
-// Panel: historial de actividad (lo compone la página de /admin/actividad).
-export { listActivity as listUserActivity } from "./container";

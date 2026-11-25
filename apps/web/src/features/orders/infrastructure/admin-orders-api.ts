@@ -6,7 +6,10 @@ import {
   ORDER_PAYMENT_STATES,
   REFUND_STATUSES,
   type AdminOrderDetail,
+  type AttemptResolution,
+  type AdminOrderListItem,
   type HistoryEntry,
+  type PanelSummary,
 } from "../domain/admin-order";
 import type { AdminOrderListPage } from "../domain/admin-order-query";
 import { ORDER_STATUS_LABEL, ORDER_STATUSES } from "../domain/order";
@@ -118,12 +121,15 @@ const ApiOrderDetail = z.object({
   }),
   payments: z.array(
     z.object({
+      id: z.string(),
       commerceOrder: z.string(),
       status: z.string(),
       label: z.string(),
       amount: int,
       createdAt: z.string(),
       lastCheckedAt: z.string().nullable(),
+      reconcilable: z.boolean().optional(),
+      resolutions: z.array(z.string()).optional(),
     }),
   ),
   refunds: z.array(ApiRefund),
@@ -198,21 +204,23 @@ function activityTitle(action: string, details: Record<string, unknown>): Histor
 const actorOf = (entry: { actorName: string | null; actorLabel: string }) =>
   entry.actorName ? `${entry.actorName} (${entry.actorLabel})` : entry.actorLabel;
 
+const toListItem = (o: z.output<typeof ApiOrderSummary>): AdminOrderListItem => ({
+  ref: o.ref,
+  createdAt: o.createdAt,
+  buyerName: o.buyerName,
+  email: o.buyerEmail,
+  status: o.status,
+  paymentStatus: o.paymentStatus,
+  paymentLabel: o.paymentLabel,
+  deliveryMethod: o.deliveryMethod,
+  invoicePending: o.invoicePending,
+  total: o.total,
+});
+
 export function toOrderListPage(body: unknown): AdminOrderListPage {
   const data = parse(z.object({ items: z.array(ApiOrderSummary), meta: PageMeta }), body);
   return {
-    items: data.items.map((o) => ({
-      ref: o.ref,
-      createdAt: o.createdAt,
-      buyerName: o.buyerName,
-      email: o.buyerEmail,
-      status: o.status,
-      paymentStatus: o.paymentStatus,
-      paymentLabel: o.paymentLabel,
-      deliveryMethod: o.deliveryMethod,
-      invoicePending: o.invoicePending,
-      total: o.total,
-    })),
+    items: data.items.map(toListItem),
     total: data.meta.total,
     page: data.meta.page,
     pageCount: Math.max(1, data.meta.totalPages),
@@ -294,12 +302,16 @@ export function toAdminOrderDetail(body: unknown): AdminOrderDetail {
     },
     payment: { status: o.payment.status, label: o.payment.label, paidAt: o.payment.paidAt ?? null },
     attempts: o.payments.map((p) => ({
+      id: p.id,
       commerceOrder: p.commerceOrder,
       status: p.status,
       label: p.label,
       amount: p.amount,
       createdAt: p.createdAt,
       lastCheckedAt: p.lastCheckedAt,
+      reconcilable: p.reconcilable ?? false,
+      // Una resolución desconocida (API más nueva) no se ofrece.
+      resolutions: (p.resolutions ?? []).filter(isAttemptResolution),
     })),
     refunds: o.refunds.map((r) => ({
       id: r.id,
@@ -314,5 +326,70 @@ export function toAdminOrderDetail(body: unknown): AdminOrderDetail {
     transitions: o.availableTransitions,
     canRecordRestock: o.canRecordRestock,
     blockedByUnresolvedPayment: o.blockedByUnresolvedPayment,
+  };
+}
+
+const ApiPanelSummary = z.object({
+  byStatus: z.record(z.string(), int),
+  paymentsInReview: int,
+  paymentsPending: int,
+  recentOrders: z.array(ApiOrderSummary),
+  sales: z
+    .object({
+      period: z.object({ from: z.string(), to: z.string() }),
+      charged: int,
+      refunded: int,
+      net: int,
+    })
+    .nullable(),
+  lowStockVariants: int.nullable(),
+  alerts: z
+    .object({
+      total: int,
+      items: z.array(
+        z.object({
+          orderRef: z.string(),
+          orderStatus: Status,
+          reason: z.string().nullable(),
+          since: z.string(),
+        }),
+      ),
+    })
+    .optional(),
+});
+
+const RESOLUTIONS: readonly string[] = ["release", "refund_pending", "confirm"];
+const isAttemptResolution = (value: string): value is AttemptResolution =>
+  RESOLUTIONS.includes(value);
+
+/** GET /admin/summary. Los estados sin pedidos cuentan 0. */
+export function toPanelSummary(body: unknown): PanelSummary {
+  const s = parse(ApiPanelSummary, body);
+  return {
+    byStatus: Object.fromEntries(
+      ORDER_STATUSES.map((status) => [status, s.byStatus[status] ?? 0]),
+    ) as PanelSummary["byStatus"],
+    paymentsInReview: s.paymentsInReview,
+    paymentsPending: s.paymentsPending,
+    recentOrders: s.recentOrders.map(toListItem),
+    sales: s.sales
+      ? {
+          from: s.sales.period.from,
+          to: s.sales.period.to,
+          charged: s.sales.charged,
+          refunded: s.sales.refunded,
+          net: s.sales.net,
+        }
+      : null,
+    lowStockVariants: s.lowStockVariants,
+    alerts: {
+      total: s.alerts?.total ?? 0,
+      items: (s.alerts?.items ?? []).map((a) => ({
+        ref: a.orderRef,
+        status: a.orderStatus,
+        reason: a.reason,
+        since: a.since,
+      })),
+    },
   };
 }

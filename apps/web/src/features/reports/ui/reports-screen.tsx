@@ -1,4 +1,8 @@
+import type { Route } from "next";
+import Link from "next/link";
+
 import { CellTitle, DataTable } from "@/shared/ui/admin/data-table";
+import { ExportNotice } from "@/shared/ui/admin/export-notice";
 import { FilterBar } from "@/shared/ui/admin/filter-bar";
 import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
@@ -8,7 +12,7 @@ import { buttonClasses } from "@/shared/ui/button";
 import { formatPrice } from "@/shared/ui/format-price";
 import { TextField } from "@/shared/ui/form";
 
-import type { ReportPeriod, SalesReport } from "../domain/sales-report";
+import { reportPeriodSearch, type SalesReport } from "../domain/sales-report";
 
 const DAY = new Intl.DateTimeFormat("es-CL", {
   day: "numeric",
@@ -27,20 +31,29 @@ const DATE_TIME = new Intl.DateTimeFormat("es-CL", {
   timeZone: "America/Santiago",
 });
 
-const exportHref = (period: ReportPeriod) =>
-  `/admin/reportes/exportar?desde=${period.from}&hasta=${period.to}`;
+const orderLink = (ref: string) => (
+  <Link
+    href={`/admin/pedidos/${encodeURIComponent(ref)}` as Route}
+    className="text-brand-blue underline-offset-4 hover:underline"
+  >
+    #{ref}
+  </Link>
+);
 
 /** Panel administrativo · Reportes de ventas (RF-30). */
 export function ReportsScreen({
   report,
   error,
   canExport,
+  aviso,
 }: {
   report: SalesReport;
   /** Error del período pedido; el reporte muestra el período por defecto. */
   error?: string;
   /** Exportar es solo del Administrador (SRS: exportaciones). */
   canExport: boolean;
+  /** `?aviso=` de la URL (exportación fallida). */
+  aviso?: unknown;
 }) {
   const { period } = report;
   return (
@@ -50,13 +63,17 @@ export function ReportsScreen({
         description="Cobros confirmados por Flow en el período. Los reembolsos se informan por separado."
         actions={
           canExport ? (
-            <a href={exportHref(period)} className={buttonClasses({ variant: "outline" })}>
+            <a
+              href={`/admin/reportes/exportar${reportPeriodSearch(period)}`}
+              className={buttonClasses({ variant: "outline" })}
+            >
               Exportar CSV
             </a>
           ) : null
         }
       />
       {error ? <LiveNotice message={error} tone="warning" /> : null}
+      <ExportNotice aviso={aviso} />
 
       <FilterBar label="Período del reporte" submitLabel="Aplicar período">
         <TextField
@@ -90,7 +107,7 @@ export function ReportsScreen({
         <StatCard
           label="Reembolsos registrados"
           value={formatPrice(report.refunded)}
-          note="Procesados en el período"
+          note={`${report.refundsCount} procesado${report.refundsCount === 1 ? "" : "s"} en el período`}
         />
         <StatCard
           label="Neto registrado"
@@ -114,7 +131,7 @@ export function ReportsScreen({
           columns={[
             { key: "product", label: "Producto" },
             { key: "units", label: "Unidades", align: "end" },
-            { key: "amount", label: "Productos y extras", align: "end" },
+            { key: "amount", label: "Productos y extras (antes del descuento)", align: "end" },
           ]}
           rows={report.byProduct.map((p) => ({
             key: p.sku,
@@ -160,9 +177,11 @@ export function ReportsScreen({
             { key: "refunded", label: "Reembolsado en el período", align: "end" },
           ]}
           rows={report.sales.map((s) => ({
-            key: s.orderId,
+            key: `${s.orderRef}-${s.paidAt}`,
             cells: {
-              order: <CellTitle title={`#${s.orderId}`} meta={s.buyerName} />,
+              order: (
+                <CellTitle title={orderLink(s.orderRef)} meta={`${s.buyerName} · ${s.method}`} />
+              ),
               date: DATE_TIME.format(new Date(s.paidAt)),
               charged: formatPrice(s.charged),
               refunded: s.refundedInPeriod > 0 ? formatPrice(s.refundedInPeriod) : "—",
@@ -172,9 +191,30 @@ export function ReportsScreen({
         />
       </AdminPanel>
 
+      <AdminPanel title="Reembolsos del período" flush>
+        <DataTable
+          caption="Reembolsos procesados del período"
+          columns={[
+            { key: "order", label: "Pedido" },
+            { key: "date", label: "Fecha" },
+            { key: "reference", label: "Referencia" },
+            { key: "amount", label: "Monto", align: "end" },
+          ]}
+          rows={report.refunds.map((r) => ({
+            key: r.id,
+            cells: {
+              order: <CellTitle title={orderLink(r.orderRef)} meta={r.method} />,
+              date: formatDay(r.date),
+              reference: r.reference,
+              amount: formatPrice(r.amount),
+            },
+          }))}
+          empty="No hay reembolsos procesados en este período."
+        />
+      </AdminPanel>
+
       <InfoNote>
-        Datos de demostración. No se incluyen pedidos pendientes, rechazados, en revisión ni
-        vencidos. Los reembolsos cuentan según su propia fecha, aunque el cobro sea de otro período.
+        {report.criteria} No se incluyen pedidos pendientes, rechazados, en revisión ni vencidos.
         Neto = cobros menos reembolsos registrados.
       </InfoNote>
     </>

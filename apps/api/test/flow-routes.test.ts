@@ -5,7 +5,6 @@ import type { PrismaClient } from "../src/lib/prisma.js";
 import { FlowRejectedError, FlowUncertainError } from "../src/services/flow/client.js";
 import { FLOW_PRODUCTION_BASE, parseFlowConfig } from "../src/services/flow/config.js";
 import { seal, unseal } from "../src/services/flow/seal.js";
-import { queryAttempt } from "../src/services/flow/attempt.js";
 import type { FlowGateway } from "../src/services/flow/start.js";
 import { buildTestApp, csrfHeaders } from "./helpers.js";
 
@@ -42,24 +41,6 @@ describe("URL de pago cifrada", () => {
     expect(unseal(sealed, "otra")).toBeNull();
     expect(unseal(`AAAA${sealed.slice(4)}`, "clave")).toBeNull();
     expect(unseal("", "clave")).toBeNull();
-  });
-});
-
-describe("consulta de un intento", () => {
-  it("usa el token guardado; sin él, el número de orden", async () => {
-    const getStatus = vi.fn().mockResolvedValue({});
-    const getStatusByCommerceOrder = vi.fn().mockResolvedValue({});
-    const flow = {
-      client: { createPayment: vi.fn(), getStatus, getStatusByCommerceOrder },
-      sealSecret: "clave",
-    };
-    const stored = seal(`https://sandbox.flow.cl/pay?token=${TOKEN}`, "clave");
-    const query = (redirectUrlEncrypted: string | null) =>
-      queryAttempt(flow, { commerceOrder: "TK-1-1", redirectUrlEncrypted });
-    expect(await query(stored)).toMatchObject({ token: TOKEN });
-    expect(getStatus).toHaveBeenCalledWith(TOKEN);
-    await query(null);
-    expect(getStatusByCommerceOrder).toHaveBeenCalledWith("TK-1-1");
   });
 });
 

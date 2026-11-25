@@ -1,8 +1,10 @@
 "use server";
 
+import type { Route } from "next";
+import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { saveCheckoutDetails, startDemoPayment, type SaveDetailsResult } from "../container";
+import { saveCheckoutDetails, startPayment, type SaveDetailsResult } from "../container";
 
 /** Estado del formulario "Datos y facturación" (useActionState). null = sin enviar. */
 export type CheckoutDetailsState = Extract<SaveDetailsResult, { ok: false }> | null;
@@ -25,16 +27,19 @@ export async function submitCheckoutDetailsAction(
 export type PaymentState = { error: string } | null;
 
 /**
- * Envía el paso "Pago" (demostración de Flow). Sin condiciones aceptadas
- * devuelve el error; si faltan datos o el carrito cambió, vuelve a "Datos y
- * facturación" o al carrito; si todo está en orden, lleva al resultado del pago.
+ * Envía el paso "Pago": crea el pedido y lleva a Flow (o al resultado si ya
+ * hay un pago en curso). Sin condiciones aceptadas devuelve el error; si faltan
+ * datos o el carrito cambió, vuelve a "Datos y facturación" o al carrito. Con
+ * otro error, la página se vuelve a cotizar (p. ej. un total que cambió).
  */
 export async function startPaymentAction(
   _: PaymentState,
   formData: FormData,
 ): Promise<PaymentState> {
-  const result = await startDemoPayment(Object.fromEntries(formData));
-  if (result.ok) redirect(result.redirectTo);
+  const result = await startPayment(Object.fromEntries(formData));
+  // A la pasarela de Flow (URL externa, ya verificada) o al resultado.
+  if (result.ok) redirect(result.redirectTo as Route);
   if (result.reason === "details") redirect(result.redirectTo);
+  if (result.reason === "error") refresh();
   return { error: result.error };
 }
