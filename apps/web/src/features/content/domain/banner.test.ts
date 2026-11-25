@@ -4,11 +4,9 @@ import {
   FALLBACK_HREF,
   isInternalHref,
   safeBannerHref,
-  sortBanners,
   TEXT_MAX,
   TITLE_MAX,
   validateBanner,
-  type Banner,
   type BannerInput,
 } from "./banner";
 
@@ -18,6 +16,8 @@ const input = (overrides: Partial<BannerInput> = {}): BannerInput => ({
   href: "/catalogo",
   order: "1",
   active: true,
+  startsAt: "",
+  endsAt: "",
   ...overrides,
 });
 
@@ -71,6 +71,8 @@ describe("validateBanner", () => {
         href: "/catalogo",
         order: 3,
         active: true,
+        startsAt: null,
+        endsAt: null,
       },
     });
   });
@@ -104,22 +106,18 @@ describe("validateBanner", () => {
   });
 });
 
-describe("sortBanners", () => {
-  const banner = (id: string, order: number, title: string): Banner => ({
-    id,
-    title,
-    text: "Texto",
-    href: "/",
-    order,
-    active: true,
+describe("ventana de publicación", () => {
+  it("es opcional y se guarda en ISO desde la hora de Chile", () => {
+    const result = validateBanner(input({ startsAt: "2026-12-01T09:00", endsAt: "" }));
+    expect(result.ok && result.draft.startsAt).toBe("2026-12-01T12:00:00.000Z");
+    expect(result.ok && result.draft.endsAt).toBeNull();
   });
 
-  it("ordena por orden y desempata por título", () => {
-    const sorted = sortBanners([
-      banner("a", 2, "Zeta"),
-      banner("b", 1, "Beta"),
-      banner("c", 2, "Alfa"),
-    ]);
-    expect(sorted.map((b) => b.id)).toEqual(["b", "c", "a"]);
+  it("el término debe ser posterior al inicio", () => {
+    const errors = errorsOf(
+      validateBanner(input({ startsAt: "2026-12-01T09:00", endsAt: "2026-12-01T09:00" })),
+    );
+    expect(errors.endsAt).toMatch(/posterior al inicio/);
+    expect(errorsOf(validateBanner(input({ startsAt: "mañana" }))).startsAt).toBeDefined();
   });
 });

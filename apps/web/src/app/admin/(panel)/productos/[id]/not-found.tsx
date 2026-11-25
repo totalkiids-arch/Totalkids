@@ -7,8 +7,7 @@ export default function NotFound() {
         No encontramos este producto
       </h1>
       <p className="text-lg text-text-body">
-        El enlace no corresponde a ningún producto del catálogo de demostración. Los productos
-        creados en la demo se pierden al reiniciar el servidor.
+        El enlace no corresponde a ningún producto del catálogo. Búscalo en el listado de productos.
       </p>
       <ButtonLink href="/admin/productos" className="self-start">
         Volver a productos

@@ -1,7 +1,8 @@
 import type { Route } from "next";
 
 import { FeaturedProducts, listFeaturedProducts } from "@/features/catalog";
-import { campaignFor, SeasonalHeroScene, storeThemeAdmin } from "@/features/themes";
+import { StoreBanners } from "@/features/content";
+import { campaignFor, getStoreTheme, SeasonalHeroScene } from "@/features/themes";
 
 import { Clients } from "./sections/clients";
 import { Hero, type HeroSlideData } from "./sections/hero";
@@ -14,13 +15,12 @@ import { TrustStrip } from "./sections/trust-strip";
 
 /** Tienda y compra · Inicio. Réplica de la portada de la maqueta aprobada. */
 export async function HomeScreen() {
-  const [featured, theme] = await Promise.all([
-    listFeaturedProducts(),
-    storeThemeAdmin.getActive(),
-  ]);
+  const [featured, theme] = await Promise.all([listFeaturedProducts(), getStoreTheme()]);
   return (
     <>
       <Hero campaignSlide={campaignSlide(theme)} />
+      {/* Banners publicados desde el panel (RF-28); nada si no hay o la API no responde. */}
+      <StoreBanners />
       <TrustStrip />
       <ShopByLevel />
       <FeaturedProducts products={featured} />

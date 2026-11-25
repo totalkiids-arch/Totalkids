@@ -1,91 +1,67 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildActivityPage,
-  PAGE_SIZE,
+  activityHref,
   parseActivityQuery,
   toActivitySearch,
-  type ActivityEntry,
+  toApiActivitySearch,
 } from "./activity";
 
-const entry = (overrides: Partial<ActivityEntry>): ActivityEntry => ({
-  id: "x",
-  at: "2026-11-20T12:00:00.000Z",
-  actor: "Administrador",
-  area: "pedidos",
-  action: "Estado: Confirmado → En preparación",
-  reason: null,
-  reference: null,
-  ...overrides,
-});
+const ACTOR = "0195f3a0-7c1e-7d2a-9b44-2f1c3a5d6e70";
 
 describe("parseActivityQuery", () => {
-  it("lee área, responsable y página", () => {
+  it("lee área, responsable, fechas y página", () => {
     expect(
-      parseActivityQuery({ area: "inventario", responsable: "Operador", pagina: "2" }),
-    ).toEqual({ area: "inventario", actor: "Operador", page: 2 });
+      parseActivityQuery({
+        area: "configuracion",
+        responsable: ACTOR,
+        desde: "2026-11-01",
+        hasta: "2026-11-30",
+        pagina: "2",
+      }),
+    ).toEqual({
+      area: "configuracion",
+      actor: ACTOR,
+      from: "2026-11-01",
+      to: "2026-11-30",
+      page: 2,
+    });
   });
 
   it("ignora valores desconocidos o inválidos", () => {
-    expect(parseActivityQuery({ area: "magia", pagina: "-3" })).toEqual({
-      area: null,
-      actor: null,
-      page: 1,
-    });
-    expect(parseActivityQuery({ pagina: "abc" }).page).toBe(1);
-  });
-
-  it("arma la URL sin los valores por defecto", () => {
-    expect(toActivitySearch({ area: null, actor: null, page: 1 })).toBe("");
-    expect(toActivitySearch({ area: "pagos", actor: "Operador", page: 3 })).toBe(
-      "?area=pagos&responsable=Operador&pagina=3",
-    );
+    expect(
+      parseActivityQuery({ area: "magia", responsable: "Operador", desde: "ayer", pagina: "-3" }),
+    ).toEqual({ area: null, actor: null, from: null, to: null, page: 1 });
   });
 });
 
-describe("buildActivityPage", () => {
-  const sources = [
-    [
-      entry({ id: "p1", at: "2026-11-20T10:00:00.000Z", area: "pedidos" }),
-      entry({ id: "p2", at: "2026-11-20T14:00:00.000Z", area: "reembolsos", actor: "Operador" }),
-    ],
-    [entry({ id: "i1", at: "2026-11-20T12:00:00.000Z", area: "inventario" })],
-  ];
-
-  it("junta todas las fuentes, del más reciente al más antiguo", () => {
-    const page = buildActivityPage(sources, { area: null, actor: null, page: 1 });
-    expect(page.entries.map((e) => e.id)).toEqual(["p2", "i1", "p1"]);
-    expect(page.total).toBe(3);
-    expect(page.actors).toEqual(["Administrador", "Operador"]);
-    expect(page.byArea.pedidos).toBe(1);
-    expect(page.byArea.usuarios).toBe(0);
+describe("búsquedas", () => {
+  it("arma la URL del panel y la consulta a la API", () => {
+    const query = parseActivityQuery({ area: "pedidos", responsable: ACTOR, pagina: "3" });
+    expect(toActivitySearch(query)).toBe(`?area=pedidos&responsable=${ACTOR}&pagina=3`);
+    expect(toActivitySearch({ page: 1 })).toBe("");
+    expect(toApiActivitySearch(query)).toBe(`page=3&pageSize=20&area=pedidos&actor=${ACTOR}`);
   });
+});
 
-  it("filtra por área y por responsable", () => {
-    expect(
-      buildActivityPage(sources, { area: "inventario", actor: null, page: 1 }).entries.map(
-        (e) => e.id,
-      ),
-    ).toEqual(["i1"]);
-    expect(
-      buildActivityPage(sources, { area: null, actor: "Operador", page: 1 }).entries.map(
-        (e) => e.id,
-      ),
-    ).toEqual(["p2"]);
-  });
-
-  it("pagina y acota la página pedida", () => {
-    const many = Array.from({ length: PAGE_SIZE + 5 }, (_, i) =>
-      entry({ id: `e${i}`, at: `2026-11-20T12:${String(i).padStart(2, "0")}:00.000Z` }),
+describe("activityHref", () => {
+  it("abre la ficha de pedidos, solicitudes, productos y cupones", () => {
+    expect(activityHref({ type: "order", id: ACTOR, label: "TK-1048" })).toBe(
+      "/admin/pedidos/TK-1048",
     );
-    const second = buildActivityPage([many], { area: null, actor: null, page: 2 });
-    expect(second.pageCount).toBe(2);
-    expect(second.entries).toHaveLength(5);
-    expect(buildActivityPage([many], { area: null, actor: null, page: 99 }).page).toBe(2);
+    expect(activityHref({ type: "service_request", id: ACTOR, label: "SOL-1002" })).toBe(
+      "/admin/solicitudes?id=SOL-1002#detalle",
+    );
+    expect(activityHref({ type: "product", id: ACTOR, label: "TK-6536" })).toBe(
+      `/admin/productos/${ACTOR}`,
+    );
+    expect(activityHref({ type: "coupon", id: ACTOR, label: "APRENDER10" })).toBe(
+      `/admin/cupones?editar=${ACTOR}#editor`,
+    );
   });
 
-  it("sin actividad, una página vacía", () => {
-    const empty = buildActivityPage([], { area: null, actor: null, page: 1 });
-    expect(empty).toMatchObject({ entries: [], total: 0, page: 1, pageCount: 1, actors: [] });
+  it("sin número visible lleva a la lista; sin pantalla, no enlaza", () => {
+    expect(activityHref({ type: "order", id: ACTOR, label: ACTOR })).toBe("/admin/pedidos");
+    expect(activityHref({ type: "export", id: "orders", label: "Pedidos" })).toBeNull();
   });
 });

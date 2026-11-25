@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { REGIONS } from "@/shared/config/regions";
-
-import {
-  parseClp,
-  sortZones,
-  validateSettings,
-  validateZone,
-  type ShippingZone,
-} from "./shipping-zone";
+import { parseClp, validateSettings, validateZone, type ShippingZone } from "./shipping-zone";
 
 const zone = (id: string, overrides: Partial<ShippingZone> = {}): ShippingZone => ({
   id,
@@ -16,6 +8,7 @@ const zone = (id: string, overrides: Partial<ShippingZone> = {}): ShippingZone =
   commune: "Ñuñoa",
   price: 4990,
   leadTime: "3 a 5 días hábiles",
+  freeShippingEligible: true,
   active: true,
   ...overrides,
 });
@@ -25,6 +18,7 @@ const input = (overrides: Partial<Parameters<typeof validateZone>[0]> = {}) => (
   commune: "Providencia",
   price: "4990",
   leadTime: "3 a 5 días hábiles",
+  freeShippingEligible: true,
   active: true,
   ...overrides,
 });
@@ -55,6 +49,7 @@ describe("validar zona", () => {
         commune: "Las Condes",
         price: 5990,
         leadTime: "3 a 5 días hábiles",
+        freeShippingEligible: true,
         active: true,
       },
     });
@@ -81,6 +76,12 @@ describe("validar zona", () => {
     expect(validateZone(input({ region: "VS", commune: "Ñuñoa" }), [zone("1")]).ok).toBe(true);
   });
 
+  it("tarifa vacía es «a coordinar»", () => {
+    const result = validateZone(input({ price: " ", freeShippingEligible: false }), []);
+    expect(result.ok && result.draft.price).toBeNull();
+    expect(result.ok && result.draft.freeShippingEligible).toBe(false);
+  });
+
   it("acepta tarifa 0 y rechaza montos desmedidos", () => {
     expect(validateZone(input({ price: "0" }), []).ok).toBe(true);
     expect(validateZone(input({ price: "5000000" }), []).ok).toBe(false);
@@ -95,6 +96,7 @@ describe("validar zona", () => {
 describe("validar condiciones generales", () => {
   const settings = (overrides: Partial<Parameters<typeof validateSettings>[0]> = {}) =>
     validateSettings({
+      pickupEnabled: true,
       pickup: "Tienda, lunes a viernes 10 a 18 h",
       freeShippingThreshold: "150.000",
       reservationMinutes: "15",
@@ -105,6 +107,7 @@ describe("validar condiciones generales", () => {
     expect(settings()).toEqual({
       ok: true,
       settings: {
+        pickupEnabled: true,
         pickup: "Tienda, lunes a viernes 10 a 18 h",
         freeShippingThreshold: 150000,
         reservationMinutes: 15,
@@ -134,20 +137,5 @@ describe("validar condiciones generales", () => {
     expect(settings({ reservationMinutes: "121" }).ok).toBe(false);
     expect(settings({ reservationMinutes: "1.5" }).ok).toBe(false);
     expect(settings({ reservationMinutes: "120" }).ok).toBe(true);
-  });
-});
-
-describe("orden de zonas", () => {
-  it("ordena por región de norte a sur y luego por comuna", () => {
-    const sorted = sortZones(
-      [
-        zone("a", { region: "AR", commune: "Temuco" }),
-        zone("b", { commune: "Santiago" }),
-        zone("c", { commune: "Ñuñoa" }),
-        zone("d", { region: "VS", commune: "Viña del Mar" }),
-      ],
-      REGIONS.map((r) => r.code),
-    );
-    expect(sorted.map((z) => z.id)).toEqual(["d", "c", "b", "a"]);
   });
 });

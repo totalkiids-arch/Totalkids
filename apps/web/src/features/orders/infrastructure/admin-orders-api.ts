@@ -6,7 +6,9 @@ import {
   ORDER_PAYMENT_STATES,
   REFUND_STATUSES,
   type AdminOrderDetail,
+  type AdminOrderListItem,
   type HistoryEntry,
+  type PanelSummary,
 } from "../domain/admin-order";
 import type { AdminOrderListPage } from "../domain/admin-order-query";
 import { ORDER_STATUS_LABEL, ORDER_STATUSES } from "../domain/order";
@@ -198,21 +200,23 @@ function activityTitle(action: string, details: Record<string, unknown>): Histor
 const actorOf = (entry: { actorName: string | null; actorLabel: string }) =>
   entry.actorName ? `${entry.actorName} (${entry.actorLabel})` : entry.actorLabel;
 
+const toListItem = (o: z.output<typeof ApiOrderSummary>): AdminOrderListItem => ({
+  ref: o.ref,
+  createdAt: o.createdAt,
+  buyerName: o.buyerName,
+  email: o.buyerEmail,
+  status: o.status,
+  paymentStatus: o.paymentStatus,
+  paymentLabel: o.paymentLabel,
+  deliveryMethod: o.deliveryMethod,
+  invoicePending: o.invoicePending,
+  total: o.total,
+});
+
 export function toOrderListPage(body: unknown): AdminOrderListPage {
   const data = parse(z.object({ items: z.array(ApiOrderSummary), meta: PageMeta }), body);
   return {
-    items: data.items.map((o) => ({
-      ref: o.ref,
-      createdAt: o.createdAt,
-      buyerName: o.buyerName,
-      email: o.buyerEmail,
-      status: o.status,
-      paymentStatus: o.paymentStatus,
-      paymentLabel: o.paymentLabel,
-      deliveryMethod: o.deliveryMethod,
-      invoicePending: o.invoicePending,
-      total: o.total,
-    })),
+    items: data.items.map(toListItem),
     total: data.meta.total,
     page: data.meta.page,
     pageCount: Math.max(1, data.meta.totalPages),
@@ -314,5 +318,44 @@ export function toAdminOrderDetail(body: unknown): AdminOrderDetail {
     transitions: o.availableTransitions,
     canRecordRestock: o.canRecordRestock,
     blockedByUnresolvedPayment: o.blockedByUnresolvedPayment,
+  };
+}
+
+const ApiPanelSummary = z.object({
+  byStatus: z.record(z.string(), int),
+  paymentsInReview: int,
+  paymentsPending: int,
+  recentOrders: z.array(ApiOrderSummary),
+  sales: z
+    .object({
+      period: z.object({ from: z.string(), to: z.string() }),
+      charged: int,
+      refunded: int,
+      net: int,
+    })
+    .nullable(),
+  lowStockVariants: int.nullable(),
+});
+
+/** GET /admin/summary. Los estados sin pedidos cuentan 0. */
+export function toPanelSummary(body: unknown): PanelSummary {
+  const s = parse(ApiPanelSummary, body);
+  return {
+    byStatus: Object.fromEntries(
+      ORDER_STATUSES.map((status) => [status, s.byStatus[status] ?? 0]),
+    ) as PanelSummary["byStatus"],
+    paymentsInReview: s.paymentsInReview,
+    paymentsPending: s.paymentsPending,
+    recentOrders: s.recentOrders.map(toListItem),
+    sales: s.sales
+      ? {
+          from: s.sales.period.from,
+          to: s.sales.period.to,
+          charged: s.sales.charged,
+          refunded: s.sales.refunded,
+          net: s.sales.net,
+        }
+      : null,
+    lowStockVariants: s.lowStockVariants,
   };
 }

@@ -30,7 +30,7 @@ export function LiveNotice({
   );
 }
 
-/** Aviso fijo informativo (p. ej. que los datos son de demostración). */
+/** Aviso fijo informativo (p. ej. una regla que conviene tener a la vista). */
 export function InfoNote({ children }: { children: ReactNode }) {
   return (
     <div className="mb-5 rounded-lg border border-input-border bg-cream px-4 py-3.5 text-sm text-on-yellow">

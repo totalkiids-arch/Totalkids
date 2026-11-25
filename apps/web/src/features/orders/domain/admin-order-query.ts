@@ -6,45 +6,7 @@
  * sin JavaScript.
  */
 import type { AdminOrderListItem } from "./admin-order";
-import {
-  ORDER_STATUS_LABEL,
-  ORDER_STATUSES,
-  orderTotal,
-  sortByNewest,
-  type Order,
-  type OrderStatus,
-} from "./order";
-
-/** Estado del pago, derivado del estado del pedido. */
-export type PaymentStatus = "paid" | "pending" | "uncertain" | "unpaid";
-
-export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
-  paid: "Pagado",
-  pending: "Pendiente",
-  uncertain: "Por conciliar",
-  unpaid: "Sin pago",
-};
-
-/**
- * Qué se sabe del pago a partir del estado. Un pedido cancelado se trata como
- * no pagado: las devoluciones de pedidos ya pagados se registran en Pagos.
- */
-export function paymentStatus(status: OrderStatus): PaymentStatus {
-  switch (status) {
-    case "pending_payment":
-      return "pending";
-    case "in_review":
-      return "uncertain";
-    case "confirmed":
-    case "preparing":
-    case "shipped":
-    case "delivered":
-      return "paid";
-    case "cancelled":
-    case "expired":
-      return "unpaid";
-  }
-}
+import { ORDER_STATUS_LABEL, ORDER_STATUSES, type OrderStatus } from "./order";
 
 export const ORDER_STATUS_FILTERS = [
   { value: "todos", label: "Todos" },
@@ -92,14 +54,21 @@ export function toAdminOrderSearch(
   return text ? `?${text}` : "";
 }
 
+/** Filtros de GET /admin/orders y de la exportación CSV (sin página). */
+export function toApiOrderFilters(query: Pick<AdminOrderQuery, "q" | "status">): URLSearchParams {
+  const params = new URLSearchParams();
+  if (query.q) params.set("q", query.q);
+  if (query.status !== "todos") params.set("status", query.status);
+  return params;
+}
+
 /** Parámetros de GET /admin/orders: búsqueda, estado y página (la API pagina y ordena). */
 export function toApiOrderSearch(
   query: AdminOrderQuery,
   pageSize = ADMIN_ORDERS_PAGE_SIZE,
 ): string {
   const params = new URLSearchParams({ page: String(query.page), pageSize: String(pageSize) });
-  if (query.q) params.set("q", query.q);
-  if (query.status !== "todos") params.set("status", query.status);
+  for (const [key, value] of toApiOrderFilters(query)) params.set(key, value);
   return params.toString();
 }
 
@@ -108,75 +77,4 @@ export interface AdminOrderListPage {
   total: number;
   page: number;
   pageCount: number;
-}
-
-/** Sin tildes ni mayúsculas, para que "gonzalez" encuentre "González". */
-function fold(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-/** Busca por número, nombre o correo y filtra por estado. Más recientes primero. */
-export function filterAdminOrders(
-  orders: readonly Order[],
-  query: Pick<AdminOrderQuery, "q" | "status">,
-): Order[] {
-  const term = fold(query.q);
-  return sortByNewest(orders).filter((order) => {
-    if (query.status !== "todos" && order.status !== query.status) return false;
-    if (term === "") return true;
-    return [order.id, order.buyerName, order.email].some((field) => fold(field).includes(term));
-  });
-}
-
-export interface AdminOrderPage {
-  items: Order[];
-  total: number;
-  page: number;
-  pageCount: number;
-}
-
-/** Filtra y pagina; la página se ajusta al rango disponible. */
-export function applyAdminOrderQuery(
-  orders: readonly Order[],
-  query: AdminOrderQuery,
-  pageSize = ADMIN_ORDERS_PAGE_SIZE,
-): AdminOrderPage {
-  const matches = filterAdminOrders(orders, query);
-  const pageCount = Math.max(1, Math.ceil(matches.length / pageSize));
-  const page = Math.min(query.page, pageCount);
-  return {
-    items: matches.slice((page - 1) * pageSize, page * pageSize),
-    total: matches.length,
-    page,
-    pageCount,
-  };
-}
-
-/**
- * Celda CSV segura: entre comillas, con las comillas duplicadas, y con un
- * apóstrofo delante si empieza como fórmula (=, +, -, @), para que una hoja de
- * cálculo no ejecute texto escrito por un cliente.
- */
-function csvCell(value: string | number): string {
-  const text = String(value);
-  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
-  return `"${safe.replace(/"/g, '""')}"`;
-}
-
-/** CSV del listado (con los filtros aplicados), separado por punto y coma para Excel en español. */
-export function ordersToCsv(orders: readonly Order[]): string {
-  const header = ["Pedido", "Fecha", "Cliente", "Correo", "Estado", "Pago", "Total CLP"];
-  const rows = orders.map((order) => [
-    order.id,
-    order.createdAt,
-    order.buyerName,
-    order.email,
-    ORDER_STATUS_LABEL[order.status],
-    PAYMENT_STATUS_LABEL[paymentStatus(order.status)],
-    orderTotal(order),
-  ]);
-  return [header, ...rows].map((row) => row.map(csvCell).join(";")).join("\r\n");
 }

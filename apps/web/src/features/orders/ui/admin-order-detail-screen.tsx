@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { getAdminSession } from "@/features/auth";
+import { chileDay } from "@/shared/lib/chile-time";
 import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
 import { LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
@@ -20,7 +21,6 @@ import {
   type AdminOrderDetail,
   type HistoryEntry,
 } from "../domain/admin-order";
-import { chileDate } from "../domain/order-workflow";
 import { resolveRefundAction } from "./admin-order-actions";
 import { InvoiceForm } from "./admin/invoice-form";
 import { AdminOrderStatusBadge, AdminPaymentBadge } from "./admin/order-badges";
@@ -279,8 +279,8 @@ function ManageOrder({ order }: { order: AdminOrderDetail }) {
 
 function RefundPanel({ order }: { order: AdminOrderDetail }) {
   const totals = order.refundTotals;
-  const today = chileDate(new Date().toISOString());
-  const paidOn = order.payment.paidAt ? chileDate(order.payment.paidAt) : today;
+  const today = chileDay(new Date().toISOString());
+  const paidOn = order.payment.paidAt ? chileDay(order.payment.paidAt) : today;
 
   return (
     <div className="flex flex-col gap-5">

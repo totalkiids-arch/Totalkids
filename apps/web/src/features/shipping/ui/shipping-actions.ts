@@ -6,14 +6,15 @@ import { z } from "zod";
 
 import { getAdminSession } from "@/features/auth";
 import { canAccessSection } from "@/features/users";
+import { attemptPanel, isPanelFailure } from "@/shared/lib/panel-errors";
 
 import { shippingAdmin } from "../container";
 import type { FieldErrors } from "../domain/shipping-zone";
 
 /*
- * Mutaciones de Despacho y retiro. Cada acción comprueba el rol (sesión DEMO,
- * ver features/auth) porque una acción se puede invocar sin pasar por la
- * pantalla, valida la forma con zod y delega las reglas en el puerto.
+ * Mutaciones de Despacho y retiro. Cada acción comprueba el rol (una acción se
+ * puede invocar sin pasar por la pantalla, y la API vuelve a autorizar), valida
+ * la forma con zod y delega en el puerto (la API).
  * Los formularios funcionan sin JavaScript (useActionState + redirect).
  */
 
@@ -22,7 +23,8 @@ const UNREADABLE = "No pudimos leer el formulario. Recarga la página.";
 
 async function canEdit() {
   const session = await getAdminSession();
-  return Boolean(session && canAccessSection(session.role, "despacho"));
+  if (!session) redirect("/admin/ingresar");
+  return canAccessSection(session.role, "despacho");
 }
 
 const str = (max: number) => z.string().max(max);
@@ -34,6 +36,7 @@ export interface ZoneFormValues {
   commune: string;
   price: string;
   leadTime: string;
+  freeShippingEligible: boolean;
   active: boolean;
 }
 
@@ -65,8 +68,13 @@ export async function saveZoneAction(
   if (!parsed.success) return { ...previous, errors: { form: UNREADABLE } };
 
   const { id, ...rest } = parsed.data;
-  const values = { ...rest, active: formData.get("active") === "1" };
-  const result = await shippingAdmin.saveZone(id || null, values);
+  const values = {
+    ...rest,
+    freeShippingEligible: formData.get("freeShippingEligible") === "1",
+    active: formData.get("active") === "1",
+  };
+  const result = await attemptPanel(() => shippingAdmin.saveZone(id || null, values));
+  if (isPanelFailure(result)) return { values, errors: { form: result.failed } };
   if (!result.ok) return { values, errors: result.errors };
 
   revalidatePath("/admin/despacho");
@@ -80,16 +88,24 @@ export async function toggleZoneAction(formData: FormData) {
   const parsed = ToggleZone.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect("/admin/despacho");
 
-  const zone = await shippingAdmin.setZoneActive(parsed.data.id, parsed.data.active === "1");
-  revalidatePath("/admin/despacho");
-  redirect(
-    `/admin/despacho?aviso=${zone ? (zone.active ? "zona-activada" : "zona-desactivada") : "no-existe"}`,
+  const zone = await attemptPanel(() =>
+    shippingAdmin.setZoneActive(parsed.data.id, parsed.data.active === "1"),
   );
+  revalidatePath("/admin/despacho");
+  const notice = isPanelFailure(zone)
+    ? "error"
+    : zone
+      ? zone.active
+        ? "zona-activada"
+        : "zona-desactivada"
+      : "no-existe";
+  redirect(`/admin/despacho?aviso=${notice}`);
 }
 
 // ── Condiciones generales ────────────────────────────────────────────────────
 
 export interface SettingsFormValues {
+  pickupEnabled: boolean;
   pickup: string;
   freeShippingThreshold: string;
   reservationMinutes: string;
@@ -118,8 +134,10 @@ export async function saveSettingsAction(
   });
   if (!parsed.success) return { ...previous, errors: { form: UNREADABLE } };
 
-  const result = await shippingAdmin.saveSettings(parsed.data);
-  if (!result.ok) return { values: parsed.data, errors: result.errors };
+  const values = { ...parsed.data, pickupEnabled: formData.get("pickupEnabled") === "1" };
+  const result = await attemptPanel(() => shippingAdmin.saveSettings(values));
+  if (isPanelFailure(result)) return { values, errors: { form: result.failed } };
+  if (!result.ok) return { values, errors: result.errors };
 
   revalidatePath("/admin/despacho");
   redirect("/admin/despacho?aviso=condiciones-guardadas#condiciones");

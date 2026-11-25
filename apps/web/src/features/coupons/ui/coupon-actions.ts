@@ -6,14 +6,16 @@ import { z } from "zod";
 
 import { getAdminSession } from "@/features/auth";
 import { canAccessSection } from "@/features/users";
+import { attemptPanel, isPanelFailure } from "@/shared/lib/panel-errors";
 
 import { couponAdmin } from "../container";
 import type { FieldErrors } from "../domain/coupon";
 
 /*
- * Mutaciones de Cupones. Cada acción comprueba el rol (sesión DEMO, ver
- * features/auth) porque una acción se puede invocar sin pasar por la pantalla,
- * valida la forma con zod y delega las reglas en el puerto (que usa el dominio).
+ * Mutaciones de Cupones. Cada acción comprueba el rol (una acción se puede
+ * invocar sin pasar por la pantalla, y la API vuelve a autorizar), valida la
+ * forma con zod y delega en el puerto (la API). Una sesión vencida lleva al
+ * ingreso; un 403 o la API caída, a un mensaje.
  * Los formularios funcionan sin JavaScript (useActionState + redirect).
  */
 
@@ -23,7 +25,8 @@ const PATH = "/admin/cupones";
 
 async function canEdit() {
   const session = await getAdminSession();
-  return Boolean(session && canAccessSection(session.role, "cupones"));
+  if (!session) redirect("/admin/ingresar");
+  return canAccessSection(session.role, "cupones");
 }
 
 const str = (max: number) => z.string().max(max);
@@ -71,7 +74,8 @@ export async function saveCouponAction(
 
   const { id, ...rest } = parsed.data;
   const values = { ...rest, active: formData.get("active") === "1" };
-  const result = await couponAdmin.save(id || null, values);
+  const result = await attemptPanel(() => couponAdmin.save(id || null, values));
+  if (isPanelFailure(result)) return { values, errors: { form: result.failed } };
   if (!result.ok) return { values, errors: result.errors };
 
   revalidatePath(PATH);
@@ -86,9 +90,18 @@ export async function toggleCouponAction(formData: FormData) {
   const parsed = ToggleForm.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(PATH);
 
-  const coupon = await couponAdmin.setActive(parsed.data.id, parsed.data.active === "1");
+  const coupon = await attemptPanel(() =>
+    couponAdmin.setActive(parsed.data.id, parsed.data.active === "1"),
+  );
   revalidatePath(PATH);
-  redirect(`${PATH}?aviso=${coupon ? (coupon.active ? "activado" : "desactivado") : "no-existe"}`);
+  const notice = isPanelFailure(coupon)
+    ? "error"
+    : coupon
+      ? coupon.active
+        ? "activado"
+        : "desactivado"
+      : "no-existe";
+  redirect(`${PATH}?aviso=${notice}`);
 }
 
 export async function deleteCouponAction(formData: FormData) {
@@ -96,8 +109,9 @@ export async function deleteCouponAction(formData: FormData) {
   const parsed = IdForm.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(PATH);
 
-  const result = await couponAdmin.remove(parsed.data.id);
+  const result = await attemptPanel(() => couponAdmin.remove(parsed.data.id));
   revalidatePath(PATH);
+  if (isPanelFailure(result)) redirect(`${PATH}?aviso=error`);
   if (result.ok) redirect(`${PATH}?aviso=eliminado`);
   redirect(`${PATH}?aviso=${result.reason === "in-use" ? "con-usos" : "no-existe"}`);
 }

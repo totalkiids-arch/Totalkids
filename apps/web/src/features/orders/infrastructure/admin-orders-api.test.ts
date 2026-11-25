@@ -4,7 +4,7 @@ import { PANEL_MESSAGES } from "@/shared/lib/panel-errors";
 
 import { needsTracking, statusOptionLabel } from "../domain/admin-order";
 import { toApiOrderSearch } from "../domain/admin-order-query";
-import { toAdminOrderDetail, toOrderListPage } from "./admin-orders-api";
+import { toAdminOrderDetail, toOrderListPage, toPanelSummary } from "./admin-orders-api";
 
 const detail = {
   id: "0195f3a0-0000-7000-8000-000000000001",
@@ -265,5 +265,61 @@ describe("retiro en taller", () => {
     expect(needsTracking("pickup", ["shipped"])).toBe(false);
     expect(needsTracking("shipping", ["shipped", "cancelled"])).toBe(true);
     expect(needsTracking("shipping", ["cancelled"])).toBe(false);
+  });
+});
+
+describe("toPanelSummary", () => {
+  const recent = {
+    id: "0195f3a0-0000-7000-8000-000000000002",
+    number: 1050,
+    ref: "TK-1050",
+    createdAt: "2026-11-24T12:00:00.000Z",
+    buyerName: "Ana Pérez",
+    buyerEmail: "ana@example.com",
+    status: "confirmed",
+    statusLabel: "Confirmado",
+    paymentStatus: "paid",
+    paymentLabel: "Pagado",
+    deliveryMethod: "pickup",
+    invoicePending: false,
+    total: 59990,
+  };
+
+  it("completa los estados sin pedidos y traduce los últimos pedidos", () => {
+    const summary = toPanelSummary({
+      byStatus: { confirmed: 2 },
+      paymentsInReview: 1,
+      paymentsPending: 0,
+      recentOrders: [recent],
+      sales: {
+        period: { from: "2026-11-01", to: "2026-11-25" },
+        charged: 100000,
+        refunded: 0,
+        net: 100000,
+      },
+      lowStockVariants: 3,
+    });
+    expect(summary.byStatus.confirmed).toBe(2);
+    expect(summary.byStatus.shipped).toBe(0);
+    expect(summary.recentOrders[0]).toMatchObject({ ref: "TK-1050", total: 59990 });
+    expect(summary.sales).toEqual({
+      from: "2026-11-01",
+      to: "2026-11-25",
+      charged: 100000,
+      refunded: 0,
+      net: 100000,
+    });
+  });
+
+  it("para el Operador, cobros y stock bajo llegan en null", () => {
+    const summary = toPanelSummary({
+      byStatus: {},
+      paymentsInReview: 0,
+      paymentsPending: 0,
+      recentOrders: [],
+      sales: null,
+      lowStockVariants: null,
+    });
+    expect([summary.sales, summary.lowStockVariants]).toEqual([null, null]);
   });
 });

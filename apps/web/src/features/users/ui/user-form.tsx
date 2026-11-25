@@ -93,8 +93,9 @@ export function UserForm({
         defaultChecked={state.values.active}
       />
       <AdminMuted>
-        Crear una cuenta aquí solo agrega un registro de ejemplo: no se envían invitaciones ni se
-        crean contraseñas. Siempre debe quedar al menos un Administrador activo.
+        {editing
+          ? "Siempre debe quedar al menos un Administrador activo, y nadie puede quitarse el rol ni desactivarse a sí mismo."
+          : "Al crear una cuenta activa le enviamos un correo para que defina su contraseña (nadie más la conoce). Siempre debe quedar al menos un Administrador activo."}
       </AdminMuted>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={pending}>

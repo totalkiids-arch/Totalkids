@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { getAdminSession } from "@/features/auth";
 import { CellTitle, DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
+import { ExportNotice } from "@/shared/ui/admin/export-notice";
 import { FilterBar } from "@/shared/ui/admin/filter-bar";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
 import { PaginationNav } from "@/shared/ui/admin/pagination-nav";
@@ -71,6 +72,8 @@ export async function AdminOrdersScreen({
           ) : null
         }
       />
+
+      <ExportNotice aviso={searchParams.aviso} />
 
       <FilterBar label="Buscar pedidos">
         <TextField

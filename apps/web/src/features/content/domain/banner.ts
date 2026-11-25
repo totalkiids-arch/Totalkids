@@ -4,7 +4,13 @@
  * Un banner es un mensaje destacado con un enlace a una página de la propia
  * tienda. El destino solo puede ser una ruta interna: nada de http:,
  * javascript: ni rutas "//dominio" que el navegador trata como externas.
+ * Puede tener una ventana de publicación (inicio y término opcionales, en hora
+ * de Chile); la API decide qué se ve hoy en la tienda.
  */
+import { chileLocalToIso } from "@/shared/lib/chile-time";
+
+export const BANNER_VISIBILITIES = ["visible", "scheduled", "ended", "inactive"] as const;
+export type BannerVisibility = (typeof BANNER_VISIBILITIES)[number];
 
 export interface Banner {
   id: string;
@@ -15,9 +21,21 @@ export interface Banner {
   /** Orden de aparición: 1 primero. Puede repetirse (se desempata por título). */
   order: number;
   active: boolean;
+  /** Ventana de publicación (ISO); null = sin límite. */
+  startsAt: string | null;
+  endsAt: string | null;
+  /** Lo que ve hoy la tienda, calculado por la API, y su texto. */
+  visibility: BannerVisibility;
+  visibilityLabel: string;
 }
 
-export type BannerDraft = Omit<Banner, "id">;
+/** Banner publicado, tal como lo muestra la portada (GET /banners). */
+export type StoreBanner = Pick<Banner, "id" | "title" | "text" | "href">;
+
+export type BannerDraft = Pick<
+  Banner,
+  "title" | "text" | "href" | "order" | "active" | "startsAt" | "endsAt"
+>;
 
 /** Datos del formulario tal como llegan (texto), antes de validar. */
 export interface BannerInput {
@@ -26,6 +44,9 @@ export interface BannerInput {
   href: string;
   order: string;
   active: boolean;
+  /** "AAAA-MM-DDTHH:mm" en hora de Chile, o "" sin límite. */
+  startsAt: string;
+  endsAt: string;
 }
 
 export type FieldErrors = Partial<Record<string, string>>;
@@ -85,11 +106,20 @@ export function validateBanner(
     errors.order = `El orden debe ser un número entero entre ${ORDER_MIN} y ${ORDER_MAX}.`;
   }
 
-  if (Object.keys(errors).length > 0 || order === null) return { ok: false, errors };
-  return { ok: true, draft: { title, text, href, order, active: input.active } };
-}
+  const startsAt = input.startsAt.trim() === "" ? null : chileLocalToIso(input.startsAt);
+  const endsAt = input.endsAt.trim() === "" ? null : chileLocalToIso(input.endsAt);
+  if (input.startsAt.trim() !== "" && startsAt === null) {
+    errors.startsAt = "Elige una fecha y hora válidas, o déjalo vacío.";
+  }
+  if (input.endsAt.trim() !== "" && endsAt === null) {
+    errors.endsAt = "Elige una fecha y hora válidas, o déjalo vacío.";
+  } else if (startsAt && endsAt && endsAt <= startsAt) {
+    errors.endsAt = "El término debe ser posterior al inicio.";
+  }
 
-/** Por orden de aparición y luego por título. */
-export function sortBanners(banners: readonly Banner[]): Banner[] {
-  return [...banners].sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, "es"));
+  if (Object.keys(errors).length > 0 || order === null) return { ok: false, errors };
+  return {
+    ok: true,
+    draft: { title, text, href, order, active: input.active, startsAt, endsAt },
+  };
 }

@@ -25,8 +25,9 @@ export interface HeroSlideData {
 }
 
 /**
- * Diapositivas del banner principal. Provisional: cuando existan banners
- * administrables (RF-28, UI-13) el texto y los enlaces vendrán del panel.
+ * Diapositivas fijas del banner principal, ilustradas con los animalitos de la
+ * marca. Los banners administrables del panel (RF-28) se muestran aparte,
+ * bajo el carrusel (features/content, StoreBanners).
  */
 const SLIDES: readonly HeroSlideData[] = [
   {

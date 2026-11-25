@@ -109,7 +109,7 @@ export interface Order {
   history: OrderEvent[];
   /**
    * Cobro según la API (LN-10): último intento en Flow (null si aún no se
-   * intentó), plazo para pagar y total cobrado. Ausente en pedidos de demostración.
+   * intentó), plazo para pagar y total cobrado.
    */
   payment?: { status: GuestPaymentStatus | null; dueAt: string; total: number };
 }
@@ -150,9 +150,4 @@ export function trackingProgress(status: OrderStatus): number | null {
     case "expired":
       return null;
   }
-}
-
-/** Más recientes primero. */
-export function sortByNewest(orders: readonly Order[]): Order[] {
-  return [...orders].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

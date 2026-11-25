@@ -1,13 +1,13 @@
 /**
  * Registro de correos transaccionales (RF-20, RF-21, SRS 4.4.3). Dominio puro.
  *
- * - Cada correo nace de un evento de negocio con una clave única: el mismo
- *   evento no se registra dos veces (`addEmailEvent`).
- * - Se permite un envío inicial y hasta tres reintentos automáticos. Un timeout
- *   es resultado INCIERTO (no se sabe si llegó), no un fallo.
- * - Reenvío manual (solo fallido o incierto): suma un intento manual al
- *   registro original, con actor, fecha y resultado, y crea un registro nuevo
- *   vinculado ("Reenvío de #…"), como pide la 4.4.3. Nunca toca el pedido.
+ * - Cada correo nace de un evento de negocio con una clave única (la API no
+ *   registra dos veces el mismo evento).
+ * - Envío inicial y hasta tres reintentos automáticos. Un timeout es resultado
+ *   INCIERTO (no se sabe si llegó), no un fallo.
+ * - Reenvío manual (solo Administrador, solo fallido o incierto): la API crea
+ *   un registro nuevo vinculado al original y hace un único intento, que queda
+ *   registrado con quien lo pidió. Nunca toca el pedido ni la solicitud.
  */
 
 export const EMAIL_EVENTS = [
@@ -18,6 +18,8 @@ export const EMAIL_EVENTS = [
   "order_shipped",
   "order_delivered",
   "service_request",
+  "password_recovery",
+  "newsletter_unsubscribe",
 ] as const;
 export type EmailEvent = (typeof EMAIL_EVENTS)[number];
 
@@ -29,6 +31,8 @@ export const EMAIL_EVENT_LABEL: Record<EmailEvent, string> = {
   order_shipped: "Pedido despachado",
   order_delivered: "Pedido entregado",
   service_request: "Solicitud de servicio",
+  password_recovery: "Recuperación de contraseña",
+  newsletter_unsubscribe: "Baja del newsletter",
 };
 
 export const EMAIL_STATUSES = ["pending", "sent", "failed", "uncertain"] as const;
@@ -41,45 +45,52 @@ export const EMAIL_STATUS_LABEL: Record<EmailStatus, string> = {
   uncertain: "Incierto",
 };
 
-/** Envío inicial + 3 reintentos automáticos (SRS 4.4.3). */
-export const MAX_AUTOMATIC_ATTEMPTS = 4;
-
-export type AttemptResult = "sent" | "failed" | "timeout";
-
-export const ATTEMPT_RESULT_LABEL: Record<AttemptResult, string> = {
-  sent: "Aceptado por el proveedor",
-  failed: "Rechazado",
-  timeout: "Sin respuesta (incierto)",
-};
+export const ATTEMPT_RESULTS = ["sent", "failed", "timeout"] as const;
+export type AttemptResult = (typeof ATTEMPT_RESULTS)[number];
 
 export interface EmailAttempt {
   at: string;
   kind: "automatic" | "manual";
   result: AttemptResult;
-  /** Quién reenvió (solo intentos manuales). */
-  actor: string | null;
+  /** Texto del resultado («Aceptado por el proveedor», «Sin respuesta (incierto)»…). */
+  resultLabel: string;
+  /** Rol y nombre de quien reenvió (solo intentos manuales). */
+  actorLabel: string | null;
+  actorName: string | null;
   /** Último error depurado, sin datos sensibles. */
   detail: string | null;
-  /** Intento manual: id del registro nuevo creado por el reenvío. */
-  resendRecordId: string | null;
 }
 
-export type EmailReference = { kind: "order" | "request"; id: string } | null;
+/** Pedido o solicitud del correo: `label` es el número visible ("TK-1048", "SOL-1002"). */
+export type EmailReference = { kind: "order" | "request"; id: string; label: string } | null;
 
-export interface EmailRecord {
+export interface EmailSummary {
   id: string;
   event: EmailEvent;
   recipient: string;
-  /** Pedido o solicitud; null si el correo no se refiere a ninguno. */
-  reference: EmailReference;
-  /** Clave única del evento: evita duplicar el correo localmente. */
-  eventKey: string;
   status: EmailStatus;
-  attempts: EmailAttempt[];
-  createdAt: string;
+  reference: EmailReference;
+  attemptsCount: number;
+  lastAttemptAt: string | null;
   /** Si es un reenvío manual, el registro original. */
   resendOf: string | null;
+  /** El Administrador puede reenviarlo (fallido o incierto, sin otro reenvío en curso). */
+  canResend: boolean;
+  createdAt: string;
 }
+
+export interface EmailDetail extends EmailSummary {
+  /** Clave única del evento. */
+  eventKey: string;
+  attempts: EmailAttempt[];
+  /** Reenvíos manuales creados desde este registro. */
+  resends: { id: string; status: EmailStatus; createdAt: string }[];
+}
+
+export type ResendOutcome =
+  | { ok: true; resendId: string }
+  | { ok: false; reason: "not-allowed" | "not-found" }
+  | { ok: false; reason: "rate-limited"; retryAfterSeconds: number | null };
 
 export function isEmailEvent(value: unknown): value is EmailEvent {
   return typeof value === "string" && (EMAIL_EVENTS as readonly string[]).includes(value);
@@ -89,81 +100,28 @@ export function isEmailStatus(value: unknown): value is EmailStatus {
   return typeof value === "string" && (EMAIL_STATUSES as readonly string[]).includes(value);
 }
 
-/** Estado que deja un intento: un timeout es incierto, no fallido. */
-export function statusAfterAttempt(result: AttemptResult): EmailStatus {
-  return result === "sent" ? "sent" : result === "timeout" ? "uncertain" : "failed";
-}
-
-/** Agrega el evento salvo que su clave ya exista (sin duplicar, SRS 4.4.3). */
-export function addEmailEvent(
-  log: readonly EmailRecord[],
-  record: EmailRecord,
-): { log: EmailRecord[]; added: boolean } {
-  if (log.some((r) => r.eventKey === record.eventKey)) return { log: [...log], added: false };
-  return { log: [...log, record], added: true };
-}
-
-export function canResend(record: Pick<EmailRecord, "status">): boolean {
-  return record.status === "failed" || record.status === "uncertain";
-}
-
-export const RESEND_NOT_ALLOWED = "Solo se reenvía un correo fallido o con resultado incierto.";
-
-export type ResendOutcome =
-  { ok: true; original: EmailRecord; resend: EmailRecord } | { ok: false; error: string };
-
-/**
- * Reenvío manual SIMULADO: el proveedor no se llama y el resultado es
- * "aceptado". El original suma un intento manual (con actor y vínculo) y pasa a
- * Enviado; el registro nuevo apunta al original con `resendOf`. Devuelve
- * copias nuevas: los registros recibidos no se modifican.
- */
-export function resendEmail(
-  original: EmailRecord,
-  actor: string,
-  now: string,
-  newId: string,
-): ResendOutcome {
-  if (!canResend(original)) return { ok: false, error: RESEND_NOT_ALLOWED };
-  const manual = (resendRecordId: string | null): EmailAttempt => ({
-    at: now,
-    kind: "manual",
-    result: "sent",
-    actor,
-    detail: "Reenvío simulado: no se envió un correo real.",
-    resendRecordId,
-  });
-  const resends = original.attempts.filter((a) => a.kind === "manual").length;
-  return {
-    ok: true,
-    original: {
-      ...original,
-      status: "sent",
-      attempts: [...original.attempts, manual(newId)],
-    },
-    resend: {
-      id: newId,
-      event: original.event,
-      recipient: original.recipient,
-      reference: original.reference,
-      eventKey: `${original.eventKey}:reenvio-${resends + 1}`,
-      status: "sent",
-      attempts: [manual(null)],
-      createdAt: now,
-      resendOf: original.id,
-    },
-  };
-}
-
 // ── Listado: filtros de la URL ───────────────────────────────────────────────
+
+export const EMAILS_PAGE_SIZE = 20;
 
 export interface EmailQuery {
   event: EmailEvent | null;
   status: EmailStatus | null;
   /** Número de pedido ("TK-1048"). */
   order: string | null;
-  /** Registro abierto en el detalle. */
+  /** Referencia de solicitud ("SOL-1002"). */
+  request: string | null;
+  page: number;
+  /** Registro abierto en el detalle (UUID). */
   id: string | null;
+}
+
+export interface EmailPage {
+  rows: EmailSummary[];
+  counts: Record<EmailStatus, number>;
+  total: number;
+  page: number;
+  pageCount: number;
 }
 
 type Params = Record<string, string | string[] | undefined>;
@@ -171,32 +129,24 @@ type Params = Record<string, string | string[] | undefined>;
 const first = (value: string | string[] | undefined) =>
   (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
 
-/** `?evento=&estado=&pedido=&id=`. Un valor desconocido se ignora. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** `?evento=&estado=&pedido=&solicitud=&pagina=&id=`. Un valor desconocido se ignora. */
 export function parseEmailQuery(params: Params): EmailQuery {
   const event = first(params.evento);
   const status = first(params.estado);
   const order = first(params.pedido).toUpperCase();
-  const id = first(params.id).toUpperCase();
+  const request = first(params.solicitud).toUpperCase();
+  const page = Number(first(params.pagina));
+  const id = first(params.id).toLowerCase();
   return {
     event: isEmailEvent(event) ? event : null,
     status: isEmailStatus(status) ? status : null,
     order: /^TK-\d{1,10}$/.test(order) ? order : null,
-    id: /^E-\d{1,10}$/.test(id) ? id : null,
+    request: /^SOL-[A-Z0-9]{1,20}$/.test(request) ? request : null,
+    page: Number.isInteger(page) && page > 1 ? page : 1,
+    id: UUID.test(id) ? id : null,
   };
-}
-
-/** Los que cumplen los filtros, del más reciente al más antiguo. */
-export function filterEmails(
-  log: readonly EmailRecord[],
-  query: Pick<EmailQuery, "event" | "status" | "order">,
-): EmailRecord[] {
-  return log
-    .filter((r) => !query.event || r.event === query.event)
-    .filter((r) => !query.status || r.status === query.status)
-    .filter(
-      (r) => !query.order || (r.reference?.kind === "order" && r.reference.id === query.order),
-    )
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id.localeCompare(a.id));
 }
 
 export function emailQueryString(query: Partial<EmailQuery>): string {
@@ -204,15 +154,27 @@ export function emailQueryString(query: Partial<EmailQuery>): string {
   if (query.event) params.set("evento", query.event);
   if (query.status) params.set("estado", query.status);
   if (query.order) params.set("pedido", query.order);
+  if (query.request) params.set("solicitud", query.request);
+  if (query.page && query.page > 1) params.set("pagina", String(query.page));
   if (query.id) params.set("id", query.id);
   const text = params.toString();
   return text ? `?${text}` : "";
 }
 
+/** Parámetros de GET /admin/emails. */
+export function toApiEmailSearch(query: EmailQuery, pageSize = EMAILS_PAGE_SIZE): string {
+  const params = new URLSearchParams({ page: String(query.page), pageSize: String(pageSize) });
+  if (query.event) params.set("event", query.event);
+  if (query.status) params.set("status", query.status);
+  if (query.order) params.set("order", query.order);
+  if (query.request) params.set("request", query.request);
+  return params.toString();
+}
+
 /** Texto de la referencia ("Pedido #TK-1048", "Solicitud #SOL-1002" o "Sin referencia"). */
 export function referenceLabel(reference: EmailReference): string {
   if (!reference) return "Sin referencia";
-  return `${reference.kind === "order" ? "Pedido" : "Solicitud"} #${reference.id}`;
+  return `${reference.kind === "order" ? "Pedido" : "Solicitud"} #${reference.label}`;
 }
 
 // ── Vista previa de plantilla (RF-21) ───────────────────────────────────────
@@ -230,8 +192,8 @@ export interface EmailPreview {
  * escapa todo lo que muestra. "Nueva venta" no repite datos del comprador y la
  * recuperación nunca incluye la contraseña ni el enlace real.
  */
-export function emailPreview(record: Pick<EmailRecord, "event" | "reference">): EmailPreview {
-  const ref = record.reference?.id ?? "";
+export function emailPreview(record: Pick<EmailSummary, "event" | "reference">): EmailPreview {
+  const ref = record.reference?.label ?? "";
   switch (record.event) {
     case "order_received":
       return {
@@ -281,6 +243,20 @@ export function emailPreview(record: Pick<EmailRecord, "event" | "reference">): 
         heading: "¡Recibimos tu idea!",
         body: `Tu solicitud #${ref} quedó registrada. Te responderemos dentro del plazo informado.`,
         action: null,
+      };
+    case "password_recovery":
+      return {
+        subject: "Define tu contraseña del panel Total Kids",
+        heading: "Define tu contraseña",
+        body: "Usa el enlace para definir una contraseña nueva. Vence a los 30 minutos y solo sirve una vez.",
+        action: "Definir contraseña",
+      };
+    case "newsletter_unsubscribe":
+      return {
+        subject: "Confirma tu baja del newsletter",
+        heading: "¿Quieres dejar de recibir novedades?",
+        body: "Confirma la baja con el enlace. Si no la pediste, ignora este correo.",
+        action: "Confirmar baja",
       };
   }
 }

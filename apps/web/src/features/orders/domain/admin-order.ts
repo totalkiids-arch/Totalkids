@@ -190,3 +190,18 @@ export const REFERENCE_MAX = 120;
 export const INVOICE_NUMBER_MAX = 10;
 
 export type FieldErrors = Partial<Record<string, string>>;
+
+/**
+ * Resumen del panel (GET /admin/summary). Los cobros del mes y el stock bajo
+ * solo los recibe el Administrador: para el Operador llegan en null.
+ */
+export interface PanelSummary {
+  byStatus: Record<OrderStatus, number>;
+  paymentsInReview: number;
+  paymentsPending: number;
+  /** Los 5 pedidos más recientes. */
+  recentOrders: AdminOrderListItem[];
+  sales: { from: string; to: string; charged: number; refunded: number; net: number } | null;
+  /** Variantes activas con 1 a 3 unidades disponibles. */
+  lowStockVariants: number | null;
+}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 
+import { chileLocalInput } from "@/shared/lib/chile-time";
 import { FormErrorSummary } from "@/shared/ui/admin/notice";
 import { AdminMuted } from "@/shared/ui/admin/panel";
 import { Button, buttonClasses } from "@/shared/ui/button";
@@ -22,6 +23,8 @@ export function BannerForm({ editing, nextOrder }: { editing: Banner | null; nex
       href: editing?.href ?? "/catalogo",
       order: String(editing?.order ?? nextOrder),
       active: editing?.active ?? true,
+      startsAt: editing?.startsAt ? chileLocalInput(editing.startsAt) : "",
+      endsAt: editing?.endsAt ? chileLocalInput(editing.endsAt) : "",
     },
     errors: {},
   });
@@ -83,8 +86,33 @@ export function BannerForm({ editing, nextOrder }: { editing: Banner | null; nex
           />
         </div>
       </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div id={fieldId("startsAt")} className="scroll-mt-24">
+          <TextField
+            label="Mostrar desde (opcional)"
+            name="startsAt"
+            type="datetime-local"
+            defaultValue={state.values.startsAt}
+            error={state.errors.startsAt}
+            hint="Hora de Chile. Vacío: desde ya."
+          />
+        </div>
+        <div id={fieldId("endsAt")} className="scroll-mt-24">
+          <TextField
+            label="Mostrar hasta (opcional)"
+            name="endsAt"
+            type="datetime-local"
+            defaultValue={state.values.endsAt}
+            error={state.errors.endsAt}
+            hint="Hora de Chile. Vacío: sin término."
+          />
+        </div>
+      </div>
       <Checkbox name="active" value="1" label="Activo" defaultChecked={state.values.active} />
-      <AdminMuted>Solo los banners activos se muestran, en el orden indicado.</AdminMuted>
+      <AdminMuted>
+        La portada muestra los banners activos cuya ventana incluye este momento, en el orden
+        indicado.
+      </AdminMuted>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={pending}>
           {pending ? "Guardando…" : editing ? "Guardar cambios" : "Crear banner"}

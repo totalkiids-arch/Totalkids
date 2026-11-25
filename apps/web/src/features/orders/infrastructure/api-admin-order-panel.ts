@@ -5,7 +5,7 @@ import { businessFieldErrors, isPanelApiError } from "@/shared/lib/panel-errors"
 
 import type { AdminOrderPanel, PanelResult } from "../application/admin-order-panel";
 import { toApiOrderSearch } from "../domain/admin-order-query";
-import { toAdminOrderDetail, toOrderListPage } from "./admin-orders-api";
+import { toAdminOrderDetail, toOrderListPage, toPanelSummary } from "./admin-orders-api";
 
 /**
  * Pedidos del panel en la API (LN-13). `{ref}` es el número visible ("TK-1048"),
@@ -27,6 +27,10 @@ async function mutate(run: () => Promise<unknown>): Promise<PanelResult> {
 }
 
 export const apiAdminOrderPanel: AdminOrderPanel = {
+  async summary() {
+    return toPanelSummary(await panelGet("/admin/summary"));
+  },
+
   async list(query) {
     return toOrderListPage(await panelGet(`/admin/orders?${toApiOrderSearch(query)}`));
   },

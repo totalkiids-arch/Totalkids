@@ -4,19 +4,21 @@ import Link from "next/link";
 import { formatChileDateTime } from "@/shared/lib/chile-time";
 import { DataTable, TEXT_ACTION } from "@/shared/ui/admin/data-table";
 import { FilterBar } from "@/shared/ui/admin/filter-bar";
+import { ExportNotice } from "@/shared/ui/admin/export-notice";
 import { InfoNote, LiveNotice } from "@/shared/ui/admin/notice";
 import { AdminPageHeading } from "@/shared/ui/admin/page-heading";
+import { PaginationNav } from "@/shared/ui/admin/pagination-nav";
 import { AdminMuted, AdminPanel } from "@/shared/ui/admin/panel";
 import { StatusBadge } from "@/shared/ui/admin/status-badge";
 import { Button, buttonClasses } from "@/shared/ui/button";
-import { SelectField } from "@/shared/ui/form";
+import { SelectField, TextField } from "@/shared/ui/form";
 
 import { subscriberAdmin } from "../container";
 import {
-  filterSubscribers,
   parseSubscriberQuery,
+  QUERY_MAX,
   SUBSCRIBER_STATUS_LABEL,
-  type SubscriberFilter,
+  toSubscriberSearch,
 } from "../domain/subscriber";
 import { CONSENT_TEXT, CONSENT_VERSION } from "../domain/subscription";
 import { unsubscribeSubscriberAction } from "./admin/subscriber-actions";
@@ -33,6 +35,10 @@ const NOTICES: Record<string, { message: string; tone: "success" | "warning" }> 
   "no-existe": { message: "Ese suscriptor ya no existe.", tone: "warning" },
   "sin-permiso": { message: "Solo el Administrador registra bajas.", tone: "warning" },
   ilegible: { message: "No pudimos leer el formulario. Recarga la página.", tone: "warning" },
+  error: {
+    message: "No pudimos registrar la baja. Revisa tu sesión o intenta de nuevo en unos minutos.",
+    tone: "warning",
+  },
 };
 
 const FILTER_OPTIONS = [
@@ -41,23 +47,20 @@ const FILTER_OPTIONS = [
   { value: "bajas", label: "Dados de baja" },
 ];
 
-const withFilter = (filter: SubscriberFilter | null, extra: Record<string, string> = {}) => {
-  const params = new URLSearchParams(extra);
-  if (filter) params.set("estado", filter);
-  const text = params.toString();
-  return text ? `?${text}` : "";
-};
-
 /**
  * Panel administrativo · Suscriptores (RF-25, RF-29, RF-35). Solo
  * Administrador: la página la envuelve en AdminSectionGate.
  */
 export async function SubscribersScreen({ searchParams = {} }: { searchParams?: Params }) {
   const query = parseSubscriberQuery(searchParams);
-  const all = await subscriberAdmin.list();
-  const rows = filterSubscribers(all, query.filter);
-  const activeCount = all.filter((s) => s.status === "active").length;
-  const confirming = all.find((s) => s.id === query.confirm && s.status === "active") ?? null;
+  const result = await subscriberAdmin.list(query);
+  const { counts } = result;
+  const confirming =
+    result.rows.find((s) => s.id === query.confirm && s.status === "active") ?? null;
+  // Filtros sin página (exportación) y con página (volver al mismo listado).
+  const filters = toSubscriberSearch({ filter: query.filter, q: query.q });
+  const current = toSubscriberSearch(query);
+  const filtered = filters !== "";
   const aviso = searchParams.aviso;
   const notice = typeof aviso === "string" ? NOTICES[aviso] : undefined;
 
@@ -69,7 +72,7 @@ export async function SubscribersScreen({ searchParams = {} }: { searchParams?: 
         actions={
           // Enlace normal (no <Link>): la respuesta es un archivo, no una página.
           <a
-            href={`/admin/suscriptores/exportar${withFilter(query.filter)}`}
+            href={`/admin/suscriptores/exportar${filters}`}
             className={buttonClasses({ variant: "outline" })}
           >
             Exportar CSV
@@ -77,10 +80,9 @@ export async function SubscribersScreen({ searchParams = {} }: { searchParams?: 
         }
       />
       {notice ? <LiveNotice message={notice.message} tone={notice.tone} /> : null}
+      <ExportNotice aviso={aviso} />
       <InfoNote>
-        Datos de ejemplo en la memoria del servidor: se borran al reiniciar. Las altas y bajas del
-        formulario público también aparecen aquí. Texto vigente ({CONSENT_VERSION}): «{CONSENT_TEXT}
-        »
+        Texto de consentimiento vigente ({CONSENT_VERSION}): «{CONSENT_TEXT}»
       </InfoNote>
 
       {confirming ? (
@@ -92,13 +94,13 @@ export async function SubscribersScreen({ searchParams = {} }: { searchParams?: 
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <form action={unsubscribeSubscriberAction}>
               <input type="hidden" name="id" value={confirming.id} />
-              {query.filter ? <input type="hidden" name="estado" value={query.filter} /> : null}
+              <input type="hidden" name="volver" value={current.slice(1)} />
               <Button type="submit" variant="danger">
                 Registrar baja
               </Button>
             </form>
             <Link
-              href={`/admin/suscriptores${withFilter(query.filter)}` as Route}
+              href={`/admin/suscriptores${current}` as Route}
               className={buttonClasses({ variant: "outline" })}
             >
               Cancelar
@@ -108,6 +110,14 @@ export async function SubscribersScreen({ searchParams = {} }: { searchParams?: 
       ) : null}
 
       <FilterBar label="Filtrar suscriptores">
+        <TextField
+          label="Buscar correo"
+          name="q"
+          type="search"
+          defaultValue={query.q}
+          maxLength={QUERY_MAX}
+          className="min-w-0 flex-1 basis-60 sm:max-w-105"
+        />
         <SelectField
           label="Estado"
           name="estado"
@@ -119,7 +129,7 @@ export async function SubscribersScreen({ searchParams = {} }: { searchParams?: 
       <AdminPanel
         flush
         title="Lista del newsletter"
-        description={`${activeCount} activo${activeCount === 1 ? "" : "s"} de ${all.length}.`}
+        description={`${counts.active} activo${counts.active === 1 ? "" : "s"} y ${counts.unsubscribed} dado${counts.unsubscribed === 1 ? "" : "s"} de baja${filtered ? " con estos filtros" : ""}.`}
       >
         <DataTable
           caption="Suscriptores del newsletter"
@@ -130,7 +140,7 @@ export async function SubscribersScreen({ searchParams = {} }: { searchParams?: 
             { key: "status", label: "Estado" },
             { key: "actions", label: "Acción" },
           ]}
-          rows={rows.map((subscriber) => ({
+          rows={result.rows.map((subscriber) => ({
             key: subscriber.id,
             cells: {
               email: <strong className="font-extrabold break-all">{subscriber.email}</strong>,
@@ -145,7 +155,7 @@ export async function SubscribersScreen({ searchParams = {} }: { searchParams?: 
                 subscriber.status === "active" ? (
                   <Link
                     href={
-                      `/admin/suscriptores${withFilter(query.filter, { baja: subscriber.id })}#confirmar` as Route
+                      `/admin/suscriptores${toSubscriberSearch(query, { baja: subscriber.id })}#confirmar` as Route
                     }
                     className={TEXT_ACTION}
                     aria-label={`Registrar baja de ${subscriber.email}`}
@@ -164,9 +174,9 @@ export async function SubscribersScreen({ searchParams = {} }: { searchParams?: 
             },
           }))}
           empty={
-            query.filter ? (
+            filtered ? (
               <>
-                No hay suscriptores con ese filtro.{" "}
+                No hay suscriptores con esos filtros.{" "}
                 <Link
                   href="/admin/suscriptores"
                   className="font-extrabold text-brand-blue underline"
@@ -177,6 +187,15 @@ export async function SubscribersScreen({ searchParams = {} }: { searchParams?: 
             ) : (
               "Todavía no hay suscriptores."
             )
+          }
+          footer={`${result.total} suscriptor${result.total === 1 ? "" : "es"} · página ${result.page} de ${result.pageCount}`}
+        />
+        <PaginationNav
+          label="Páginas de suscriptores"
+          page={result.page}
+          pageCount={result.pageCount}
+          hrefFor={(page) =>
+            `/admin/suscriptores${toSubscriberSearch({ ...query, page })}` as Route
           }
         />
       </AdminPanel>

@@ -6,44 +6,44 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { getAdminSession } from "@/features/auth";
-import { ADMIN_ROLE_LABEL, canAccessSection } from "@/features/users";
+import { canAccessSection } from "@/features/users";
+import { attemptPanel, isPanelFailure } from "@/shared/lib/panel-errors";
 
 import { subscriberAdmin } from "../../container";
-import { parseSubscriberQuery } from "../../domain/subscriber";
+import { parseSubscriberQuery, toSubscriberSearch } from "../../domain/subscriber";
 
 /*
  * Baja de suscriptor desde el panel (RF-29, RF-35). Solo Administrador
  * (sección "suscriptores"): se comprueba aquí aunque la acción se invoque sin la
- * pantalla. No borra el registro. Funciona sin JavaScript (form + redirect).
+ * pantalla, y la API lo vuelve a exigir. No borra el registro; la API guarda
+ * la fecha y el rol de quien la registró. Funciona sin JavaScript (form + redirect).
  */
 
 const PATH = "/admin/suscriptores";
 
 const UnsubscribeForm = z.object({
   id: z.string().regex(/^[\w-]{1,40}$/),
-  estado: z.string().max(20).optional(),
+  volver: z.string().max(400).optional(),
 });
 
-function back(aviso: string, estado?: string): Route {
-  const params = new URLSearchParams();
-  const filter = parseSubscriberQuery({ estado }).filter;
-  if (filter) params.set("estado", filter);
-  params.set("aviso", aviso);
-  return `${PATH}?${params.toString()}` as Route;
+/** Vuelve al listado con sus filtros (releídos por el dominio: solo valores conocidos). */
+function back(aviso: string, volver = ""): Route {
+  const query = parseSubscriberQuery(Object.fromEntries(new URLSearchParams(volver)));
+  return `${PATH}${toSubscriberSearch(query, { aviso })}` as Route;
 }
 
 export async function unsubscribeSubscriberAction(formData: FormData) {
   const session = await getAdminSession();
-  if (!session || !canAccessSection(session.role, "suscriptores")) redirect(back("sin-permiso"));
+  if (!session) redirect("/admin/ingresar");
+  if (!canAccessSection(session.role, "suscriptores")) redirect(back("sin-permiso"));
 
   const parsed = UnsubscribeForm.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(back("ilegible"));
 
-  const result = await subscriberAdmin.registerUnsubscribe(
-    parsed.data.id,
-    ADMIN_ROLE_LABEL[session.role],
-  );
+  const { id, volver } = parsed.data;
+  const result = await attemptPanel(() => subscriberAdmin.registerUnsubscribe(id));
   revalidatePath(PATH);
-  if (result.ok) redirect(back("baja", parsed.data.estado));
-  redirect(back(result.reason === "not-found" ? "no-existe" : "ya-de-baja", parsed.data.estado));
+  if (isPanelFailure(result)) redirect(back("error", volver));
+  if (result.ok) redirect(back("baja", volver));
+  redirect(back(result.reason === "not-found" ? "no-existe" : "ya-de-baja", volver));
 }

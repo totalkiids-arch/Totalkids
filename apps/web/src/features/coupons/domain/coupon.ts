@@ -23,12 +23,25 @@ export interface Coupon {
   /** Último día de vigencia, inclusive (AAAA-MM-DD). */
   endsOn: string;
   maxUses: number;
-  /** Usos ya consumidos (pedidos pagados). Solo los cambia el checkout. */
+  /** Usos registrados (reservados + consumidos): cuentan para el cupo. */
   uses: number;
   active: boolean;
+  /** Estado que calcula la API con el día de hoy en Chile, y su texto. */
+  status: CouponStatus;
+  statusLabel: string;
+  /** Con usos, código, tipo y valor quedan fijos (lo decide la API). */
+  termsLocked: boolean;
+  /** Sin usos, canjes ni pedidos que lo citen: se puede eliminar. */
+  canDelete: boolean;
 }
 
-export type CouponDraft = Omit<Coupon, "id" | "uses">;
+export const COUPON_STATUSES = ["active", "scheduled", "expired", "exhausted", "inactive"] as const;
+export type CouponStatus = (typeof COUPON_STATUSES)[number];
+
+export type CouponDraft = Pick<
+  Coupon,
+  "code" | "kind" | "value" | "startsOn" | "endsOn" | "maxUses" | "active"
+>;
 
 /** Datos del formulario tal como llegan (texto), antes de validar. */
 export interface CouponInput {
@@ -57,14 +70,9 @@ export function normalizeCouponCode(text: string): string {
   return text.replace(/\s+/g, "").toUpperCase();
 }
 
-/** Un cupón con usos tiene historial: solo se desactiva. */
-export function canDeleteCoupon(coupon: Pick<Coupon, "uses">): boolean {
-  return coupon.uses === 0;
-}
-
 /** Con usos, el código, el tipo y el valor quedan fijos. */
-export function hasLockedTerms(coupon: Pick<Coupon, "uses"> | null): boolean {
-  return coupon !== null && coupon.uses > 0;
+export function hasLockedTerms(coupon: Pick<Coupon, "termsLocked"> | null): boolean {
+  return coupon !== null && coupon.termsLocked;
 }
 
 export function isCouponKind(value: unknown): value is CouponKind {
@@ -179,7 +187,7 @@ export function validateCoupon(
   } else if (maxUses > MAX_USES_LIMIT) {
     errors.maxUses = "El máximo de usos parece demasiado alto. Revísalo.";
   } else if (maxUses < usesSoFar) {
-    errors.maxUses = `El máximo no puede ser menor que los ${usesSoFar} usos ya consumidos.`;
+    errors.maxUses = `El máximo no puede ser menor que los ${usesSoFar} usos registrados.`;
   }
 
   if (Object.keys(errors).length > 0 || kind === null || value === null || maxUses === null) {
@@ -197,54 +205,4 @@ export function validateCoupon(
       active: input.active,
     },
   };
-}
-
-export type CouponStatus = "active" | "scheduled" | "expired" | "exhausted" | "inactive";
-
-/**
- * Estado para mostrar en el panel. Prioridad: inactivo > agotado > vencido >
- * programado > activo. `today` es el día en Chile (ver chileToday).
- */
-export function couponStatus(
-  coupon: Pick<Coupon, "active" | "uses" | "maxUses" | "startsOn" | "endsOn">,
-  today: string,
-): CouponStatus {
-  if (!coupon.active) return "inactive";
-  if (coupon.uses >= coupon.maxUses) return "exhausted";
-  if (today > coupon.endsOn) return "expired";
-  if (today < coupon.startsOn) return "scheduled";
-  return "active";
-}
-
-/**
- * Descuento en CLP sobre el subtotal elegible (sin despacho), RN-01 y RF-07:
- * el porcentaje se redondea al peso más cercano y el descuento nunca supera
- * el subtotal. No revisa vigencia ni cupo (eso es couponStatus y el backend).
- *
- * Lista para LN-12: hoy no la usa el carrito, que sigue respondiendo que no
- * hay cupones vigentes.
- */
-export function couponDiscount(
-  eligibleSubtotal: number,
-  coupon: Pick<Coupon, "kind" | "value">,
-): number {
-  if (!Number.isFinite(eligibleSubtotal) || eligibleSubtotal <= 0) return 0;
-  const raw =
-    coupon.kind === "percent" ? Math.round((eligibleSubtotal * coupon.value) / 100) : coupon.value;
-  return Math.max(0, Math.min(raw, eligibleSubtotal));
-}
-
-/** Por estado útil (activos primero) y luego por código. */
-export function sortCoupons(coupons: readonly Coupon[], today: string): Coupon[] {
-  const rank: Record<CouponStatus, number> = {
-    active: 0,
-    scheduled: 1,
-    exhausted: 2,
-    expired: 3,
-    inactive: 4,
-  };
-  return [...coupons].sort(
-    (a, b) =>
-      rank[couponStatus(a, today)] - rank[couponStatus(b, today)] || a.code.localeCompare(b.code),
-  );
 }

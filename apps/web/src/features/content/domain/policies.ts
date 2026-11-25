@@ -63,7 +63,7 @@ export const POLICY_SECTIONS = [
     id: "privacidad",
     title: "Privacidad y newsletter",
     paragraphs: [
-      "Este sitio de demostración usa solo datos de ejemplo. No ingreses información personal real.",
+      "Usamos los datos que ingresas para gestionar tu pedido o tu solicitud y para contactarte sobre ellos.",
       "El newsletter requiere un consentimiento separado, que nunca viene premarcado, y puedes darte de baja cuando quieras.",
       "Responsable del tratamiento, contacto, plazos de retención y versión legal definitiva: pendientes de aprobación por Total Kids.",
     ],

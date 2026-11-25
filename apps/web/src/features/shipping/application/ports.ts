@@ -6,23 +6,27 @@ export type ShippingResult<T> = { ok: true; value: T } | { ok: false; errors: Fi
 export interface ZoneInput {
   region: string;
   commune: string;
+  /** Vacío = tarifa a coordinar. */
   price: string;
   leadTime: string;
+  freeShippingEligible: boolean;
   active: boolean;
 }
 
 export interface SettingsInput {
+  pickupEnabled: boolean;
   pickup: string;
   freeShippingThreshold: string;
   reservationMinutes: string;
 }
 
 /**
- * Puerto: zonas de despacho y condiciones de retiro del panel (RF-27).
- * El adaptador valida con las reglas del dominio; con la API (LN-12), también
- * las aplica el backend.
+ * Puerto: zonas de despacho y condiciones de retiro del panel (RF-27). Lo
+ * implementa la API (/admin/shipping-zones y /admin/shipping-settings, solo
+ * Administrador), que valida y registra el cambio. Afecta solo compras nuevas.
  */
 export interface ShippingAdmin {
+  /** De norte a sur y luego por comuna (orden de la API). */
   listZones(): Promise<ShippingZone[]>;
   /** id null crea una zona nueva. */
   saveZone(id: string | null, input: ZoneInput): Promise<ShippingResult<ShippingZone>>;

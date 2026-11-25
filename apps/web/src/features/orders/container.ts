@@ -1,33 +1,25 @@
-// Raíz de composición de "orders": conecta los puertos con sus adaptadores actuales.
-import type { ActivityArea, ActivityEntry } from "@/features/activity";
-import type { SaleRecord } from "@/features/reports";
+// Raíz de composición de "orders": conecta los puertos con sus adaptadores.
+import { forwardExport } from "@/shared/infrastructure/panel-export";
 
-import type { AdminOrderPanel, DemoOrderPanel } from "./application/admin-order-panel";
+import type { AdminOrderPanel } from "./application/admin-order-panel";
 import {
   GuestOrderUnavailableError,
   type GuestAccessStore,
   type GuestOrderGateway,
-  type OrderRepository,
 } from "./application/ports";
 import {
-  filterAdminOrders,
-  ordersToCsv,
   parseAdminOrderQuery,
+  toAdminOrderSearch,
+  toApiOrderFilters,
   type AdminOrderListPage,
   type AdminOrderQuery,
 } from "./domain/admin-order-query";
 import { LOOKUP_NOT_FOUND, normalizeOrderId, parseGuestLookup } from "./domain/guest-lookup";
 import type { Order } from "./domain/order";
-import { ordersOverview, paidAttempt } from "./domain/order-workflow";
+import { apiAdminOrderPanel } from "./infrastructure/api-admin-order-panel";
 import { apiGuestOrders } from "./infrastructure/api-guest-orders";
 import { cookieGuestAccessStore } from "./infrastructure/cookie-guest-access-store";
-import { apiAdminOrderPanel } from "./infrastructure/api-admin-order-panel";
-import { demoAdminOrderPanel } from "./infrastructure/demo-admin-order-panel";
 
-// DEMO (ver infrastructure/demo-admin-order-panel.ts): el almacén del panel,
-// sembrado con demo-orders.ts, alimenta el CSV y los resúmenes que todavía no
-// leen la API (ver más abajo). El seguimiento de la tienda ya usa la API.
-const orders: OrderRepository = demoAdminOrderPanel;
 const guestOrders: GuestOrderGateway = apiGuestOrders;
 const guestAccess: GuestAccessStore = cookieGuestAccessStore;
 
@@ -92,87 +84,23 @@ export async function getAdminOrder(ref: string) {
   return orderId ? adminOrderPanel.get(orderId) : null;
 }
 
-/** Caso de uso: CSV con todos los pedidos que cumplen los filtros de la URL, sin paginar. */
-export async function exportAdminOrdersCsv(
+/** Caso de uso: indicadores y últimos pedidos del resumen del panel (GET /admin/summary). */
+export function getPanelSummary() {
+  return adminOrderPanel.summary();
+}
+
+/**
+ * Caso de uso: CSV con todos los pedidos que cumplen los filtros de la URL
+ * (RF-28, RF-29), armado por la API. Solo Administrador (lo verifica el Route
+ * Handler y la API).
+ */
+export function exportAdminOrders(
   params: Record<string, string | string[] | undefined>,
-): Promise<string> {
-  return ordersToCsv(filterAdminOrders(await orders.listAll(), parseAdminOrderQuery(params)));
-}
-
-// ── TRANSITORIO hasta la etapa 3 de LN-16 ───────────────────────────────────
-// El resumen, los reportes, la actividad y el CSV de pedidos todavía leen el
-// almacén de demostración (también lo usa el seguimiento de la tienda).
-const demoRecords: DemoOrderPanel = demoAdminOrderPanel;
-
-/** Caso de uso: indicadores y últimos pedidos del resumen del panel. */
-export async function getAdminOrdersOverview(recent = 5) {
-  const records = await demoRecords.list();
-  return {
-    overview: ordersOverview(records),
-    recent: [...records]
-      .sort((a, b) => b.order.createdAt.localeCompare(a.order.createdAt))
-      .slice(0, recent),
-  };
-}
-
-/**
- * Caso de uso: pedidos con cobro confirmado, para el reporte de ventas (RF-30).
- * Las líneas van al precio de compra; los reembolsos, solo los procesados.
- */
-export async function listSalesForReports(): Promise<SaleRecord[]> {
-  return (await demoRecords.list()).flatMap((record) => {
-    const paid = paidAttempt(record);
-    if (!paid) return [];
-    return [
-      {
-        orderId: record.order.id,
-        buyerName: record.order.buyerName,
-        method: "Flow",
-        paidAt: paid.createdAt,
-        charged: paid.amount,
-        lines: record.order.lines.map((line) => ({
-          name: line.name,
-          sku: line.sku,
-          quantity: line.quantity,
-          amount: line.unitPrice * line.quantity,
-        })),
-        refunds: record.refunds
-          .filter((refund) => refund.status === "processed")
-          .map((refund) => ({ date: refund.date, amount: refund.amount })),
-      },
-    ];
-  });
-}
-
-const AUDIT_AREA: Record<string, ActivityArea> = {
-  status: "pedidos",
-  payment: "pagos",
-  refund: "reembolsos",
-  invoice: "pedidos",
-  restock: "inventario",
-};
-
-/**
- * Caso de uso: cambios del equipo en los pedidos, para el historial de
- * actividad (RF-27, RF-34). Los eventos automáticos ("system") se ven en el
- * detalle de cada pedido.
- */
-export async function listActivity(): Promise<ActivityEntry[]> {
-  return (await demoRecords.list()).flatMap((record) =>
-    record.audit.flatMap((entry, index) => {
-      const area = AUDIT_AREA[entry.kind];
-      if (!area) return [];
-      return [
-        {
-          id: `pedido-${record.order.id}-${index}`,
-          at: entry.at,
-          actor: entry.actor,
-          area,
-          action: entry.detail,
-          reason: entry.reason,
-          reference: { label: `#${record.order.id}`, href: `/admin/pedidos/${record.order.id}` },
-        },
-      ];
-    }),
+): Promise<Response> {
+  const query = parseAdminOrderQuery(params);
+  return forwardExport(
+    "orders",
+    toApiOrderFilters(query),
+    `/admin/pedidos${toAdminOrderSearch({ q: query.q, status: query.status })}`,
   );
 }

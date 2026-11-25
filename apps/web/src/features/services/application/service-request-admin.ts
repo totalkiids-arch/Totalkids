@@ -1,17 +1,23 @@
 import type {
-  AdminServiceRequest,
+  AdminRequestDetail,
+  FollowUpErrors,
   FollowUpInput,
-  FollowUpResult,
+  RequestPage,
+  RequestQuery,
 } from "../domain/service-request-admin";
 
+export type FollowUpResult = { ok: true } | { ok: false; errors: FollowUpErrors };
+
 /**
- * Puerto: solicitudes de servicio en el panel (RF-24, RF-29). Con la API
- * (LN-08/LN-13): GET /admin/service-requests y GET/PATCH /admin/service-requests/{id},
- * para Administrador y Operador.
+ * Puerto: solicitudes de servicio en el panel (RF-24, RF-29). Lo implementa la
+ * API (GET /admin/service-requests y GET/PATCH /admin/service-requests/{ref},
+ * Administrador y Operador), que filtra, pagina, aplica las reglas y registra
+ * el cambio con quien lo hizo.
  */
 export interface ServiceRequestAdmin {
-  list(): Promise<AdminServiceRequest[]>;
-  get(id: string): Promise<AdminServiceRequest | null>;
-  /** Cambia estado y/o nota interna; el adaptador vuelve a validar con el dominio. */
-  followUp(id: string, input: FollowUpInput, actor: string): Promise<FollowUpResult>;
+  list(query: RequestQuery): Promise<RequestPage>;
+  /** `ref` = referencia ("SOL-1002"). null si no existe. */
+  get(ref: string): Promise<AdminRequestDetail | null>;
+  /** Cambia estado y/o nota interna. */
+  followUp(ref: string, input: FollowUpInput): Promise<FollowUpResult>;
 }

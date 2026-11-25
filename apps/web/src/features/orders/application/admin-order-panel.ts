@@ -1,6 +1,5 @@
-import type { AdminOrderDetail, FieldErrors } from "../domain/admin-order";
+import type { AdminOrderDetail, FieldErrors, PanelSummary } from "../domain/admin-order";
 import type { AdminOrderListPage, AdminOrderQuery } from "../domain/admin-order-query";
-import type { AdminOrderRecord, RefundInput, StatusChangeInput } from "../domain/order-workflow";
 
 export type PanelResult = { ok: true } | { ok: false; errors: FieldErrors };
 
@@ -12,6 +11,8 @@ export type PanelResult = { ok: true } | { ok: false; errors: FieldErrors };
  * lanzan como PanelApiError y un 401 lleva al ingreso.
  */
 export interface AdminOrderPanel {
+  /** Resumen del panel (pedidos por estado, pagos por revisar, últimos pedidos). */
+  summary(): Promise<PanelSummary>;
   list(query: AdminOrderQuery): Promise<AdminOrderListPage>;
   /** `ref` = número visible ("TK-1048"). null si no existe. */
   get(ref: string): Promise<AdminOrderDetail | null>;
@@ -33,40 +34,4 @@ export interface AdminOrderPanel {
     ref: string,
     input: { number: string; replace: boolean; reason: string },
   ): Promise<PanelResult>;
-}
-
-/**
- * TRANSITORIO (LN-16 etapa 3): almacén de demostración que todavía alimenta el
- * resumen, los reportes, la actividad y el CSV de pedidos, y que la tienda usa
- * para el seguimiento de los pedidos del checkout de demostración. Se retira
- * cuando esas pantallas lean de la API.
- */
-export interface DemoOrderPanel {
-  list(): Promise<AdminOrderRecord[]>;
-  get(id: string): Promise<AdminOrderRecord | null>;
-  changeStatus(
-    id: string,
-    input: StatusChangeInput,
-    actor: string,
-  ): Promise<{ ok: true; record: AdminOrderRecord } | { ok: false; errors: FieldErrors }>;
-  registerRefund(
-    id: string,
-    input: Omit<RefundInput, "responsible">,
-    actor: string,
-  ): Promise<{ ok: true; record: AdminOrderRecord } | { ok: false; errors: FieldErrors }>;
-  resolveRefund(
-    id: string,
-    input: { refundId: string; status: string },
-    actor: string,
-  ): Promise<{ ok: true; record: AdminOrderRecord } | { ok: false; errors: FieldErrors }>;
-  registerInvoice(
-    id: string,
-    input: { number: string },
-    actor: string,
-  ): Promise<{ ok: true; record: AdminOrderRecord } | { ok: false; errors: FieldErrors }>;
-  reconcile(
-    id: string,
-    input: { result: string; reason: string },
-    actor: string,
-  ): Promise<{ ok: true; record: AdminOrderRecord } | { ok: false; errors: FieldErrors }>;
 }

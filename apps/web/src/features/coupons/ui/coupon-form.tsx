@@ -57,8 +57,9 @@ export function CouponForm({
       <FormErrorSummary errors={summary} />
       {locked ? (
         <AdminMuted>
-          Este cupón ya se usó {editing?.uses} {editing?.uses === 1 ? "vez" : "veces"}.{" "}
-          {LOCKED_BY_USES} Puedes cambiar las fechas, el máximo de usos y el estado.
+          Este cupón tiene {editing?.uses}{" "}
+          {editing?.uses === 1 ? "uso registrado" : "usos registrados"}. {LOCKED_BY_USES} Puedes
+          cambiar las fechas, el máximo de usos y el estado.
         </AdminMuted>
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -132,7 +133,7 @@ export function CouponForm({
             error={state.errors.maxUses}
             hint={
               editing
-                ? `Usos consumidos: ${editing.uses}. El máximo no puede ser menor.`
+                ? `Usos registrados (reservados y pagados): ${editing.uses}. El máximo no puede ser menor.`
                 : "Total de pedidos que pueden usar el cupón."
             }
             required
