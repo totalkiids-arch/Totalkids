@@ -64,7 +64,8 @@ const STATUS_OPTIONS = [
 
 /** Enlace a la ficha de la referencia en el panel. El correo no la modifica. */
 function referenceHref(reference: EmailReference): Route | null {
-  if (!reference) return null;
+  // Una muestra (email:preview) no tiene pedido ni solicitud.
+  if (!reference || reference.kind === "sample") return null;
   return reference.kind === "order"
     ? (`/admin/pedidos/${encodeURIComponent(reference.label)}` as Route)
     : (`/admin/solicitudes?id=${encodeURIComponent(reference.label)}#detalle` as Route);

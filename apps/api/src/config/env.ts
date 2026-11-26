@@ -64,6 +64,12 @@ const envSchema = z
       .int()
       .positive()
       .default(5 * 60_000),
+    /** Envíos por día de Chile (plan gratis de Brevo: 300). */
+    EMAIL_DAILY_LIMIT: z.preprocess(blankAsUndefined, z.coerce.number().int().min(1).default(300)),
+    /** Últimos envíos del día reservados para los correos críticos. */
+    EMAIL_DAILY_RESERVE: z.preprocess(blankAsUndefined, z.coerce.number().int().min(0).default(30)),
+    /** Contacto de la tienda para el pie de los correos ("+56 9 1234 5678 · hola@…"). */
+    STORE_CONTACT: z.preprocess(blankAsUndefined, z.string().trim().min(1).max(200).optional()),
 
     // ── Conciliación y vencimientos (LN-15) ──
     /** Cada cuánto corre el job de pagos y vencimientos del worker (D-02: 2 minutos). */
@@ -115,6 +121,9 @@ const envSchema = z
         "IMAGES_PUBLIC_URL",
         "IMAGES_PUBLIC_URL es obligatorio en producción y debe usar https",
       );
+    }
+    if (env.EMAIL_DAILY_RESERVE >= env.EMAIL_DAILY_LIMIT) {
+      required("EMAIL_DAILY_RESERVE", "EMAIL_DAILY_RESERVE debe ser menor que EMAIL_DAILY_LIMIT");
     }
     if (env.EMAIL_WORKER_LOCK_TIMEOUT_MS <= env.EMAIL_SEND_TIMEOUT_MS) {
       required(

@@ -38,6 +38,26 @@ describe("toEmailPage", () => {
     expect(page.counts.sent).toBe(3);
   });
 
+  it("acepta la alerta de límite diario y las muestras de email:preview", () => {
+    const page = toEmailPage({
+      items: [
+        {
+          ...summary,
+          event: "email_quota_alert",
+          reference: { kind: "sample", id: summary.id, label: "Muestra" },
+          canResend: false,
+        },
+      ],
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      counts: { pending: 0, sent: 1, failed: 0, uncertain: 0 },
+    });
+    expect(page.rows[0]).toMatchObject({
+      event: "email_quota_alert",
+      reference: { kind: "sample", label: "Muestra" },
+      canResend: false,
+    });
+  });
+
   it("un evento desconocido cuenta como API no disponible", () => {
     expect(() =>
       toEmailPage({

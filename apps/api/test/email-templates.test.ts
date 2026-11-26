@@ -73,6 +73,7 @@ const SAMPLES: { [E in EmailEvent]: EmailDataInput<E> } = {
   password_recovery: { userId: "0195f3a0-0000-7000-8000-000000000001" },
   newsletter_unsubscribe: { subscriberId: "0195f3a0-0000-7000-8000-000000000002" },
   payment_review_alert: { orderNumber: 1048, reason: "late_no_stock", attempt: 2, amount: 89990 },
+  email_quota_alert: { day: "2026-11-23", sent: 299, limit: 300, reserve: 30 },
 };
 
 const SUBJECTS: Record<EmailEvent, string> = {
@@ -86,13 +87,43 @@ const SUBJECTS: Record<EmailEvent, string> = {
   password_recovery: "Restablece tu contraseña del panel",
   newsletter_unsubscribe: "Confirma tu baja del newsletter de Total Kids",
   payment_review_alert: "Revisar pago del pedido #TK-1048: Pago tardío sin stock",
+  email_quota_alert: "Correos en pausa: se alcanzó el límite diario (300)",
 };
 
+/** Título grande y botón principal de cada correo (layout común). */
+const HEADINGS: Record<EmailEvent, { heading: string; button: string }> = {
+  order_received: { heading: "¡Recibimos tu pedido!", button: "Continuar con el pago" },
+  purchase_confirmed: { heading: "Pago confirmado", button: "Ver mi pedido" },
+  new_sale: { heading: "Nueva venta", button: "Abrir el panel" },
+  payment_rejected: { heading: "Tu pago no se completó", button: "Reintentar el pago" },
+  order_shipped: { heading: "Tu pedido va en camino", button: "Seguir mi pedido" },
+  order_delivered: { heading: "Pedido entregado", button: "Ver mi pedido" },
+  service_request: { heading: "Recibimos tu solicitud", button: "Ir a la tienda" },
+  password_recovery: { heading: "Restablece tu contraseña", button: "Restablecer contraseña" },
+  newsletter_unsubscribe: { heading: "Confirma tu baja", button: "Confirmar la baja" },
+  payment_review_alert: { heading: "Pago en revisión", button: "Revisar en el panel" },
+  email_quota_alert: { heading: "Límite diario de correos", button: "Ver los correos en el panel" },
+};
+
+/** Correos al equipo: tono interno y enlace al panel. */
+const TEAM_EVENTS: readonly EmailEvent[] = [
+  "new_sale",
+  "payment_review_alert",
+  "email_quota_alert",
+];
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const RESET_EXPIRES = new Date("2026-11-23T15:00:00.000Z");
+const SENT_AT = new Date("2026-11-23T18:45:00.000Z");
+const PICKUP_FOOTER = "Av. Taller 456, Temuco. Lunes a viernes de 10 a 18 h.";
 
 function render<E extends EmailEvent>(event: E, data: EmailDataInput<E> = SAMPLES[event]) {
   return renderEmail(event, parseEmailData(event, data), {
     siteUrl: SITE,
+    now: SENT_AT,
+    pickupDetails: PICKUP_FOOTER,
+    contact: "+56 9 8765 4321",
     passwordReset: { url: passwordResetUrl(SITE, "tok_abc"), expiresAt: RESET_EXPIRES },
     unsubscribeUrl: newsletterUnsubscribeUrl(SITE, "tok_baja"),
   });
@@ -100,6 +131,8 @@ function render<E extends EmailEvent>(event: E, data: EmailDataInput<E> = SAMPLE
 
 /** Todos los href del HTML. */
 const hrefs = (html: string) => [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1] ?? "");
+/** Los href distintos (el de baja se repite en el botón y en el pie). */
+const uniqueHrefs = (html: string) => [...new Set(hrefs(html))];
 
 describe("plantillas de correo", () => {
   it.each(EMAIL_EVENTS)("%s: asunto, HTML de marca y texto plano", (event) => {
@@ -117,6 +150,94 @@ describe("plantillas de correo", () => {
       // Sin datos de pago (RNF-05).
       expect(output).not.toMatch(/tarjeta|cvv|\b\d{13,19}\b/i);
     }
+  });
+
+  it.each(EMAIL_EVENTS)("%s: layout común (logo, título, botón, pie y texto plano)", (event) => {
+    const { html, text } = render(event);
+    const { heading, button } = HEADINGS[event];
+
+    // Cabecera de color con el logo (URL absoluta y texto alternativo) y el nombre.
+    expect(html).toContain(
+      '<img src="https://tienda.example.com/email/total-kids-logo.png" width="80" height="80" alt="Total Kids"',
+    );
+    expect(html).toContain('bgcolor="#1a5299"');
+    // Título grande y botón principal, también en el texto plano.
+    expect(html).toContain(`>${escapeHtml(heading)}</h1>`);
+    expect(html).toMatch(
+      new RegExp(
+        `<a href="https://tienda\\.example\\.com/[^"]*"[^>]*>${escapeRegExp(escapeHtml(button))}</a>`,
+      ),
+    );
+    expect(text).toContain(heading);
+    expect(text).toContain(`${button}: https://tienda.example.com/`);
+    // Apto para clientes de correo: tablas, 600 px, sin JS, formularios ni fuentes externas.
+    expect(html).toContain("max-width:600px");
+    expect(html).toContain('role="presentation"');
+    expect(html).not.toMatch(
+      /<script|<form|<input|<link|@import|@font-face|fonts\.googleapis|Nunito/i,
+    );
+    expect(html).toContain("'Trebuchet MS',Verdana,Arial,Helvetica,sans-serif");
+    // Pie con los datos de la tienda.
+    expect(text).toContain(`Retiro en taller: ${PICKUP_FOOTER}`);
+    expect(text).toContain("Contacto: +56 9 8765 4321");
+    // El enlace de baja solo en el newsletter.
+    const newsletter = event === "newsletter_unsubscribe";
+    expect(html.includes("Darte de baja del newsletter")).toBe(newsletter);
+    expect(text.includes("Darte de baja del newsletter")).toBe(newsletter);
+    // Tono interno solo al equipo.
+    expect(text.startsWith("TOTAL KIDS · AVISO INTERNO")).toBe(TEAM_EVENTS.includes(event));
+    // Montos en CLP bien formateados: "$1.234" (nunca "$1234" ni "1234.00").
+    for (const amount of `${html}${text}`.match(/\$[\d.,]+/g) ?? []) {
+      expect(amount).toMatch(/^\$\d{1,3}(\.\d{3})*$/);
+    }
+  });
+
+  it("fecha de la tarjeta: «Enviado el» en hora de Chile, nunca «Fecha del pedido»", () => {
+    for (const event of EMAIL_EVENTS) {
+      expect(render(event).text).not.toContain("Fecha del pedido");
+    }
+    expect(render("purchase_confirmed").text).toContain(`Enviado el: ${formatDateTime(SENT_AT)}`);
+    // 18:45 UTC = 15:45 en Chile (horario de verano).
+    expect(formatDateTime(SENT_AT)).toMatch(/15:45/);
+  });
+
+  it("tarjeta del pedido: n.º de pedido, productos con cantidad y extras, montos y entrega", () => {
+    const { text } = render("purchase_confirmed");
+    expect(text).toContain("N.º de pedido: TK-1048");
+    expect(text).toContain(
+      "2 × Cama casita (Roble natural, 90 cm) + Armado en domicilio · a pedido: $379.980",
+    );
+    expect(text).toContain("Subtotal: $379.980");
+    expect(text).toContain("Total: $359.980");
+    expect(text).toContain("Despacho a: Av. Siempre Viva 123, Ñuñoa");
+  });
+
+  it("correos al equipo: aviso interno y solo enlaces al panel", () => {
+    const admin = render("service_request", { ...SAMPLES.service_request, audience: "admin" });
+    const emails = [
+      render("new_sale"),
+      render("payment_review_alert"),
+      render("email_quota_alert"),
+      admin,
+    ];
+    for (const email of emails) {
+      expect(email.html).toContain("Aviso interno");
+      expect(email.html).toContain("Panel Total Kids");
+      expect(email.text).toContain("Correo interno para el equipo de Total Kids");
+      for (const href of hrefs(email.html)) {
+        expect(href.startsWith("https://tienda.example.com/admin/")).toBe(true);
+      }
+    }
+  });
+
+  it("alerta de límite diario: día, contadores y enlace al panel de correos", () => {
+    const { text, html } = render("email_quota_alert");
+    expect(text).toContain("Día: 2026-11-23");
+    expect(text).toContain("Correos contados: 299");
+    expect(text).toContain("Límite diario: 300");
+    expect(text).toContain("Reserva para correos críticos: 30");
+    expect(text).toContain("salen solos a partir de las 00:00 (hora de Chile)");
+    expect(hrefs(html)).toEqual(["https://tienda.example.com/admin/correos"]);
   });
 
   it.each(EMAIL_EVENTS)(
@@ -248,6 +369,7 @@ describe("plantillas de correo", () => {
     });
     expect(email.subject).toBe("Tu pedido #TK-1048 está listo para retiro");
     expect(email.text).toContain("está listo para retirar en el taller");
+    expect(email.text).toContain("Listo para retiro");
     expect(email.text).toContain(
       "Retiro en taller: Taller Total Kids, Temuco. Lunes a viernes de 10 a 18 h.",
     );
@@ -259,13 +381,16 @@ describe("plantillas de correo", () => {
     const { html, text } = render("order_delivered");
     expect(text).toContain("fue entregado");
     expect(text).toContain("- Limpia con un paño suave");
-    expect(hrefs(html)).toEqual([]);
+    // Solo la consulta del pedido: ningún enlace a reseñas.
+    expect(hrefs(html)).toEqual(["https://tienda.example.com/seguimiento"]);
+    expect(`${html}${text}`).not.toMatch(/reseña|estrellas/i);
   });
 
   it("solicitud de servicio: al solicitante con plazo; al equipo, mínimo y con acceso al panel", () => {
     const requester = render("service_request").text;
     expect(requester).toContain("Te responderemos dentro de 2 días hábiles.");
     expect(requester).toContain("Referencia: SOL-1002");
+    expect(hrefs(render("service_request").html)).toEqual(["https://tienda.example.com/"]);
 
     const admin = render("service_request", {
       ...SAMPLES.service_request,
@@ -296,7 +421,11 @@ describe("plantillas de correo", () => {
 
   it("baja del newsletter: un enlace con el token, sin el id del suscriptor", () => {
     const { html, text } = render("newsletter_unsubscribe");
-    expect(hrefs(html)).toEqual(["https://tienda.example.com/suscripcion/baja?token=tok_baja"]);
+    // El botón y el enlace de baja del pie: el mismo enlace.
+    expect(uniqueHrefs(html)).toEqual([
+      "https://tienda.example.com/suscripcion/baja?token=tok_baja",
+    ]);
+    expect(hrefs(html)).toHaveLength(2);
     expect(text).toContain("Tus pedidos y su seguimiento no cambian");
     expect(`${html}${text}`).not.toContain("0195f3a0");
     expect(() =>

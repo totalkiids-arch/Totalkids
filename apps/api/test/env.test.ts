@@ -130,6 +130,20 @@ describe("variables de entorno", () => {
     ).toBe(false);
   });
 
+  it("límite diario de correos: 300 con reserva de 30 por defecto; la reserva es menor que el límite", () => {
+    const parsed = parseEnv({ ...base, EMAIL_DAILY_LIMIT: "", EMAIL_DAILY_RESERVE: "" });
+    expect(parsed.data).toMatchObject({ EMAIL_DAILY_LIMIT: 300, EMAIL_DAILY_RESERVE: 30 });
+    expect(parsed.data?.STORE_CONTACT).toBeUndefined();
+    expect(
+      parseEnv({ ...base, EMAIL_DAILY_LIMIT: "1000", EMAIL_DAILY_RESERVE: "50" }).data,
+    ).toMatchObject({ EMAIL_DAILY_LIMIT: 1000, EMAIL_DAILY_RESERVE: 50 });
+    expect(parseEnv({ ...base, EMAIL_DAILY_LIMIT: "30", EMAIL_DAILY_RESERVE: "30" }).success).toBe(
+      false,
+    );
+    expect(parseEnv({ ...base, EMAIL_DAILY_LIMIT: "0" }).success).toBe(false);
+    expect(parseEnv({ ...base, EMAIL_DAILY_RESERVE: "-1" }).success).toBe(false);
+  });
+
   it("rechaza un CSRF_SECRET corto", () => {
     expect(parseEnv({ ...base, CSRF_SECRET: "corto" }).success).toBe(false);
   });

@@ -578,8 +578,23 @@ await prisma.$transaction(async (tx) => {
 | LN-08 | `service_request` (`audience: requester`)                                     | solicitante      | `service_request:<id>:requester`    | `serviceRequestId` |
 | LN-08 | `service_request` (`audience: admin`)                                         | `EMAIL_ADMIN_TO` | `service_request:<id>:admin`        | `serviceRequestId` |
 | LN-04 | `password_recovery` (ya conectado)                                            | cuenta del panel | `password_recovery:<userId>:<uuid>` | —                  |
+| —     | `email_quota_alert` (lo encola el worker al llegar al límite diario)          | `EMAIL_ADMIN_TO` | `email_quota_alert:<AAAA-MM-DD>`    | —                  |
 
 ### Plantillas
+
+Todas comparten el layout de [`templates/layout.ts`](src/services/email/templates/layout.ts):
+
+- cabecera azul de la marca con el logo centrado y el nombre debajo;
+- título grande del evento y una frase corta;
+- una tarjeta con filas etiqueta → valor (n.º de pedido, «Enviado el», productos con cantidad y extras, despacho o retiro, total);
+- un botón principal;
+- un pie con la dirección de retiro (`settings.pickup_details`), el contacto (`STORE_CONTACT`) y, solo en el newsletter, el enlace de baja.
+
+La fecha de la tarjeta es la del envío («Enviado el»), no la del pedido: el payload no la trae y un reenvío días después no debe mentir. Los correos al equipo (`new_sale`, `service_request` al equipo, `payment_review_alert` y `email_quota_alert`) usan el mismo layout con la marca «Aviso interno» y un enlace al panel.
+
+El HTML está hecho para Gmail, Outlook y móviles: maquetación con tablas, CSS en línea, ancho máximo de 600 px, fuentes del sistema (`'Trebuchet MS', Verdana, Arial…`), sin JavaScript ni formularios. Los colores salen del tema clásico de `apps/web/src/app/globals.css`.
+
+El logo es [`apps/web/public/email/total-kids-logo.png`](../web/public/email/total-kids-logo.png) (160 px), con URL absoluta desde `PUBLIC_SITE_URL` y texto alternativo «Total Kids». **En local, Gmail y los demás clientes no pueden cargar una imagen de `localhost`, así que en las pruebas se ve el texto alternativo.** Es lo esperado; en producción se carga desde el dominio público.
 
 `templates/` arma asunto, HTML de marca y texto plano de cada evento (los asuntos coinciden con la vista previa del panel). Todo texto se escapa; importes en CLP y fechas en America/Santiago. Los enlaces son absolutos desde `PUBLIC_SITE_URL` y sin identificadores predecibles: el comprador va a `/seguimiento` (consulta con número y correo); el equipo, a `/admin/pedidos/TK-<n>` y `/admin/solicitudes` (con sesión). La recuperación enlaza a `/admin/restablecer?token=…`: el worker emite el token (`issuePasswordResetToken`) justo al enviar, así nunca queda guardado ni en logs. **Pendiente en apps/web (parte 2 de LN-16):** la página `/admin/restablecer`, que también usa el alta de cuentas, (leer `token` de la query, no registrarlo y responder con `Referrer-Policy: no-referrer`).
 
@@ -614,7 +629,64 @@ pnpm --filter @totalkids/api worker:dev           # EMAIL_PROVIDER=fake por defe
 
 Con el adaptador falso (`EMAIL_PROVIDER=fake`, por defecto) no se usa la red: el worker deja el correo `sent` con un `provider_message_id` `fake-…` y registra su intento; en el log aparece `Correo simulado (EMAIL_PROVIDER=fake)`. Revisa `email_log` y `email_attempts` con `pnpm --filter @totalkids/api exec prisma studio`. Los tests siempre usan el falso, aunque se configure Brevo.
 
-Para probar Brevo de verdad (solo con una cuenta de pruebas): `EMAIL_PROVIDER=brevo`, `BREVO_API_KEY` y un `BREVO_SENDER_EMAIL` autorizado en Brevo. **Antes de producción hay que autenticar en Brevo el dominio nuevo del cliente (SPF, DKIM y DMARC).** Ese dominio aún no está definido, por eso el repositorio solo usa `example.com`.
+Para probar Brevo de verdad, sigue la sección siguiente.
+
+### Brevo
+
+**1. Cuenta y API key**
+
+1. Crea una cuenta gratis en [brevo.com](https://www.brevo.com/). El plan gratis permite **300 correos al día**.
+2. En **SMTP y API → Claves API**, genera una clave nueva para la API v3 y cópiala solo en `apps/api/.env` como `BREVO_API_KEY`.
+   - Nunca va en el repositorio, en `apps/web` ni en `NEXT_PUBLIC_*`.
+   - Si se filtra, revócala en Brevo y genera otra.
+3. Configura `EMAIL_PROVIDER=brevo`. Sin API key, o en los tests, se usa siempre el adaptador falso.
+
+**2. Remitente**
+
+En **Remitentes, dominios e IP dedicadas → Remitentes**, agrega el remitente y verifícalo con el correo que Brevo envía. Luego ponlo en `BREVO_SENDER_EMAIL`, y el nombre visible en `BREVO_SENDER_NAME` (por defecto «Total Kids»). Si el remitente no está verificado, Brevo responde 401 o 403: el worker deja un error en el log y reintenta.
+
+> **Producción:** el remitente debe ser una casilla `@totalkids.cl` (p. ej. `no-reply@totalkids.cl`), con el dominio `totalkids.cl` **autenticado en Brevo (SPF y DKIM, y DMARC recomendado)**: Brevo entrega los registros DNS que hay que publicar en **Dominios**. Sin eso, Gmail y Outlook mandan los correos a spam o los rechazan. Un remitente `@gmail.com` solo sirve para pruebas.
+
+**3. Límite diario**
+
+El worker cuenta los envíos del **día de Chile** (desde las 00:00 de America/Santiago) a partir de `email_attempts`, sin tabla nueva. Cuenta los intentos aceptados, los inciertos (pudieron salir) y los que están enviándose. Con varias instancias, el conteo y el reclamo van bajo un candado de PostgreSQL.
+
+| Variable              | Por defecto | Qué hace                                                |
+| --------------------- | ----------- | ------------------------------------------------------- |
+| `EMAIL_DAILY_LIMIT`   | 300         | Envíos por día de Chile (el plan gratis de Brevo)       |
+| `EMAIL_DAILY_RESERVE` | 30          | Últimos envíos del día, solo para correos críticos      |
+| `STORE_CONTACT`       | —           | Contacto de la tienda en el pie (vacío = no se muestra) |
+
+- **Bajo `LIMIT − RESERVE`:** se envía todo.
+- **En la reserva:** solo salen los críticos (`order_received`, `purchase_confirmed`, `payment_rejected`, `password_recovery`, `payment_review_alert` y `order_shipped`). Los demás quedan `pending` en la cola **sin reclamarse**: no gastan reintentos, no se marcan fallidos y salen solos al día siguiente. Queda un `warn` en el log.
+- **Al llegar al límite:** se pausa todo hasta las 00:00 de Chile.
+  - Queda un `warn` en el log.
+  - El último envío del día es la alerta `email_quota_alert` a `EMAIL_ADMIN_TO`, una sola vez por día, porque su clave es el día.
+- **Si Brevo responde 429:** se mantiene el reintento normal a 1, 5 y 15 minutos, y esos intentos no cuentan como enviados.
+
+Brevo puede reiniciar su propio contador en otra zona horaria; la reserva cubre ese desfase. Si la alerta llega seguido, conviene un plan pagado y subir `EMAIL_DAILY_LIMIT`.
+
+**4. Correos de muestra**
+
+```bash
+# Escribe un .html y un .txt por correo y un index.html (sin red ni base).
+# La carpeta relativa se resuelve desde apps/api.
+pnpm --filter @totalkids/api email:preview --out ./tmp/correos
+
+# Envía un ejemplo de cada correo a esa dirección por el emisor configurado
+# (Brevo si EMAIL_PROVIDER=brevo y hay BREVO_API_KEY).
+pnpm --filter @totalkids/api email:preview --to tu-correo@ejemplo.cl
+```
+
+Las muestras usan datos ficticios (pedido TK-9999, solicitud SOL-9999, «Ana Muestra») y asunto con el prefijo `[Muestra]`. También incluyen las variantes de retiro en taller y de solicitud al equipo. No crean pedidos ni tokens: los enlaces de recuperación y baja llevan un token falso.
+
+Con `--to`:
+
+- cada envío se registra en `email_log` (clave `preview:…`, sin trabajo en outbox) para que **cuente en el límite diario**;
+- el panel de Correos lo muestra con la referencia «Muestra (no es un correo real)» y sin reenvío;
+- antes de enviar revisa que quede cupo sin tocar la reserva de los críticos;
+- con `EMAIL_PROVIDER=fake` el envío es simulado y no se registra;
+- nunca muestra la API key.
 
 ## Cobertura de criterios de aceptación (SRS §6, LN-17)
 

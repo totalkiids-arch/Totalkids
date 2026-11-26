@@ -13,7 +13,17 @@ import type { Logger } from "../../lib/logger.js";
 import type { PrismaClient } from "../../lib/prisma.js";
 import { issuePasswordResetToken } from "../auth.js";
 import { issueUnsubscribeToken } from "../newsletter.js";
-import { EMAIL_JOB_PREFIX, eventFromJobType, parseEmailData } from "./events.js";
+import { enqueueEmail } from "./enqueue.js";
+import { EMAIL_JOB_PREFIX, emailEventKey, eventFromJobType, parseEmailData } from "./events.js";
+import {
+  countSentToday,
+  decideQuota,
+  lockQuota,
+  typeFilter,
+  type DailyQuota,
+  type QuotaDecision,
+  type QuotaMode,
+} from "./quota.js";
 import type { EmailSender, SendResult } from "./sender.js";
 import {
   newsletterUnsubscribeUrl,
@@ -30,7 +40,9 @@ import {
  * 1. Libera los bloqueos vencidos (un worker que murió a mitad de un envío):
  *    no se sabe si el correo salió, así que queda INCIERTO; nunca se reenvía a ciegas.
  * 2. Reclama un lote de trabajos `pending` vencidos con `FOR UPDATE SKIP LOCKED`
- *    (dos instancias nunca toman el mismo trabajo) y suma el intento.
+ *    (dos instancias nunca toman el mismo trabajo) y suma el intento. Con límite
+ *    diario (`quota.ts`), solo reclama lo que cabe en el día: en la reserva, solo
+ *    los críticos; al llegar al límite, nada (salvo la alerta al equipo).
  * 3. Envía cada uno y registra en una transacción el `EmailAttempt`, el estado
  *    del correo y el del trabajo: enviado; fallo definitivo; reintento a 1, 5 y
  *    15 minutos y luego `dead`; o timeout → incierto.
@@ -47,6 +59,10 @@ export interface EmailWorkerConfig {
   /** Un `processing` más viejo que esto es de un worker caído. Mayor que el timeout de envío. */
   lockTimeoutMs: number;
   retryDelaysMs?: readonly number[];
+  /** Límite diario de envíos (EMAIL_DAILY_LIMIT/RESERVE) y casilla del equipo para la alerta. */
+  dailyQuota?: DailyQuota & { adminEmail: string };
+  /** Contacto de la tienda para el pie (STORE_CONTACT). */
+  storeContact?: string | null;
   /**
    * Solo trabajos cuya `event_key` contiene este texto. Para tests y tareas
    * puntuales; en operación normal no se usa.
@@ -74,6 +90,8 @@ export interface RunResult {
 export interface EmailWorker {
   readonly workerId: string;
   runOnce(): Promise<RunResult>;
+  /** Modo del límite diario en la última vuelta (null sin límite o sin vueltas). */
+  readonly quotaMode: QuotaMode | null;
   /** Bucle de sondeo hasta `stop()`. */
   start(): void;
   /** Termina el lote en curso, no toma más y resuelve cuando el bucle se detuvo. */
@@ -173,9 +191,13 @@ export function createEmailWorker(deps: EmailWorkerDeps): EmailWorker {
 
   // ── 2. Reclamo seguro para varias instancias ─────────────────────────────────
 
-  async function claim(): Promise<ClaimedJob[]> {
-    const at = now();
-    return prisma.$queryRaw<ClaimedJob[]>`
+  async function claimJobs(
+    db: Pick<Prisma.TransactionClient, "$queryRaw">,
+    at: Date,
+    limit: number,
+    types: readonly string[] | null,
+  ): Promise<ClaimedJob[]> {
+    return db.$queryRaw<ClaimedJob[]>`
       UPDATE outbox_jobs AS j
       SET status = 'processing', locked_at = ${at}, locked_by = ${workerId},
           attempts = j.attempts + 1, updated_at = ${at}
@@ -183,11 +205,68 @@ export function createEmailWorker(deps: EmailWorkerDeps): EmailWorker {
         SELECT id FROM outbox_jobs
         WHERE status = 'pending' AND next_run_at <= ${at} AND attempts < max_attempts
           AND type LIKE ${jobPattern} AND event_key LIKE ${scope}
+          ${typeFilter(types)}
         ORDER BY next_run_at, id
-        LIMIT ${config.batchSize}
+        LIMIT ${limit}
         FOR UPDATE SKIP LOCKED
       )
       RETURNING j.id, j.type, j.payload, j.attempts, j.max_attempts AS "maxAttempts"`;
+  }
+
+  // Avisos del límite: una vez por día y modo en este proceso (la alerta por
+  // correo es única por día gracias a su event_key).
+  const announced = new Set<string>();
+
+  function announce(decision: QuotaDecision, quota: DailyQuota): void {
+    const key = `${decision.day}:${decision.mode}`;
+    if (decision.mode === "normal" || announced.has(key)) return;
+    announced.add(key);
+    const fields = { day: decision.day, used: decision.used, ...quota };
+    if (decision.mode === "reserve") {
+      logger.warn(
+        fields,
+        "Límite diario de correos: se entró en la reserva; solo salen los correos críticos hasta mañana",
+      );
+    } else {
+      logger.warn(
+        fields,
+        "Límite diario de correos alcanzado: el envío queda en pausa hasta mañana (hora de Chile)",
+      );
+    }
+  }
+
+  /** Último modo del límite (para tests y diagnóstico). */
+  let lastMode: QuotaMode | null = null;
+
+  async function claim(): Promise<ClaimedJob[]> {
+    const at = now();
+    const quota = config.dailyQuota;
+    if (!quota) return claimJobs(prisma, at, config.batchSize, null);
+
+    return prisma.$transaction(async (tx) => {
+      // Contar y reclamar bajo un mismo candado: varias instancias no pasan del límite.
+      await lockQuota(tx);
+      const { day, used } = await countSentToday(tx, at, scope);
+      const decision = decideQuota(used, quota, day);
+      lastMode = decision.mode;
+      announce(decision, quota);
+      if (decision.mode === "paused" && decision.allowance > 0) {
+        // La alerta al equipo, una sola vez por día (la clave no se duplica).
+        await enqueueEmail(tx, {
+          event: "email_quota_alert",
+          recipient: quota.adminEmail,
+          eventKey: emailEventKey(
+            "email_quota_alert",
+            day,
+            ...(config.scope ? [config.scope] : []),
+          ),
+          data: { day, sent: used, limit: quota.limit, reserve: quota.reserve },
+        });
+      }
+      const limit = Math.min(config.batchSize, decision.allowance);
+      if (limit <= 0) return [];
+      return claimJobs(tx, at, limit, decision.types);
+    });
   }
 
   // ── 3. Envío y registro ──────────────────────────────────────────────────────
@@ -231,6 +310,17 @@ export function createEmailWorker(deps: EmailWorkerDeps): EmailWorker {
     }
   }
 
+  // Dirección y horario de retiro para el pie: se leen una vez por vuelta.
+  let pickupCache: Promise<string | null> | null = null;
+
+  function storePickupDetails(): Promise<string | null> {
+    pickupCache ??= prisma.setting
+      .findUnique({ where: { id: 1 }, select: { pickupDetails: true, pickupEnabled: true } })
+      .then((s) => (s?.pickupEnabled && s.pickupDetails.trim() ? s.pickupDetails.trim() : null))
+      .catch(() => null);
+    return pickupCache;
+  }
+
   type Prepared =
     | { kind: "skip"; reason: string; done: boolean }
     | { kind: "rejected"; detail: string }
@@ -244,7 +334,12 @@ export function createEmailWorker(deps: EmailWorkerDeps): EmailWorker {
     if (log.status === "sent")
       return { kind: "skip", reason: "El correo ya figuraba enviado", done: true };
 
-    const ctx: RenderContext = { siteUrl: config.siteUrl };
+    const ctx: RenderContext = {
+      siteUrl: config.siteUrl,
+      now: at,
+      pickupDetails: await storePickupDetails(),
+      contact: config.storeContact ?? null,
+    };
     const data = parseEmailData(event, job.payload);
     if (event === "password_recovery") {
       const { userId } = data as { userId: string };
@@ -372,6 +467,7 @@ export function createEmailWorker(deps: EmailWorkerDeps): EmailWorker {
   }
 
   async function runOnce(): Promise<RunResult> {
+    pickupCache = null;
     const released = await releaseStaleLocks();
     const jobs = await claim();
     for (const job of jobs) {
@@ -398,6 +494,9 @@ export function createEmailWorker(deps: EmailWorkerDeps): EmailWorker {
   return {
     workerId,
     runOnce,
+    get quotaMode() {
+      return lastMode;
+    },
     start() {
       if (loop) return;
       stopping = false;

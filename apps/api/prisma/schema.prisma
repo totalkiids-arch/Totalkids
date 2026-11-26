@@ -952,6 +952,8 @@ enum EmailEvent {
   newsletter_unsubscribe
   /// Equipo: pedido o pago en revisión (LN-15; RN-04, RN-05, A4).
   payment_review_alert
+  /// Equipo: se alcanzó el límite diario de envíos (plan gratis de Brevo); una vez por día.
+  email_quota_alert
 
   @@map("email_event")
 }

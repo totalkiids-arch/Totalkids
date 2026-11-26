@@ -37,6 +37,13 @@ const worker = createEmailWorker({
     batchSize: env.EMAIL_WORKER_BATCH,
     pollIntervalMs: env.EMAIL_WORKER_POLL_MS,
     lockTimeoutMs: env.EMAIL_WORKER_LOCK_TIMEOUT_MS,
+    // Plan gratis de Brevo: 300 correos al día, con reserva para los críticos.
+    dailyQuota: {
+      limit: env.EMAIL_DAILY_LIMIT,
+      reserve: env.EMAIL_DAILY_RESERVE,
+      adminEmail: env.EMAIL_ADMIN_TO,
+    },
+    storeContact: env.STORE_CONTACT ?? null,
   },
 });
 

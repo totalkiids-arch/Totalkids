@@ -23,7 +23,7 @@ const ApiSummary = z.object({
   recipient: z.string(),
   status: z.enum(EMAIL_STATUSES),
   reference: z
-    .object({ kind: z.enum(["order", "request"]), id: z.string(), label: z.string() })
+    .object({ kind: z.enum(["order", "request", "sample"]), id: z.string(), label: z.string() })
     .nullable(),
   attemptsCount: z.number().int(),
   lastAttemptAt: z.string().nullable(),

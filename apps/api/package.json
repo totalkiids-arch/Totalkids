@@ -10,6 +10,7 @@
     "worker": "node dist/worker.js",
     "worker:dev": "tsx watch src/worker.ts",
     "payments:run-once": "tsx src/scripts/run-payment-jobs.ts",
+    "email:preview": "tsx src/scripts/email-preview.ts",
     "lint": "eslint .",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run",

@@ -14,7 +14,7 @@ import type { PrismaClient } from "../../lib/prisma.js";
 import { orderRef } from "../admin-orders/rules.js";
 import { parseOrderRef } from "../admin-orders/schemas.js";
 import { parseRequestRef } from "../admin-desk/schemas.js";
-import { EMAIL_EVENTS } from "../email/events.js";
+import { EMAIL_EVENTS, PREVIEW_KEY_PREFIX } from "../email/events.js";
 import { requestReference } from "../service-requests.js";
 
 /**
@@ -37,6 +37,7 @@ export const EMAIL_EVENT_LABEL: Record<EmailEvent, string> = {
   password_recovery: "Recuperación de contraseña",
   newsletter_unsubscribe: "Baja del newsletter",
   payment_review_alert: "Alerta de pago en revisión",
+  email_quota_alert: "Alerta de límite diario de correos",
 };
 
 export const EMAIL_STATUS_LABEL: Record<EmailStatus, string> = {
@@ -76,10 +77,16 @@ export const emailListQuery = paginationQuery.extend({
 export type EmailListQuery = z.output<typeof emailListQuery>;
 
 export interface EmailReference {
-  kind: "order" | "request";
+  /** "sample": correo de muestra (`email:preview --to`), no es un correo real. */
+  kind: "order" | "request" | "sample";
   id: string;
-  /** "TK-1048" o "SOL-1002". */
+  /** "TK-1048", "SOL-1002" o "Muestra". */
   label: string;
+}
+
+/** Correo de muestra enviado con `email:preview --to` (cuenta en el límite diario). */
+export function isPreviewEmail(row: { eventKey: string }): boolean {
+  return row.eventKey.startsWith(PREVIEW_KEY_PREFIX);
 }
 
 export interface AdminEmailSummary {
@@ -112,6 +119,7 @@ const include = {
 type Row = Prisma.EmailLogGetPayload<{ include: typeof include }>;
 
 function referenceOf(row: Row): EmailReference | null {
+  if (isPreviewEmail(row)) return { kind: "sample", id: row.id, label: "Muestra" };
   if (row.orderId && row.order) {
     return { kind: "order", id: row.orderId, label: orderRef(row.order.number) };
   }
@@ -139,7 +147,9 @@ function summaryOf(row: Row): AdminEmailSummary {
     lastAttemptAt: last ? last.createdAt.toISOString() : null,
     resendOfId: row.resendOfId,
     canResend:
-      (row.status === "failed" || row.status === "uncertain") && row.event !== "password_recovery",
+      (row.status === "failed" || row.status === "uncertain") &&
+      row.event !== "password_recovery" &&
+      !isPreviewEmail(row),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

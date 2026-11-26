@@ -20,7 +20,29 @@ export const EMAIL_EVENTS = [
   "password_recovery",
   "newsletter_unsubscribe",
   "payment_review_alert",
+  "email_quota_alert",
 ] as const satisfies readonly EmailEvent[];
+
+/**
+ * Correos críticos: siguen saliendo cuando el día entra en la reserva del límite
+ * diario (EMAIL_DAILY_RESERVE). Los demás esperan al día siguiente. La alerta de
+ * límite usa el último envío del día.
+ */
+export const CRITICAL_EMAIL_EVENTS = [
+  "order_received",
+  "purchase_confirmed",
+  "payment_rejected",
+  "password_recovery",
+  "payment_review_alert",
+  "order_shipped",
+] as const satisfies readonly EmailEvent[];
+
+/**
+ * Prefijo de `event_key` de los correos de muestra (`email:preview --to`). Se
+ * registran en email_log para que cuenten en el límite diario, sin trabajo en
+ * outbox, y el panel los muestra como «Muestra».
+ */
+export const PREVIEW_KEY_PREFIX = "preview:";
 
 /** Motivos de una alerta de revisión de pago (LN-15; RN-04, RN-05, A4). */
 export const REVIEW_ALERT_REASONS = [
@@ -58,6 +80,7 @@ export const EVENT_KEY_MAX = 160;
  * - `password_recovery:<userId>:<uuid>` (cada solicitud es un hecho distinto)
  * - `newsletter_unsubscribe:<subscriberId>:<uuid>` (igual: cada pedido de baja)
  * - `payment_review_alert:<paymentId>:<motivo>` (una alerta por pago y motivo)
+ * - `email_quota_alert:<día de Chile, AAAA-MM-DD>` (una alerta por día)
  */
 export function emailEventKey(event: EmailEvent, ...parts: string[]): string {
   const key = [event, ...parts].join(":");
@@ -204,6 +227,15 @@ export const EMAIL_DATA_SCHEMAS = {
     /** Número de intento del pago. */
     attempt: z.number().int().positive(),
     amount: clp,
+  }),
+  /** Equipo: se alcanzó el límite diario de envíos; lo pendiente sale al día siguiente. */
+  email_quota_alert: z.object({
+    /** Día de Chile (AAAA-MM-DD). */
+    day: z.iso.date(),
+    /** Envíos contados en el día al pausar. */
+    sent: z.number().int().min(0),
+    limit: z.number().int().positive(),
+    reserve: z.number().int().min(0),
   }),
 } satisfies Record<EmailEvent, z.ZodType>;
 

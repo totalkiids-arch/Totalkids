@@ -21,6 +21,7 @@ export const EMAIL_EVENTS = [
   "password_recovery",
   "newsletter_unsubscribe",
   "payment_review_alert",
+  "email_quota_alert",
 ] as const;
 export type EmailEvent = (typeof EMAIL_EVENTS)[number];
 
@@ -35,6 +36,7 @@ export const EMAIL_EVENT_LABEL: Record<EmailEvent, string> = {
   password_recovery: "Recuperación de contraseña",
   newsletter_unsubscribe: "Baja del newsletter",
   payment_review_alert: "Alerta de pago en revisión",
+  email_quota_alert: "Alerta de límite diario de correos",
 };
 
 export const EMAIL_STATUSES = ["pending", "sent", "failed", "uncertain"] as const;
@@ -63,8 +65,15 @@ export interface EmailAttempt {
   detail: string | null;
 }
 
-/** Pedido o solicitud del correo: `label` es el número visible ("TK-1048", "SOL-1002"). */
-export type EmailReference = { kind: "order" | "request"; id: string; label: string } | null;
+/**
+ * Pedido o solicitud del correo: `label` es el número visible ("TK-1048", "SOL-1002").
+ * "sample": correo de muestra (`email:preview --to`), no es un correo real.
+ */
+export type EmailReference = {
+  kind: "order" | "request" | "sample";
+  id: string;
+  label: string;
+} | null;
 
 export interface EmailSummary {
   id: string;
@@ -173,9 +182,13 @@ export function toApiEmailSearch(query: EmailQuery, pageSize = EMAILS_PAGE_SIZE)
   return params.toString();
 }
 
-/** Texto de la referencia ("Pedido #TK-1048", "Solicitud #SOL-1002" o "Sin referencia"). */
+/**
+ * Texto de la referencia ("Pedido #TK-1048", "Solicitud #SOL-1002", "Muestra (no es
+ * un correo real)" o "Sin referencia").
+ */
 export function referenceLabel(reference: EmailReference): string {
   if (!reference) return "Sin referencia";
+  if (reference.kind === "sample") return "Muestra (no es un correo real)";
   return `${reference.kind === "order" ? "Pedido" : "Solicitud"} #${reference.label}`;
 }
 
@@ -207,14 +220,14 @@ export function emailPreview(record: Pick<EmailSummary, "event" | "reference">):
     case "purchase_confirmed":
       return {
         subject: `Tu compra #${ref} está confirmada`,
-        heading: "¡Gracias por crecer con nosotros!",
+        heading: "Pago confirmado",
         body: `Tu pedido #${ref} está confirmado. Incluye el detalle, los extras, la dirección o el retiro, el plazo y cómo contactarnos.`,
         action: "Ver mi pedido",
       };
     case "new_sale":
       return {
         subject: `Nueva venta #${ref}`,
-        heading: "Nueva venta en la tienda",
+        heading: "Nueva venta",
         body: `Se confirmó el pago del pedido #${ref}. Revisa el detalle en el panel.`,
         action: "Abrir el panel",
       };
@@ -228,23 +241,23 @@ export function emailPreview(record: Pick<EmailSummary, "event" | "reference">):
     case "order_shipped":
       return {
         subject: `Tu pedido #${ref} va en camino`,
-        heading: "¡Tu pedido va en camino!",
+        heading: "Tu pedido va en camino",
         body: `Despachamos tu pedido #${ref}. Te indicamos la empresa de transporte y el número de seguimiento.`,
         action: "Seguir mi pedido",
       };
     case "order_delivered":
       return {
         subject: `Tu pedido #${ref} fue entregado`,
-        heading: "¡Que lo disfruten!",
+        heading: "Pedido entregado",
         body: `Tu pedido #${ref} fue entregado. Te dejamos algunos cuidados para que tus muebles duren más.`,
-        action: null,
+        action: "Ver mi pedido",
       };
     case "service_request":
       return {
         subject: `Recibimos tu solicitud #${ref}`,
-        heading: "¡Recibimos tu idea!",
+        heading: "Recibimos tu solicitud",
         body: `Tu solicitud #${ref} quedó registrada. Te responderemos dentro del plazo informado.`,
-        action: null,
+        action: "Ir a la tienda",
       };
     case "password_recovery":
       return {
@@ -256,7 +269,7 @@ export function emailPreview(record: Pick<EmailSummary, "event" | "reference">):
     case "newsletter_unsubscribe":
       return {
         subject: "Confirma tu baja del newsletter",
-        heading: "¿Quieres dejar de recibir novedades?",
+        heading: "Confirma tu baja",
         body: "Confirma la baja con el enlace. Si no la pediste, ignora este correo.",
         action: "Confirmar baja",
       };
@@ -266,6 +279,13 @@ export function emailPreview(record: Pick<EmailSummary, "event" | "reference">):
         heading: "Pago en revisión",
         body: `El pedido #${ref} quedó en revisión (pago tardío sin stock, doble cobro, datos distintos o Flow sin respuesta). Resuélvelo en Pagos y conciliación.`,
         action: "Revisar en el panel",
+      };
+    case "email_quota_alert":
+      return {
+        subject: "Correos en pausa: se alcanzó el límite diario",
+        heading: "Límite diario de correos",
+        body: "Se alcanzó el límite diario de envíos del plan de Brevo. Los correos pendientes quedan en la cola y salen solos al día siguiente (hora de Chile).",
+        action: "Ver los correos en el panel",
       };
   }
 }

@@ -4852,6 +4852,7 @@ components:
           password_recovery,
           newsletter_unsubscribe,
           payment_review_alert,
+          email_quota_alert,
         ]
     EmailStatus:
       type: string
@@ -4887,7 +4888,10 @@ components:
             - type: object
               required: [kind, id, label]
               properties:
-                kind: { type: string, enum: [order, request] }
+                kind:
+                  type: string
+                  enum: [order, request, sample]
+                  description: sample = correo de muestra (email:preview), no es un correo real
                 id: { type: string, format: uuid }
                 label: { type: string, example: TK-1048 }
         attemptsCount: { type: integer }

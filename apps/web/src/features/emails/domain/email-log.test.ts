@@ -25,6 +25,7 @@ describe("eventos", () => {
       "Recuperación de contraseña",
       "Baja del newsletter",
       "Alerta de pago en revisión",
+      "Alerta de límite diario de correos",
     ]);
   });
 });
@@ -65,6 +66,10 @@ describe("listado", () => {
       "Solicitud #SOL-1001",
     );
     expect(referenceLabel(null)).toBe("Sin referencia");
+    // Los correos de muestra (email:preview --to) no se confunden con correos reales.
+    expect(referenceLabel({ kind: "sample", id: ID, label: "Muestra" })).toBe(
+      "Muestra (no es un correo real)",
+    );
   });
 });
 
