@@ -15,11 +15,43 @@ import { escapeHtml, formatDateTime, siteLink } from "./format.js";
 /** Fila etiqueta → valor. `total` la destaca (el total del pedido). */
 export type Row = readonly [label: string, value: string] | readonly [string, string, "total"];
 
+/** Estado de un paso de la barra de avance del pedido. */
+export type StepState = "done" | "current" | "todo" | "error";
+
+export interface ProgressStep {
+  label: string;
+  state: StepState;
+}
+
+/** Línea de producto de la tarjeta de productos. */
+export interface ItemLine {
+  /** Cantidad ("2"). */
+  quantity: number;
+  name: string;
+  /** Variante y extras, en letra secundaria ("Roble natural, 90 cm · + Armado"). */
+  detail?: string | undefined;
+  /** Etiqueta destacada ("A pedido · 10 días hábiles"). */
+  badge?: string | undefined;
+  price: string;
+  /** Misma línea en el texto plano ("2 × Cama casita (…) · a pedido"). */
+  textLabel: string;
+}
+
 export type Block =
   /** Párrafo. */
   | { kind: "p"; text: string }
-  /** Tarjeta con filas etiqueta → valor y líneas separadoras finas. */
-  | { kind: "rows"; title?: string; rows: readonly Row[] }
+  /** Tarjeta con filas etiqueta → valor y líneas separadoras finas. `icon`: emoji junto al título. */
+  | { kind: "rows"; title?: string; icon?: string; rows: readonly Row[] }
+  /** Barra de avance del pedido (Recibido → Pagado → En camino → Entregado). */
+  | { kind: "progress"; steps: readonly ProgressStep[] }
+  /** Tarjeta de productos: una fila por producto, montos y el total destacado. */
+  | {
+      kind: "items";
+      title: string;
+      lines: readonly ItemLine[];
+      amounts: readonly Row[];
+      total: readonly [label: string, value: string];
+    }
   /** Lista con viñetas. */
   | { kind: "list"; items: readonly string[] }
   /** Botón principal con enlace absoluto. */
@@ -35,6 +67,10 @@ export interface EmailContent {
   heading: string;
   /** Frase corta bajo el título. */
   intro: string;
+  /** Ícono del evento (emoji) en un círculo sobre el título. */
+  icon?: string;
+  /** Color del círculo del ícono. Por defecto "brand" (amarillo). */
+  tone?: "brand" | "success" | "warning" | "info";
   blocks: readonly Block[];
   /** "team": correo interno al equipo (tono interno, enlace al panel). */
   audience?: "customer" | "team";
@@ -78,7 +114,22 @@ export const BRAND = {
   onBlue: "#e0e9ff",
   onDark: "#d5dae6",
   onDarkMuted: "#b4bcd0",
+  muted: "#ece4d3",
+  success: "#2f8a5b",
+  successSoft: "#dcf2e5",
+  danger: "#c2412d",
+  dangerSoft: "#fde4de",
+  infoSoft: "#e0e9ff",
 } as const;
+
+const TONES: Record<NonNullable<EmailContent["tone"]>, string> = {
+  brand: BRAND.softYellow,
+  success: BRAND.successSoft,
+  warning: BRAND.dangerSoft,
+  info: BRAND.infoSoft,
+};
+
+const CARD = `background:${BRAND.surface};border:1px solid ${BRAND.border};border-radius:16px;`;
 
 /** Pila de fuentes seguras (sin fuentes externas). */
 const FONT_STACK = "'Trebuchet MS',Verdana,Arial,Helvetica,sans-serif";
@@ -94,23 +145,91 @@ function rowHtml([label, value, style]: Row, last: boolean): string {
   return `<tr><td valign="top" style="padding:10px 12px 10px 0;${border}${FONT}font-size:${size};line-height:1.4;color:${total ? BRAND.textPrimary : BRAND.textSecondary};${total ? "font-weight:bold;" : ""}">${escapeHtml(label)}</td><td valign="top" align="right" style="padding:10px 0;${border}${FONT}font-size:${size};line-height:1.4;font-weight:bold;color:${BRAND.textPrimary};">${escapeHtml(value)}</td></tr>`;
 }
 
+/** Título de tarjeta en versalitas, con ícono opcional. */
+function cardTitle(title: string, icon?: string, colspan = 2): string {
+  const mark = icon
+    ? `<span style="display:inline-block;width:26px;height:26px;margin-right:8px;border-radius:13px;background:${BRAND.cream};text-align:center;line-height:26px;font-size:14px;vertical-align:middle;">${escapeHtml(icon)}</span>`
+    : "";
+  return `<tr><td colspan="${String(colspan)}" style="padding:0 0 8px;${FONT}font-size:12px;font-weight:bold;letter-spacing:1.2px;text-transform:uppercase;color:${BRAND.textSecondary};">${mark}<span style="vertical-align:middle;">${escapeHtml(title)}</span></td></tr>`;
+}
+
+const STEP_STYLE: Record<StepState, { bg: string; ink: string; bar: string; label: string }> = {
+  done: { bg: BRAND.blue, ink: "#ffffff", bar: BRAND.blue, label: BRAND.textPrimary },
+  current: { bg: BRAND.yellow, ink: BRAND.navy, bar: BRAND.yellow, label: BRAND.textPrimary },
+  todo: { bg: BRAND.muted, ink: BRAND.textSecondary, bar: BRAND.muted, label: BRAND.textSecondary },
+  error: { bg: BRAND.danger, ink: "#ffffff", bar: BRAND.danger, label: BRAND.danger },
+};
+
+function progressHtml(steps: readonly ProgressStep[]): string {
+  const width = `${String(Math.floor(100 / steps.length))}%`;
+  const cells = steps
+    .map((step, i) => {
+      const s = STEP_STYLE[step.state];
+      const mark = step.state === "done" ? "✓" : step.state === "error" ? "✕" : String(i + 1);
+      const weight = step.state === "current" || step.state === "error" ? "bold" : "normal";
+      return `<td width="${width}" align="center" valign="top" style="padding:0 3px;">
+<div style="height:5px;line-height:5px;font-size:0;border-radius:3px;background:${s.bar};">&nbsp;</div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:10px auto 6px;"><tr><td width="30" height="30" align="center" bgcolor="${s.bg}" style="width:30px;height:30px;border-radius:15px;background:${s.bg};${FONT}font-size:14px;font-weight:bold;line-height:30px;color:${s.ink};">${mark}</td></tr></table>
+<p style="margin:0;${FONT}font-size:12px;line-height:1.3;font-weight:${weight};color:${s.label};">${escapeHtml(step.label)}</p>
+</td>`;
+    })
+    .join("");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;${CARD}"><tr><td style="padding:16px 12px 14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${cells}</tr></table></td></tr></table>`;
+}
+
+function itemHtml(line: ItemLine, last: boolean): string {
+  const border = last ? "" : `border-bottom:1px solid ${BRAND.border};`;
+  const detail = line.detail
+    ? `<p style="margin:3px 0 0;${FONT}font-size:13px;line-height:1.4;color:${BRAND.textSecondary};">${escapeHtml(line.detail)}</p>`
+    : "";
+  const badge = line.badge
+    ? `<p style="margin:6px 0 0;"><span style="display:inline-block;padding:3px 10px;border-radius:999px;background:${BRAND.cream};${FONT}font-size:11px;font-weight:bold;line-height:1.4;color:${BRAND.navy};">${escapeHtml(line.badge)}</span></p>`
+    : "";
+  return `<tr>
+<td width="48" valign="top" style="padding:12px 12px 12px 0;${border}"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="44" height="44" align="center" bgcolor="${BRAND.softYellow}" style="width:44px;height:44px;border-radius:12px;background:${BRAND.softYellow};${FONT}font-size:15px;font-weight:bold;line-height:44px;color:${BRAND.navy};">${String(line.quantity)}×</td></tr></table></td>
+<td valign="top" style="padding:12px 12px 12px 0;${border}"><p style="margin:0;${FONT}font-size:15px;line-height:1.35;font-weight:bold;color:${BRAND.textPrimary};">${escapeHtml(line.name)}</p>${detail}${badge}</td>
+<td valign="top" align="right" style="padding:12px 0;${border}white-space:nowrap;${FONT}font-size:15px;line-height:1.35;font-weight:bold;color:${BRAND.textPrimary};">${escapeHtml(line.price)}</td>
+</tr>`;
+}
+
+function itemsHtml(block: Extract<Block, { kind: "items" }>): string {
+  const lines = block.lines.map((line, i) => itemHtml(line, i === block.lines.length - 1)).join("");
+  const amounts = block.amounts
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:4px 0;${FONT}font-size:14px;line-height:1.4;color:${BRAND.textSecondary};">${escapeHtml(label)}</td><td align="right" style="padding:4px 0;${FONT}font-size:14px;line-height:1.4;color:${BRAND.textPrimary};">${escapeHtml(value)}</td></tr>`,
+    )
+    .join("");
+  const [totalLabel, totalValue] = block.total;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border-collapse:separate;${CARD}overflow:hidden;">
+<tr><td style="padding:16px 18px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${cardTitle(block.title, "🛍️", 3)}${lines}</table></td></tr>
+<tr><td style="padding:8px 18px 12px;border-top:1px dashed ${BRAND.border};"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${amounts}</table></td></tr>
+<tr><td bgcolor="${BRAND.cream}" style="background:${BRAND.cream};padding:14px 18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="${FONT}font-size:16px;font-weight:bold;color:${BRAND.textPrimary};">${escapeHtml(totalLabel)}</td><td align="right" style="${FONT}font-size:22px;font-weight:bold;color:${BRAND.navy};">${escapeHtml(totalValue)}</td></tr></table></td></tr>
+</table>`;
+}
+
 function blockHtml(block: Block, team: boolean): string {
   switch (block.kind) {
     case "p":
       return `<p style="margin:0 0 16px;${FONT}font-size:16px;line-height:1.55;color:${BRAND.textBody};">${escapeHtml(block.text)}</p>`;
     case "note":
-      return `<p style="margin:0 0 16px;${FONT}font-size:13px;line-height:1.5;color:${BRAND.textSecondary};">${escapeHtml(block.text)}</p>`;
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px;"><tr><td style="padding:10px 14px;border-left:3px solid ${BRAND.yellow};background:${BRAND.surface};border-radius:0 10px 10px 0;${FONT}font-size:13px;line-height:1.5;color:${BRAND.textSecondary};">${escapeHtml(block.text)}</td></tr></table>`;
     case "list":
-      return `<ul style="margin:0 0 16px;padding-left:20px;${FONT}font-size:15px;line-height:1.55;color:${BRAND.textBody};">${block.items
-        .map((item) => `<li style="margin:0 0 6px;">${escapeHtml(item)}</li>`)
-        .join("")}</ul>`;
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px;">${block.items
+        .map(
+          (item) =>
+            `<tr><td width="30" valign="top" style="padding:0 0 10px;"><span style="display:inline-block;width:22px;height:22px;border-radius:11px;background:${BRAND.softYellow};text-align:center;${FONT}font-size:12px;font-weight:bold;line-height:22px;color:${BRAND.navy};">✓</span></td><td valign="top" style="padding:1px 0 10px;${FONT}font-size:15px;line-height:1.5;color:${BRAND.textBody};">${escapeHtml(item)}</td></tr>`,
+        )
+        .join("")}</table>`;
     case "rows": {
-      const title = block.title
-        ? `<tr><td colspan="2" style="padding:0 0 6px;${FONT}font-size:12px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:${BRAND.textSecondary};">${escapeHtml(block.title)}</td></tr>`
-        : "";
+      const title = block.title ? cardTitle(block.title, block.icon) : "";
       const rows = block.rows.map((row, i) => rowHtml(row, i === block.rows.length - 1)).join("");
-      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border-collapse:separate;background:${BRAND.surface};border:1px solid ${BRAND.border};border-radius:14px;"><tr><td style="padding:14px 18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${title}${rows}</table></td></tr></table>`;
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border-collapse:separate;${CARD}"><tr><td style="padding:16px 18px 8px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${title}${rows}</table></td></tr></table>`;
     }
+    case "progress":
+      return progressHtml(block.steps);
+    case "items":
+      return itemsHtml(block);
     case "action": {
       // Botón "a prueba de Outlook": el color va en la celda y el enlace con padding.
       const bg = team ? BRAND.blue : BRAND.yellow;
@@ -134,6 +253,16 @@ function blockText(block: Block): string {
     }
     case "action":
       return `${block.label}: ${block.url}`;
+    case "progress": {
+      const marks: Record<StepState, string> = { done: "✓", current: "●", todo: "○", error: "✕" };
+      return `Avance: ${block.steps.map((s) => `${marks[s.state]} ${s.label}`).join(" · ")}`;
+    }
+    case "items":
+      return [
+        block.title.toUpperCase(),
+        ...block.lines.map((line) => `${line.textLabel}: ${line.price}`),
+        ...[...block.amounts, block.total].map(([label, value]) => `${label}: ${value}`),
+      ].join("\n");
   }
 }
 
@@ -163,6 +292,11 @@ export function renderLayout(content: EmailContent, frame: LayoutFrame): Rendere
     ? `<tr><td align="center" style="padding:0 0 12px;"><span style="display:inline-block;padding:4px 12px;border-radius:999px;background:${BRAND.cream};${FONT}font-size:12px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:${BRAND.navy};">Aviso interno</span></td></tr>`
     : "";
 
+  const iconBg = TONES[content.tone ?? "brand"];
+  const hero = content.icon
+    ? `<tr><td align="center" style="padding:0 0 14px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td width="64" height="64" align="center" bgcolor="${iconBg}" style="width:64px;height:64px;border-radius:32px;background:${iconBg};border:4px solid ${BRAND.surface};font-size:30px;line-height:64px;">${escapeHtml(content.icon)}</td></tr></table></td></tr>`
+    : "";
+
   const unsubscribe = content.unsubscribeUrl
     ? `<p style="margin:10px 0 0;${FONT}font-size:12px;line-height:1.5;color:${BRAND.onDarkMuted};">¿No quieres recibir más novedades? <a href="${escapeHtml(content.unsubscribeUrl)}" target="_blank" style="color:#ffffff;text-decoration:underline;">Darte de baja del newsletter</a></p>`
     : "";
@@ -186,13 +320,15 @@ export function renderLayout(content: EmailContent, frame: LayoutFrame): Rendere
 <tr><td align="center" bgcolor="${BRAND.blue}" style="background:${BRAND.blue};padding:28px 24px 22px;">
 <img src="${escapeHtml(logoUrl)}" width="80" height="80" alt="Total Kids" style="display:block;margin:0 auto;width:80px;height:80px;border:0;outline:none;text-decoration:none;border-radius:40px;${FONT}font-size:20px;font-weight:bold;color:#ffffff;">
 <p style="margin:12px 0 0;${FONT}font-size:22px;line-height:1.2;font-weight:bold;color:#ffffff;">${escapeHtml(brandLine)}</p>
-<p style="margin:4px 0 0;${FONT}font-size:13px;line-height:1.4;color:${BRAND.onBlue};">${escapeHtml(TAGLINE)}</p>
+<p style="margin:4px 0 0;${FONT}font-size:13px;line-height:1.4;letter-spacing:0.5px;color:${BRAND.onBlue};">${escapeHtml(TAGLINE)}</p>
 </td></tr>
-<tr><td style="padding:28px 28px 8px;background:${BRAND.background};">
+<tr><td bgcolor="${BRAND.yellow}" style="background:${BRAND.yellow};height:6px;line-height:6px;font-size:0;">&nbsp;</td></tr>
+<tr><td style="padding:30px 24px 8px;background:${BRAND.background};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
 ${badge}
-<tr><td align="center" style="padding:0 0 8px;"><h1 style="margin:0;${FONT}font-size:28px;line-height:1.2;font-weight:bold;color:${BRAND.textPrimary};">${escapeHtml(content.heading)}</h1></td></tr>
-<tr><td align="center" style="padding:0 0 24px;"><p style="margin:0;${FONT}font-size:16px;line-height:1.5;color:${BRAND.textBody};">${escapeHtml(content.intro)}</p></td></tr>
+${hero}
+<tr><td align="center" style="padding:0 0 10px;"><h1 style="margin:0;${FONT}font-size:28px;line-height:1.2;font-weight:bold;color:${BRAND.textPrimary};">${escapeHtml(content.heading)}</h1></td></tr>
+<tr><td align="center" style="padding:0 8px 26px;"><p style="margin:0;${FONT}font-size:16px;line-height:1.55;color:${BRAND.textBody};">${escapeHtml(content.intro)}</p></td></tr>
 <tr><td>
 ${content.blocks.map((block) => blockHtml(block, team)).join("\n")}
 </td></tr>

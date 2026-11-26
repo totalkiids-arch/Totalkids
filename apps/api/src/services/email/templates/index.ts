@@ -6,6 +6,8 @@ import {
   sentAtRow,
   type Block,
   type EmailContent,
+  type ItemLine,
+  type ProgressStep,
   type RenderedEmail,
   type Row,
 } from "./layout.js";
@@ -80,8 +82,46 @@ function lineLabel(line: OrderLine): string {
   return `${String(line.quantity)} × ${name}${extras}${toOrder}`;
 }
 
-const lineRows = (items: readonly OrderLine[]): Row[] =>
-  items.map((line) => [lineLabel(line), formatClp(line.lineTotal)]);
+/** Línea para la tarjeta de productos: nombre, detalle (variante y extras) y etiqueta a pedido. */
+function itemLine(line: OrderLine): ItemLine {
+  const detail = [line.variant, line.extras.length > 0 ? `+ ${line.extras.join(", ")}` : null]
+    .filter(Boolean)
+    .join(" · ");
+  return {
+    quantity: line.quantity,
+    name: line.name,
+    detail: detail || undefined,
+    badge: line.madeToOrder
+      ? line.leadTime
+        ? `A pedido · ${line.leadTime}`
+        : "A pedido"
+      : undefined,
+    price: formatClp(line.lineTotal),
+    textLabel: lineLabel(line),
+  };
+}
+
+/** Pasos de la barra de avance según el evento (retiro en taller: «Listo para retiro»). */
+function progress(
+  stage: "received" | "paid" | "rejected" | "shipped" | "delivered",
+  pickup = false,
+): Block {
+  const order = ["received", "paid", "shipped", "delivered"] as const;
+  const labels = ["Recibido", "Pagado", pickup ? "Listo para retiro" : "En camino", "Entregado"];
+  const at = stage === "rejected" ? 1 : order.indexOf(stage);
+  const steps: ProgressStep[] = labels.map((label, i) => ({
+    label: stage === "rejected" && i === 1 ? "Pago no completado" : label,
+    state:
+      stage === "rejected" && i === 1
+        ? "error"
+        : i < at || (i === at && stage === "delivered")
+          ? "done"
+          : i === at
+            ? "current"
+            : "todo",
+  }));
+  return { kind: "progress", steps };
+}
 
 function amountRows(amounts: Amounts, pickup: boolean): Row[] {
   const rows: Row[] = [["Subtotal", formatClp(amounts.subtotal)]];
@@ -117,16 +157,32 @@ function orderCard(
   delivery: Delivery | undefined,
 ): Block[] {
   const pickup = delivery?.method === "pickup";
+  const rows = amountRows(amounts, pickup);
+  const [totalLabel, totalValue] = rows[rows.length - 1] ?? ["Total", formatClp(amounts.total)];
   return [
-    { kind: "rows", title: "Tu pedido", rows: [["N.º de pedido", ref], sentAtRow(now)] },
     {
       kind: "rows",
+      title: "Tu pedido",
+      icon: "🧾",
+      rows: [["N.º de pedido", ref], sentAtRow(now)],
+    },
+    {
+      kind: "items",
       title: "Productos",
-      rows: [...lineRows(items), ...amountRows(amounts, pickup)],
+      lines: items.map(itemLine),
+      amounts: rows.slice(0, -1),
+      total: [totalLabel, totalValue],
     },
     // Los correos encolados antes de LN-09 no traen la entrega.
     ...(delivery
-      ? [{ kind: "rows", title: "Entrega", rows: deliveryRows(delivery) } as const]
+      ? [
+          {
+            kind: "rows",
+            title: "Entrega",
+            icon: pickup ? "🏠" : "🚚",
+            rows: deliveryRows(delivery),
+          } as const,
+        ]
       : []),
   ];
 }
@@ -194,7 +250,9 @@ const TEMPLATES: Renderers = {
       preheader: `Tu pedido #${ref} está pendiente de pago.`,
       heading: "¡Recibimos tu pedido!",
       intro: `Hola ${data.buyerName}, tu pedido #${ref} está pendiente de pago.`,
+      icon: "🛒",
       blocks: [
+        progress("received", pickup),
         ...orderCard(ref, now, data.items, data, data.delivery),
         ...shippingToCoordinateNote(data, pickup),
         {
@@ -223,7 +281,10 @@ const TEMPLATES: Renderers = {
       preheader: `Confirmamos el pago de tu pedido #${ref}.`,
       heading: "Pago confirmado",
       intro: `¡Gracias por crecer con nosotros, ${data.buyerName}! Tu pedido #${ref} está confirmado.`,
+      icon: "🎉",
+      tone: "success",
       blocks: [
+        progress("paid", pickup),
         ...orderCard(ref, now, data.items, data, data.delivery),
         ...shippingToCoordinateNote(data, pickup),
         ...madeToOrderNote(data.items),
@@ -317,10 +378,14 @@ const TEMPLATES: Renderers = {
       preheader: `El pago del pedido #${ref} ${outcome}.`,
       heading: "Tu pago no se completó",
       intro: `Hola ${data.buyerName}, el pago del pedido #${ref} ${outcome}.`,
+      icon: "⚠️",
+      tone: "warning",
       blocks: [
+        progress("rejected"),
         {
           kind: "rows",
           title: "Tu pedido",
+          icon: "🧾",
           rows: [
             ["N.º de pedido", ref],
             sentAtRow(now),
@@ -350,10 +415,14 @@ const TEMPLATES: Renderers = {
         preheader: `Ya puedes retirar tu pedido #${ref} en el taller.`,
         heading: "Listo para retiro",
         intro: `Hola ${data.buyerName}, tu pedido #${ref} está listo para retirar en el taller.`,
+        icon: "📦",
+        tone: "info",
         blocks: [
+          progress("shipped", true),
           {
             kind: "rows",
             title: "Retiro",
+            icon: "🏠",
             rows: [
               ["N.º de pedido", ref],
               sentAtRow(now),
@@ -372,8 +441,11 @@ const TEMPLATES: Renderers = {
       preheader: `Despachamos tu pedido #${ref}.`,
       heading: "Tu pedido va en camino",
       intro: `Hola ${data.buyerName}, despachamos tu pedido #${ref}.`,
+      icon: "🚚",
+      tone: "info",
       blocks: [
-        { kind: "rows", title: "Despacho", rows },
+        progress("shipped"),
+        { kind: "rows", title: "Despacho", icon: "📍", rows },
         {
           kind: "action",
           label: "Seguir mi pedido",
@@ -390,8 +462,16 @@ const TEMPLATES: Renderers = {
       preheader: `Tu pedido #${ref} fue entregado.`,
       heading: "Pedido entregado",
       intro: `Hola ${data.buyerName}, tu pedido #${ref} fue entregado. ¡Que lo disfruten!`,
+      icon: "🏡",
+      tone: "success",
       blocks: [
-        { kind: "rows", title: "Tu pedido", rows: [["N.º de pedido", ref], sentAtRow(now)] },
+        progress("delivered"),
+        {
+          kind: "rows",
+          title: "Tu pedido",
+          icon: "🧾",
+          rows: [["N.º de pedido", ref], sentAtRow(now)],
+        },
         { kind: "p", text: "Te dejamos algunos cuidados para que tus muebles duren más:" },
         { kind: "list", items: CARE_TIPS },
         { kind: "action", label: "Ver mi pedido", url: siteLink(ctx.siteUrl, ORDER_LOOKUP_PATH) },
