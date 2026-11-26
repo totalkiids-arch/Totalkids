@@ -1,5 +1,5 @@
-// Animales del desfile entre páginas (los del logo). SVG decorativo; la animación
-// vive en globals.css (clases parade-*), y con prefers-reduced-motion no se muestra.
+// Animales de la pantalla de carga (los del logo). SVG decorativo; la animación
+// vive en globals.css (clases loader-* y parade-*), y con prefers-reduced-motion se detiene.
 import type { CSSProperties } from "react";
 
 const NAVY = "#1F2A44";

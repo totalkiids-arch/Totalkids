@@ -892,54 +892,45 @@
   }
 }
 
-/* ── Desfile de animales entre páginas (features/page-transitions) ──────────
-   Decorativo: sin clics (pointer-events: none) y oculto con prefers-reduced-motion. */
-.parade {
-  position: fixed;
-  inset: 0;
-  z-index: 35;
-  overflow: hidden;
-  pointer-events: none;
+/* ── Pantalla de carga con animales (features/page-transitions) ────────────
+   Reemplaza la rueda de carga. Con prefers-reduced-motion los animales quedan quietos. */
+.loader-animal {
+  display: block;
+  filter: drop-shadow(0 6px 6px rgb(31 42 68 / 0.16));
 }
-.parade-act {
-  position: absolute;
-  filter: drop-shadow(0 6px 6px rgb(31 42 68 / 0.18));
+.loader-animal > svg {
+  height: 100%;
 }
-/* Elefante: cruza abajo de izquierda a derecha. */
-.parade-act--walk {
-  bottom: 6px;
-  left: 0;
-  height: clamp(72px, 14vw, 110px);
-  animation: parade-walk 2.6s linear both;
+.loader-animal--elephant {
+  height: clamp(48px, 12vw, 92px);
+  animation: loader-bob 0.36s ease-in-out infinite alternate;
 }
-/* León: cruza a saltos (el salto va en el SVG interior). */
-.parade-act--hop {
-  bottom: 10px;
-  left: 0;
-  height: clamp(64px, 11vw, 92px);
-  animation: parade-cross 2.4s linear both;
-}
-.parade-act--hop > svg {
-  animation: parade-hop 0.6s ease-in-out 4 both;
+.loader-animal--lion {
+  height: clamp(40px, 9vw, 74px);
   transform-origin: 50% 100%;
+  animation: loader-hop 0.7s ease-in-out infinite;
 }
-/* Mono: baja colgado de la liana, se columpia y vuelve a subir. */
-.parade-act--swing {
-  top: 0;
-  right: 18%;
-  height: clamp(150px, 30vw, 230px);
+.loader-animal--monkey {
+  height: clamp(80px, 19vw, 150px);
   transform-origin: 50% 0;
-  animation: parade-swing 2.4s ease-in-out both;
+  animation: loader-swing 1.4s ease-in-out infinite alternate;
 }
-/* Jirafa: se asoma desde abajo a la izquierda y vuelve a esconderse. */
-.parade-act--peek {
-  bottom: -28px;
-  left: 4%;
-  height: clamp(130px, 22vw, 200px);
-  animation: parade-peek 2.3s ease-in-out both;
+.loader-animal--giraffe {
+  height: clamp(72px, 17vw, 130px);
+}
+/* La jirafa se dibujó para asomarse: se corta su cuerpo bajo el cuello. */
+.loader-animal--giraffe > svg {
+  overflow: hidden;
+}
+.loader-dots::after {
+  display: inline-block;
+  width: 1.2em;
+  text-align: left;
+  content: "…";
+  animation: loader-dots 1.2s steps(4, end) infinite;
 }
 
-/* Patas del elefante: un par adelanta mientras el otro atrasa. */
+/* Partes que se mueven dentro de cada animal (parade-animals.tsx). */
 .parade-step > rect {
   animation: parade-step 0.36s ease-in-out infinite alternate;
 }
@@ -958,26 +949,18 @@
   animation: parade-wave 0.4s ease-in-out infinite alternate;
 }
 .parade-nod {
-  animation: parade-nod 0.9s ease-in-out 0.5s 2 alternate both;
+  animation: parade-nod 0.9s ease-in-out infinite alternate;
 }
 
-@keyframes parade-walk {
+@keyframes loader-bob {
   from {
-    transform: translateX(-105%);
+    transform: translateY(0);
   }
   to {
-    transform: translateX(100vw);
+    transform: translateY(-3px);
   }
 }
-@keyframes parade-cross {
-  from {
-    transform: translateX(-110%);
-  }
-  to {
-    transform: translateX(100vw);
-  }
-}
-@keyframes parade-hop {
+@keyframes loader-hop {
   0%,
   100% {
     transform: translateY(0) scale(1.08, 0.92);
@@ -986,40 +969,23 @@
     transform: translateY(0) scale(1);
   }
   50% {
-    transform: translateY(-70%) rotate(-8deg);
+    transform: translateY(-45%) rotate(-8deg);
   }
 }
-@keyframes parade-swing {
-  0% {
-    transform: translateY(-100%) rotate(0);
+@keyframes loader-swing {
+  from {
+    transform: rotate(-16deg);
   }
-  15% {
-    transform: translateY(0) rotate(-28deg);
-  }
-  38% {
-    transform: translateY(0) rotate(24deg);
-  }
-  58% {
-    transform: translateY(0) rotate(-16deg);
-  }
-  76% {
-    transform: translateY(0) rotate(8deg);
-  }
-  86% {
-    transform: translateY(0) rotate(0);
-  }
-  100% {
-    transform: translateY(-100%) rotate(0);
+  to {
+    transform: rotate(16deg);
   }
 }
-@keyframes parade-peek {
-  0%,
-  100% {
-    transform: translateY(100%);
+@keyframes loader-dots {
+  from {
+    clip-path: inset(0 100% 0 0);
   }
-  22%,
-  78% {
-    transform: translateY(0);
+  to {
+    clip-path: inset(0 -10% 0 0);
   }
 }
 @keyframes parade-step {
@@ -1056,12 +1022,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .parade {
-    display: none;
-  }
-}
-@media print {
-  .parade {
-    display: none;
+  .loader-animals,
+  .loader-animals *,
+  .loader-dots::after {
+    animation: none !important;
   }
 }
