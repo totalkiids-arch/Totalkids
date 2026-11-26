@@ -8,6 +8,7 @@ export function StoreShell({
   children,
   cartLink,
   assistant,
+  pageTransition,
   seasonalBanner,
   seasonalDecor,
   theme = "clasica",
@@ -16,6 +17,8 @@ export function StoreShell({
   cartLink: ReactNode;
   /** Ayudante flotante (lo entrega la feature "assistant"). */
   assistant?: ReactNode;
+  /** Animación al cambiar de página (la entrega la feature "page-transitions"). */
+  pageTransition?: ReactNode;
   seasonalBanner?: ReactNode;
   /** Ambientación de campaña: guirnaldas y partículas (las entrega la feature "themes"). */
   seasonalDecor?: { afterHeader?: ReactNode; beforeFooter?: ReactNode; overlay?: ReactNode };
@@ -41,6 +44,7 @@ export function StoreShell({
       </main>
       {seasonalDecor?.beforeFooter}
       <StoreFooter />
+      {pageTransition}
       {assistant}
     </div>
   );

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { TitoAssistant } from "@/features/assistant";
+import { AnimalParade } from "@/features/page-transitions";
 import { CartLink } from "@/features/cart";
 import {
   getStoreTheme,
@@ -21,6 +22,7 @@ export default async function AccountLayout({ children }: { children: ReactNode 
     <StoreShell
       cartLink={<CartLink />}
       assistant={<TitoAssistant />}
+      pageTransition={<AnimalParade />}
       seasonalBanner={<SeasonalRibbon theme={theme} />}
       seasonalDecor={{
         afterHeader: <SeasonalGarland theme={theme} />,

@@ -891,3 +891,177 @@
     display: none;
   }
 }
+
+/* ── Desfile de animales entre páginas (features/page-transitions) ──────────
+   Decorativo: sin clics (pointer-events: none) y oculto con prefers-reduced-motion. */
+.parade {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  overflow: hidden;
+  pointer-events: none;
+}
+.parade-act {
+  position: absolute;
+  filter: drop-shadow(0 6px 6px rgb(31 42 68 / 0.18));
+}
+/* Elefante: cruza abajo de izquierda a derecha. */
+.parade-act--walk {
+  bottom: 6px;
+  left: 0;
+  height: clamp(72px, 14vw, 110px);
+  animation: parade-walk 2.6s linear both;
+}
+/* León: cruza a saltos (el salto va en el SVG interior). */
+.parade-act--hop {
+  bottom: 10px;
+  left: 0;
+  height: clamp(64px, 11vw, 92px);
+  animation: parade-cross 2.4s linear both;
+}
+.parade-act--hop > svg {
+  animation: parade-hop 0.6s ease-in-out 4 both;
+  transform-origin: 50% 100%;
+}
+/* Mono: baja colgado de la liana, se columpia y vuelve a subir. */
+.parade-act--swing {
+  top: 0;
+  right: 18%;
+  height: clamp(150px, 30vw, 230px);
+  transform-origin: 50% 0;
+  animation: parade-swing 2.4s ease-in-out both;
+}
+/* Jirafa: se asoma desde abajo a la izquierda y vuelve a esconderse. */
+.parade-act--peek {
+  bottom: -28px;
+  left: 4%;
+  height: clamp(130px, 22vw, 200px);
+  animation: parade-peek 2.3s ease-in-out both;
+}
+
+/* Patas del elefante: un par adelanta mientras el otro atrasa. */
+.parade-step > rect {
+  animation: parade-step 0.36s ease-in-out infinite alternate;
+}
+.parade-step--alt > rect {
+  animation-direction: alternate-reverse;
+}
+.parade-flag {
+  animation: parade-flutter 0.5s ease-in-out infinite alternate;
+}
+.parade-kick {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+  animation: parade-flutter 0.3s ease-in-out infinite alternate;
+}
+.parade-wave {
+  animation: parade-wave 0.4s ease-in-out infinite alternate;
+}
+.parade-nod {
+  animation: parade-nod 0.9s ease-in-out 0.5s 2 alternate both;
+}
+
+@keyframes parade-walk {
+  from {
+    transform: translateX(-105%);
+  }
+  to {
+    transform: translateX(100vw);
+  }
+}
+@keyframes parade-cross {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(100vw);
+  }
+}
+@keyframes parade-hop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1.08, 0.92);
+  }
+  15% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-70%) rotate(-8deg);
+  }
+}
+@keyframes parade-swing {
+  0% {
+    transform: translateY(-100%) rotate(0);
+  }
+  15% {
+    transform: translateY(0) rotate(-28deg);
+  }
+  38% {
+    transform: translateY(0) rotate(24deg);
+  }
+  58% {
+    transform: translateY(0) rotate(-16deg);
+  }
+  76% {
+    transform: translateY(0) rotate(8deg);
+  }
+  86% {
+    transform: translateY(0) rotate(0);
+  }
+  100% {
+    transform: translateY(-100%) rotate(0);
+  }
+}
+@keyframes parade-peek {
+  0%,
+  100% {
+    transform: translateY(100%);
+  }
+  22%,
+  78% {
+    transform: translateY(0);
+  }
+}
+@keyframes parade-step {
+  from {
+    transform: rotate(-14deg);
+  }
+  to {
+    transform: rotate(14deg);
+  }
+}
+@keyframes parade-flutter {
+  from {
+    transform: rotate(-10deg);
+  }
+  to {
+    transform: rotate(10deg);
+  }
+}
+@keyframes parade-wave {
+  from {
+    transform: rotate(-20deg);
+  }
+  to {
+    transform: rotate(25deg);
+  }
+}
+@keyframes parade-nod {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(-9deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parade {
+    display: none;
+  }
+}
+@media print {
+  .parade {
+    display: none;
+  }
+}
